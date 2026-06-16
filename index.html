@@ -14,6 +14,7 @@
   header .actions{display:flex;gap:10px;align-items:center}
   select,button{font:inherit;border-radius:8px;border:1px solid #2c3a52;background:#16213a;color:#fff;padding:8px 12px;cursor:pointer}
   button.reload{background:var(--accent);border-color:var(--accent)}
+  button:disabled{opacity:.6;cursor:wait}
   .wrap{max-width:1180px;margin:0 auto;padding:22px 26px 60px}
   .cli{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px 20px;margin-bottom:22px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .cli h2{margin:2px 0 4px;font-size:17px}
@@ -35,17 +36,18 @@
 <header>
   <div class="t">
     <h1>DRE · Acompanhamento Mercado Livre</h1>
-    <p>Coleta automática toda segunda às 9h (BRT) · janela de 30 dias <span id="upd"></span></p>
+    <p>Coleta automática toda sexta às 9h (BRT) · janela de 30 dias <span id="upd"></span></p>
   </div>
   <div class="actions">
     <select id="filtro"><option value="all">Todas as contas</option></select>
-    <button class="reload" onclick="load()">Atualizar</button>
+    <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
   </div>
 </header>
 <div class="wrap" id="app"><div class="empty">Carregando…</div></div>
 
 <script>
 const API = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-dados";
+const COLETOR = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-coletor";
 const METRICAS = [
   ["vendas","Vendas","money"],
   ["unidades","Unidades","int"],
@@ -53,7 +55,7 @@ const METRICAS = [
   ["visitas","Visitas","int"],
   ["qnt_vend","Qtd. vendas","int"],
   ["conversao","Conversão","pct"],
-  ["qnt_anuncios","Qtd. anúncios","int"],
+  ["qnt_anuncios","Qtd. anúncios (ativos+inativos)","int"],
   ["tacos","TACoS","pct"],
   ["vendas_concluidas_60d","Vendas concluídas 60d","int"],
 ];
@@ -84,7 +86,6 @@ function render(){
   const periodos=[...new Set(DADOS.conta.map(r=>r.periodo_fim))].sort();
   if(!periodos.length){app.innerHTML=`<div class="empty">Ainda não há coletas registradas.</div>`;return;}
 
-  // estrutura cliente -> conta -> periodo
   const clientes={};
   for(const r of DADOS.conta){
     clientes[r.cliente_id]??={nome:r.cliente,contas:{}};
@@ -115,6 +116,7 @@ function render(){
 
 function montaFiltro(){
   const sel=document.getElementById("filtro");
+  const atual=sel.value;
   const clientes={};
   for(const r of DADOS.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:new Set()};clientes[r.cliente_id].contas.add(r.conta);}
   let opts=`<option value="all">Todas as contas</option>`;
@@ -123,6 +125,7 @@ function montaFiltro(){
     clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);
   }
   sel.innerHTML=opts;
+  sel.value=atual||"all";
   sel.onchange=render;
 }
 
@@ -137,6 +140,19 @@ async function load(){
     document.getElementById("app").innerHTML=`<div class="empty">Erro ao carregar os dados.<br>${e}</div>`;
   }
 }
+
+// Botão Atualizar: dispara coleta nova direto do Mercado Livre, depois recarrega
+async function atualizar(){
+  const btn=document.getElementById("btnAtualizar");
+  btn.disabled=true; const txt=btn.textContent; btn.textContent="Atualizando…";
+  document.getElementById("app").innerHTML=`<div class="empty">Buscando dados novos direto do Mercado Livre…<br>Isso pode levar até ~30s por conta. Não feche a página.</div>`;
+  try{
+    await fetch(COLETOR,{cache:"no-store"});
+  }catch(e){ /* segue e recarrega o que tiver */ }
+  await load();
+  btn.disabled=false; btn.textContent=txt;
+}
+
 load();
 </script>
 </body>

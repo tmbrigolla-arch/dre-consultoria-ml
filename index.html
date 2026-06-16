@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DRE · Acompanhamento Mercado Livre</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb;--up:#16a34a;--down:#dc2626}
   *{box-sizing:border-box}
@@ -14,6 +15,7 @@
   header .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   select,button,.dd>summary{font:inherit;border-radius:8px;border:1px solid #2c3a52;background:#16213a;color:#fff;padding:8px 12px;cursor:pointer;list-style:none}
   button.reload{background:var(--accent);border-color:var(--accent)}
+  button.ghost{background:transparent}
   button:disabled{opacity:.6;cursor:wait}
   .dd{position:relative}
   .dd>summary::-webkit-details-marker{display:none}
@@ -43,9 +45,36 @@
   .empty{padding:40px;text-align:center;color:var(--muted)}
   .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:18px;line-height:1.5}
   .pill{display:inline-block;background:#16213a;color:#9fb0c9;font-size:11px;padding:2px 8px;border-radius:20px;margin-left:8px}
+  /* login */
+  #login{display:none;min-height:100vh;align-items:center;justify-content:center;background:var(--head)}
+  .card{background:#fff;border-radius:14px;padding:32px;width:360px;max-width:92vw;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+  .card h2{margin:0 0 4px;font-size:20px}
+  .card p{margin:0 0 18px;color:var(--muted);font-size:13px}
+  .card label{display:block;font-size:12.5px;color:#475569;margin:12px 0 4px}
+  .card input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font:inherit}
+  .card .btn{width:100%;margin-top:18px;background:var(--accent);color:#fff;border:none;padding:12px;border-radius:9px;font-weight:600;cursor:pointer}
+  .card .link{display:block;text-align:center;margin-top:14px;color:var(--accent);font-size:13px;cursor:pointer;background:none;border:none;width:100%}
+  .card .err{color:var(--down);font-size:12.5px;margin-top:12px;min-height:16px}
 </style>
 </head>
 <body>
+
+<div id="login">
+  <div class="card">
+    <h2 id="loginTitulo">Entrar</h2>
+    <p id="loginSub">Acesso restrito · DRE Mercado Livre</p>
+    <label>E-mail</label>
+    <input id="email" type="email" autocomplete="username" placeholder="seu@email.com">
+    <label>Senha</label>
+    <input id="senha" type="password" autocomplete="current-password" placeholder="••••••••">
+    <input id="senha2" type="password" autocomplete="new-password" placeholder="Repita a senha" style="display:none;margin-top:8px">
+    <button class="btn" id="btnLogin" onclick="acaoLogin()">Entrar</button>
+    <div class="err" id="loginErr"></div>
+    <button class="link" id="toggleModo" onclick="toggleModo()">Primeiro acesso — criar senha master</button>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
 <header>
   <div class="t">
     <h1>DRE · Acompanhamento Mercado Livre</h1>
@@ -55,6 +84,7 @@
     <select id="filtro"><option value="all">Todas as contas</option></select>
     <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
     <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
+    <button class="ghost" onclick="sair()">Sair</button>
   </div>
 </header>
 <div class="tabs">
@@ -62,55 +92,88 @@
   <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
 </div>
 <div class="wrap" id="app"><div class="empty">Carregando…</div></div>
+</div>
 
 <script>
-const API = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-dados";
-const COLETOR = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-coletor";
-const PADRAO = 5;
-const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const SB_URL="https://qrvdqqdigzabltqgxggm.supabase.co";
+const SB_KEY="sb_publishable_DPvztgnqrFAX8NEyUjbEew_uuCL-s3U";
+const API=SB_URL+"/functions/v1/ml-dados";
+const COLETOR=SB_URL+"/functions/v1/ml-coletor";
+const SETUP=SB_URL+"/functions/v1/setup-master";
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
 
-const METRICAS_SEMANAL = [
+/* ---------- LOGIN ---------- */
+let modo="login";
+function toggleModo(){
+  modo = modo==="login"?"setup":"login";
+  document.getElementById("senha2").style.display = modo==="setup"?"block":"none";
+  document.getElementById("loginTitulo").textContent = modo==="setup"?"Criar senha master":"Entrar";
+  document.getElementById("btnLogin").textContent = modo==="setup"?"Criar acesso":"Entrar";
+  document.getElementById("toggleModo").textContent = modo==="setup"?"Já tenho acesso — entrar":"Primeiro acesso — criar senha master";
+  document.getElementById("loginErr").textContent="";
+}
+async function acaoLogin(){
+  const email=document.getElementById("email").value.trim().toLowerCase();
+  const senha=document.getElementById("senha").value;
+  const err=document.getElementById("loginErr"); err.textContent="";
+  const btn=document.getElementById("btnLogin"); btn.disabled=true;
+  try{
+    if(modo==="setup"){
+      const s2=document.getElementById("senha2").value;
+      if(senha.length<8){err.textContent="A senha precisa ter ao menos 8 caracteres.";return;}
+      if(senha!==s2){err.textContent="As senhas não conferem.";return;}
+      const r=await fetch(SETUP,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password:senha})});
+      const j=await r.json();
+      if(!r.ok){err.textContent=j.error||"Não foi possível criar o acesso.";return;}
+    }
+    const {error}=await sb.auth.signInWithPassword({email,password:senha});
+    if(error){err.textContent="E-mail ou senha inválidos.";return;}
+    mostrarApp();
+  }catch(e){err.textContent="Erro: "+e;}
+  finally{btn.disabled=false;}
+}
+async function sair(){ await sb.auth.signOut(); mostrarLogin(); }
+function mostrarLogin(){ document.getElementById("appRoot").style.display="none"; document.getElementById("login").style.display="flex"; }
+function mostrarApp(){ document.getElementById("login").style.display="none"; document.getElementById("appRoot").style.display="block"; load(); }
+
+/* ---------- PAINEL ---------- */
+const PADRAO=5;
+const MESES=["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+const METRICAS_SEMANAL=[
   ["vendas","Vendas","money"],["unidades","Unidades","int"],["ticket","Ticket médio","money"],
   ["visitas","Visitas","int"],["qnt_vend","Qtd. vendas","int"],["conversao","Conversão","pct"],
   ["qnt_anuncios","Qtd. anúncios (todos os canais)","int"],
   ["anuncios_ativos","— ativos","int","sub"],["anuncios_inativos","— inativos","int","sub"],
   ["tacos","TACoS","pct"],["vendas_concluidas_60d","Vendas concluídas 60d","int"],
 ];
-const METRICAS_MENSAL = [
-  ["vendas","Vendas","money"],["unidades","Unidades","int"],["ticket","Ticket médio (por unidade)","money"],
+const METRICAS_MENSAL=[
+  ["vendas","Vendas","money"],["unidades","Unidades","int"],["ticket","Ticket médio","money"],
   ["visitas","Visitas","int"],["qnt_vend","Qtd. vendas","int"],["conversao","Conversão","pct"],
   ["vendas_com_pub","Vendas com publicidade","int"],["vendas_sem_pub","Vendas sem publicidade","int"],
 ];
-
 const nf=new Intl.NumberFormat("pt-BR");
 const cf=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
 function fmt(v,t){ if(v==null||v==="") return "—"; const n=Number(v);
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }
-
 let DADOS=null, aba="semanal", periodosSel=null;
-
 function metricas(){ return aba==="mensal"?METRICAS_MENSAL:METRICAS_SEMANAL; }
 function labelPeriodo(p){ const[y,m,d]=p.split("-"); return aba==="mensal"?(MESES[+m-1]+"/"+y.slice(2)):(d+"/"+m); }
 function dataset(){ return {
   conta:DADOS.conta.filter(r=>r.granularidade===aba),
   cliente:DADOS.cliente.filter(r=>r.granularidade===aba),
   total:DADOS.total.filter(r=>r.granularidade===aba) }; }
-
 function celula(cur,prev,tipo){
   if(cur==null||cur==="") return "—";
   let s=fmt(cur,tipo);
   if(prev!=null&&prev!==""&&Number(prev)!==0){
     const ch=(Number(cur)-Number(prev))/Math.abs(Number(prev));
-    if(isFinite(ch)&&Math.abs(ch)>=0.0005){
-      const up=ch>0, pct=(Math.abs(ch)*100).toLocaleString("pt-BR",{maximumFractionDigits:1});
-      s+=`<div class="chg ${up?'up':'down'}">${up?'▲':'▼'} ${pct}%</div>`;
-    }
+    if(isFinite(ch)&&Math.abs(ch)>=0.0005){ const up=ch>0, pct=(Math.abs(ch)*100).toLocaleString("pt-BR",{maximumFractionDigits:1});
+      s+=`<div class="chg ${up?'up':'down'}">${up?'▲':'▼'} ${pct}%</div>`; }
   }
   return s;
 }
-
 function tabela(tag,cls,periodos,byPeriodo){
   let h=`<div class="tag ${cls}">${tag}</div><table><thead><tr><th class="m">Métrica</th>`;
   periodos.forEach(p=>{const api=byPeriodo[p]?.fonte==='api'?'<span class="api">API</span>':'';h+=`<th>${labelPeriodo(p)}${api}</th>`;});
@@ -122,110 +185,76 @@ function tabela(tag,cls,periodos,byPeriodo){
   }
   return h+`</tbody></table>`;
 }
-
 function todosPeriodos(){ return [...new Set(dataset().conta.map(r=>r.periodo_fim))].sort(); }
-function periodosAtivos(){
-  const all=todosPeriodos();
-  if(!periodosSel) periodosSel=all.slice(-PADRAO);
-  const sel=periodosSel.filter(p=>all.includes(p)).sort();
-  return sel.length?sel:all.slice(-PADRAO);
-}
-
+function periodosAtivos(){ const all=todosPeriodos(); if(!periodosSel) periodosSel=all.slice(-PADRAO);
+  const sel=periodosSel.filter(p=>all.includes(p)).sort(); return sel.length?sel:all.slice(-PADRAO); }
 function render(){
-  const app=document.getElementById("app");
-  const D=dataset();
-  const filtro=document.getElementById("filtro").value;
-  const periodos=periodosAtivos();
+  const app=document.getElementById("app");const D=dataset();
+  const filtro=document.getElementById("filtro").value;const periodos=periodosAtivos();
   if(!periodos.length){app.innerHTML=`<div class="empty">Sem dados ${aba==='mensal'?'mensais':'semanais'} ainda.</div>`;return;}
-
   const clientes={};
-  for(const r of D.conta){
-    clientes[r.cliente_id]??={nome:r.cliente,contas:{}};
-    clientes[r.cliente_id].contas[r.conta]??={};
-    clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;
-  }
+  for(const r of D.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:{}};clientes[r.cliente_id].contas[r.conta]??={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
   const cliMap={};for(const r of D.cliente){cliMap[r.cliente_id]??={};cliMap[r.cliente_id][r.periodo_fim]=r;}
   const totMap={};for(const r of D.total)totMap[r.periodo_fim]=r;
-
   let html="";
   for(const cid in clientes){
-    const cl=clientes[cid];
-    const contasNomes=Object.keys(cl.contas);
+    const cl=clientes[cid];const contasNomes=Object.keys(cl.contas);
     html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s) exibido(s)</div>`;
-    for(const conta of contasNomes){
-      if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue;
-      html+=tabela(conta,"conta",periodos,cl.contas[conta]);
-    }
-    if(contasNomes.length>1&&(filtro==="all"||filtro==="cli:"+cid))
-      html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});
+    for(const conta of contasNomes){ if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue; html+=tabela(conta,"conta",periodos,cl.contas[conta]); }
+    if(contasNomes.length>1&&(filtro==="all"||filtro==="cli:"+cid)) html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});
     html+=`</div>`;
   }
-  if(Object.keys(clientes).length>1&&filtro==="all")
-    html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
-
+  if(Object.keys(clientes).length>1&&filtro==="all") html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
   const notaAba = aba==="mensal"
-    ? `Visão <b>mensal</b> — cada coluna é um mês fechado (1º ao último dia). Ticket médio = vendas ÷ unidades. "Vendas com/sem publicidade" separam pedidos atribuídos a anúncios pagos.`
+    ? `Visão <b>mensal</b> — cada coluna é um mês fechado (1º ao último dia). Ticket médio = vendas ÷ nº de vendas. "Vendas com/sem publicidade" separam pedidos atribuídos a anúncios pagos.`
     : `Qtd. anúncios = ativos + inativos em <b>todos os canais</b> (a "Gestão de Anúncios" do ML mostra menos por excluir os canais <i>proximity</i> e <i>MP merchants</i>). Razões (ticket, conversão, TACoS) recalculadas a partir dos totais.`;
-  html+=`<div class="foot"><b>API</b> marca os períodos coletados automaticamente pelo sistema. Variação % compara com o período anterior (verde = aumento, vermelho = queda).<br>${notaAba}</div>`;
+  html+=`<div class="foot"><b>API</b> marca os períodos coletados automaticamente. Variação % compara com o período anterior (verde = aumento, vermelho = queda).<br>${notaAba}</div>`;
   app.innerHTML=html;
 }
-
 function trocaAba(a){
-  aba=a; periodosSel=null;
-  document.getElementById("tabSemanal").className = a==="semanal"?"on":"";
-  document.getElementById("tabMensal").className = a==="mensal"?"on":"";
-  document.getElementById("subtitulo").textContent = a==="mensal"
-    ? "Visão mensal — cada período = mês fechado (1º ao último dia)"
-    : "Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  montaPeriodos(); render();
+  aba=a;periodosSel=null;
+  document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
+  document.getElementById("tabMensal").className=a==="mensal"?"on":"";
+  document.getElementById("subtitulo").textContent=a==="mensal"
+    ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
+    :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
+  montaPeriodos();render();
 }
-
 function montaFiltro(){
-  const sel=document.getElementById("filtro");const atual=sel.value;
-  const clientes={};
+  const sel=document.getElementById("filtro");const atual=sel.value;const clientes={};
   for(const r of DADOS.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:new Set()};clientes[r.cliente_id].contas.add(r.conta);}
   let opts=`<option value="all">Todas as contas</option>`;
-  for(const cid in clientes){
-    opts+=`<option value="cli:${cid}">— ${clientes[cid].nome} (total)</option>`;
-    clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);
-  }
+  for(const cid in clientes){opts+=`<option value="cli:${cid}">— ${clientes[cid].nome} (total)</option>`;clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);}
   sel.innerHTML=opts;sel.value=atual||"all";sel.onchange=render;
 }
-
 function montaPeriodos(){
-  const all=todosPeriodos();const sel=periodosAtivos();
-  const menu=document.getElementById("menuPeriodos");
+  const all=todosPeriodos();const sel=periodosAtivos();const menu=document.getElementById("menuPeriodos");
   let h=`<label style="font-weight:600;border-bottom:1px solid var(--line)"><input type="checkbox" id="pTodos"> Mostrar todos</label>`;
   for(const p of [...all].reverse()) h+=`<label><input type="checkbox" class="pchk" value="${p}" ${sel.includes(p)?"checked":""}> ${labelPeriodo(p)}</label>`;
   menu.innerHTML=h;
-  menu.querySelectorAll(".pchk").forEach(c=>c.onchange=()=>{
-    periodosSel=[...menu.querySelectorAll(".pchk:checked")].map(x=>x.value);
-    if(!periodosSel.length)periodosSel=all.slice(-PADRAO);
-    render();
-  });
-  document.getElementById("pTodos").onchange=(e)=>{ periodosSel=e.target.checked?all.slice():all.slice(-PADRAO); montaPeriodos(); render(); };
+  menu.querySelectorAll(".pchk").forEach(c=>c.onchange=()=>{periodosSel=[...menu.querySelectorAll(".pchk:checked")].map(x=>x.value);if(!periodosSel.length)periodosSel=all.slice(-PADRAO);render();});
+  document.getElementById("pTodos").onchange=(e)=>{periodosSel=e.target.checked?all.slice():all.slice(-PADRAO);montaPeriodos();render();};
 }
-
 async function load(){
   document.getElementById("app").innerHTML=`<div class="empty">Carregando…</div>`;
   try{
-    const r=await fetch(API,{cache:"no-store"});
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(API,{cache:"no-store",headers:{Authorization:"Bearer "+(session?.access_token||"")}});
+    if(r.status===401){ mostrarLogin(); return; }
     DADOS=await r.json();
-    montaFiltro(); trocaAba(aba);
+    montaFiltro();trocaAba(aba);
     document.querySelector("#subtitulo").insertAdjacentHTML("beforeend",` <span class="pill">atualizado ${new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</span>`);
   }catch(e){ document.getElementById("app").innerHTML=`<div class="empty">Erro ao carregar os dados.<br>${e}</div>`; }
 }
-
 async function atualizar(){
-  const btn=document.getElementById("btnAtualizar");
-  btn.disabled=true;const txt=btn.textContent;btn.textContent="Atualizando…";
+  const btn=document.getElementById("btnAtualizar");btn.disabled=true;const txt=btn.textContent;btn.textContent="Atualizando…";
   document.getElementById("app").innerHTML=`<div class="empty">Buscando dados novos direto do Mercado Livre…<br>Isso pode levar até ~30s por conta. Não feche a página.</div>`;
   try{await fetch(COLETOR,{cache:"no-store"});}catch(e){}
   await load();
   btn.disabled=false;btn.textContent=txt;
 }
-
-load();
+/* ---------- INIT ---------- */
+(async()=>{ const {data:{session}}=await sb.auth.getSession(); if(session) mostrarApp(); else mostrarLogin(); })();
 </script>
 </body>
 </html>

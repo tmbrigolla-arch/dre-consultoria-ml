@@ -5,30 +5,40 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DRE · Acompanhamento Mercado Livre</title>
 <style>
-  :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb}
+  :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb;--up:#16a34a;--down:#dc2626}
   *{box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:#f1f4f9;color:var(--ink)}
-  header{background:var(--head);color:#fff;padding:18px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header{background:var(--head);color:#fff;padding:16px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
   header .t h1{margin:0;font-size:19px;letter-spacing:.2px}
   header .t p{margin:4px 0 0;font-size:12.5px;color:#9fb0c9}
-  header .actions{display:flex;gap:10px;align-items:center}
-  select,button{font:inherit;border-radius:8px;border:1px solid #2c3a52;background:#16213a;color:#fff;padding:8px 12px;cursor:pointer}
+  header .actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  select,button,.dd>summary{font:inherit;border-radius:8px;border:1px solid #2c3a52;background:#16213a;color:#fff;padding:8px 12px;cursor:pointer;list-style:none}
   button.reload{background:var(--accent);border-color:var(--accent)}
   button:disabled{opacity:.6;cursor:wait}
-  .wrap{max-width:1180px;margin:0 auto;padding:22px 26px 60px}
+  .dd{position:relative}
+  .dd>summary::-webkit-details-marker{display:none}
+  .dd[open]>summary{background:var(--accent);border-color:var(--accent)}
+  .dd .menu{position:absolute;right:0;top:42px;z-index:20;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:8px;min-width:170px;max-height:300px;overflow:auto}
+  .dd .menu label{display:flex;gap:8px;align-items:center;padding:5px 8px;font-size:13px;border-radius:6px;cursor:pointer;white-space:nowrap}
+  .dd .menu label:hover{background:#f1f5fb}
+  .wrap{max-width:1280px;margin:0 auto;padding:22px 26px 60px}
   .cli{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px 20px;margin-bottom:22px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
   .cli h2{margin:2px 0 4px;font-size:17px}
   .cli .sub{color:var(--muted);font-size:12.5px;margin-bottom:6px}
   .tag{display:inline-block;font-size:12.5px;font-weight:700;padding:3px 12px;border-radius:6px;margin:16px 0 6px}
   .tag.conta{background:var(--conta)}.tag.cliente{background:var(--cliente)}.tag.total{background:var(--total)}
   table{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:6px}
-  th,td{border:1px solid var(--line);padding:7px 12px;text-align:right;white-space:nowrap}
+  th,td{border:1px solid var(--line);padding:7px 12px;text-align:right;white-space:nowrap;vertical-align:top}
   th{background:#f5f7fb;font-weight:600;color:#334155}
   th.m,td.m{text-align:left;background:#fafbfd;font-weight:600}
+  td.sub2,th.sub2{color:var(--muted);font-weight:500;padding-left:24px}
   tr:hover td{background:#f8fafc}
   tr:hover td.m{background:#f1f5fb}
+  .chg{font-size:11px;margin-top:2px}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .api{font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700;letter-spacing:.3px}
   .empty{padding:40px;text-align:center;color:var(--muted)}
-  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:18px}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:18px;line-height:1.5}
   .pill{display:inline-block;background:#16213a;color:#9fb0c9;font-size:11px;padding:2px 8px;border-radius:20px;margin-left:8px}
 </style>
 </head>
@@ -36,10 +46,11 @@
 <header>
   <div class="t">
     <h1>DRE · Acompanhamento Mercado Livre</h1>
-    <p>Coleta automática toda sexta às 9h (BRT) · janela de 30 dias <span id="upd"></span></p>
+    <p>Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT) <span id="upd"></span></p>
   </div>
   <div class="actions">
     <select id="filtro"><option value="all">Todas as contas</option></select>
+    <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
     <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
   </div>
 </header>
@@ -48,6 +59,7 @@
 <script>
 const API = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-dados";
 const COLETOR = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-coletor";
+const PADRAO_PERIODOS = 5;
 const METRICAS = [
   ["vendas","Vendas","money"],
   ["unidades","Unidades","int"],
@@ -55,35 +67,65 @@ const METRICAS = [
   ["visitas","Visitas","int"],
   ["qnt_vend","Qtd. vendas","int"],
   ["conversao","Conversão","pct"],
-  ["qnt_anuncios","Qtd. anúncios (ativos+inativos)","int"],
+  ["qnt_anuncios","Qtd. anúncios (todos os canais)","int"],
+  ["anuncios_ativos","— ativos","int","sub"],
+  ["anuncios_inativos","— inativos","int","sub"],
   ["tacos","TACoS","pct"],
   ["vendas_concluidas_60d","Vendas concluídas 60d","int"],
 ];
 const nf = new Intl.NumberFormat("pt-BR");
 const cf = new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-function fmt(v,t){ if(v==null) return "—"; const n=Number(v);
+function fmt(v,t){ if(v==null||v==="") return "—"; const n=Number(v);
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }
 function br(d){const[y,m,dd]=d.split("-");return dd+"/"+m;}
 
+function celula(cur,prev,tipo){
+  if(cur==null||cur==="") return "—";
+  let s = fmt(cur,tipo);
+  if(prev!=null&&prev!==""&&Number(prev)!==0){
+    const ch=(Number(cur)-Number(prev))/Math.abs(Number(prev));
+    if(isFinite(ch)&&Math.abs(ch)>=0.0005){
+      const up=ch>0;
+      const pct=(Math.abs(ch)*100).toLocaleString("pt-BR",{maximumFractionDigits:1});
+      s+=`<div class="chg ${up?'up':'down'}">${up?'▲':'▼'} ${pct}%</div>`;
+    }
+  }
+  return s;
+}
+
 function tabela(tag,cls,periodos,byPeriodo){
   let h=`<div class="tag ${cls}">${tag}</div><table><thead><tr><th class="m">Métrica</th>`;
-  periodos.forEach(p=>h+=`<th>${br(p)}</th>`);
+  periodos.forEach(p=>{const api=byPeriodo[p]?.fonte==='api'?'<span class="api">API</span>':'';h+=`<th>${br(p)}${api}</th>`;});
   h+=`</tr></thead><tbody>`;
-  for(const[k,label,t]of METRICAS){
-    h+=`<tr><td class="m">${label}</td>`;
-    periodos.forEach(p=>h+=`<td>${fmt(byPeriodo[p]?.[k],t)}</td>`);
+  for(const[k,label,t,sub]of METRICAS){
+    const cm=sub?"m sub2":"m";
+    h+=`<tr><td class="${cm}">${label}</td>`;
+    periodos.forEach((p,i)=>{
+      const cur=byPeriodo[p]?.[k];
+      const prev=i>0?byPeriodo[periodos[i-1]]?.[k]:null;
+      h+=`<td>${celula(cur,prev,t)}</td>`;
+    });
     h+=`</tr>`;
   }
   return h+`</tbody></table>`;
 }
 
-let DADOS=null;
+let DADOS=null, periodosSel=null;
+
+function todosPeriodos(){ return [...new Set(DADOS.conta.map(r=>r.periodo_fim))].sort(); }
+function periodosAtivos(){
+  const all=todosPeriodos();
+  if(!periodosSel) periodosSel=all.slice(-PADRAO_PERIODOS);
+  const sel=periodosSel.filter(p=>all.includes(p)).sort();
+  return sel.length?sel:all.slice(-PADRAO_PERIODOS);
+}
+
 function render(){
   const app=document.getElementById("app");
   const filtro=document.getElementById("filtro").value;
-  const periodos=[...new Set(DADOS.conta.map(r=>r.periodo_fim))].sort();
+  const periodos=periodosAtivos();
   if(!periodos.length){app.innerHTML=`<div class="empty">Ainda não há coletas registradas.</div>`;return;}
 
   const clientes={};
@@ -99,7 +141,7 @@ function render(){
   for(const cid in clientes){
     const cl=clientes[cid];
     const contasNomes=Object.keys(cl.contas);
-    html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s)</div>`;
+    html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s) exibido(s)</div>`;
     for(const conta of contasNomes){
       if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue;
       html+=tabela(conta,"conta",periodos,cl.contas[conta]);
@@ -110,13 +152,12 @@ function render(){
   }
   if(Object.keys(clientes).length>1&&filtro==="all")
     html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
-  html+=`<div class="foot">Razões (ticket, conversão, TACoS) recalculadas a partir dos totais — nunca média das contas.</div>`;
+  html+=`<div class="foot"><b>API</b> marca os períodos coletados automaticamente pelo sistema (início da automação). Variação % compara cada período com o anterior (verde = aumento, vermelho = queda).<br>Qtd. anúncios = ativos + inativos em <b>todos os canais</b>. A tela "Gestão de Anúncios" do ML mostra menos por excluir os canais <i>proximity</i> e <i>MP merchants</i>. A separação ativos/inativos só existe a partir da coleta via API.<br>Razões (ticket, conversão, TACoS) recalculadas a partir dos totais — nunca média das contas.</div>`;
   app.innerHTML=html;
 }
 
 function montaFiltro(){
-  const sel=document.getElementById("filtro");
-  const atual=sel.value;
+  const sel=document.getElementById("filtro");const atual=sel.value;
   const clientes={};
   for(const r of DADOS.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:new Set()};clientes[r.cliente_id].contas.add(r.conta);}
   let opts=`<option value="all">Todas as contas</option>`;
@@ -124,9 +165,27 @@ function montaFiltro(){
     opts+=`<option value="cli:${cid}">— ${clientes[cid].nome} (total)</option>`;
     clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);
   }
-  sel.innerHTML=opts;
-  sel.value=atual||"all";
-  sel.onchange=render;
+  sel.innerHTML=opts;sel.value=atual||"all";sel.onchange=render;
+}
+
+function montaPeriodos(){
+  const all=todosPeriodos();
+  const sel=periodosAtivos();
+  const menu=document.getElementById("menuPeriodos");
+  let h=`<label style="font-weight:600;border-bottom:1px solid var(--line);border-radius:0"><input type="checkbox" id="pTodos"> Mostrar todos</label>`;
+  for(const p of [...all].reverse()){
+    h+=`<label><input type="checkbox" class="pchk" value="${p}" ${sel.includes(p)?"checked":""}> ${br(p)}</label>`;
+  }
+  menu.innerHTML=h;
+  menu.querySelectorAll(".pchk").forEach(c=>c.onchange=()=>{
+    periodosSel=[...menu.querySelectorAll(".pchk:checked")].map(x=>x.value);
+    if(!periodosSel.length)periodosSel=all.slice(-PADRAO_PERIODOS);
+    render();
+  });
+  document.getElementById("pTodos").onchange=(e)=>{
+    periodosSel=e.target.checked?all.slice():all.slice(-PADRAO_PERIODOS);
+    montaPeriodos();render();
+  };
 }
 
 async function load(){
@@ -135,22 +194,19 @@ async function load(){
     const r=await fetch(API,{cache:"no-store"});
     DADOS=await r.json();
     document.getElementById("upd").innerHTML=`<span class="pill">atualizado ${new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</span>`;
-    montaFiltro();render();
+    montaFiltro();montaPeriodos();render();
   }catch(e){
     document.getElementById("app").innerHTML=`<div class="empty">Erro ao carregar os dados.<br>${e}</div>`;
   }
 }
 
-// Botão Atualizar: dispara coleta nova direto do Mercado Livre, depois recarrega
 async function atualizar(){
   const btn=document.getElementById("btnAtualizar");
-  btn.disabled=true; const txt=btn.textContent; btn.textContent="Atualizando…";
+  btn.disabled=true;const txt=btn.textContent;btn.textContent="Atualizando…";
   document.getElementById("app").innerHTML=`<div class="empty">Buscando dados novos direto do Mercado Livre…<br>Isso pode levar até ~30s por conta. Não feche a página.</div>`;
-  try{
-    await fetch(COLETOR,{cache:"no-store"});
-  }catch(e){ /* segue e recarrega o que tiver */ }
+  try{await fetch(COLETOR,{cache:"no-store"});}catch(e){}
   await load();
-  btn.disabled=false; btn.textContent=txt;
+  btn.disabled=false;btn.textContent=txt;
 }
 
 load();

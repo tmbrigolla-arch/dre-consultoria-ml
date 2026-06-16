@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DRE · Acompanhamento Mercado Livre</title>
+<style>
+  :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb}
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;background:#f1f4f9;color:var(--ink)}
+  header{background:var(--head);color:#fff;padding:18px 26px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  header .t h1{margin:0;font-size:19px;letter-spacing:.2px}
+  header .t p{margin:4px 0 0;font-size:12.5px;color:#9fb0c9}
+  header .actions{display:flex;gap:10px;align-items:center}
+  select,button{font:inherit;border-radius:8px;border:1px solid #2c3a52;background:#16213a;color:#fff;padding:8px 12px;cursor:pointer}
+  button.reload{background:var(--accent);border-color:var(--accent)}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 26px 60px}
+  .cli{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 20px 20px;margin-bottom:22px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  .cli h2{margin:2px 0 4px;font-size:17px}
+  .cli .sub{color:var(--muted);font-size:12.5px;margin-bottom:6px}
+  .tag{display:inline-block;font-size:12.5px;font-weight:700;padding:3px 12px;border-radius:6px;margin:16px 0 6px}
+  .tag.conta{background:var(--conta)}.tag.cliente{background:var(--cliente)}.tag.total{background:var(--total)}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:6px}
+  th,td{border:1px solid var(--line);padding:7px 12px;text-align:right;white-space:nowrap}
+  th{background:#f5f7fb;font-weight:600;color:#334155}
+  th.m,td.m{text-align:left;background:#fafbfd;font-weight:600}
+  tr:hover td{background:#f8fafc}
+  tr:hover td.m{background:#f1f5fb}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:18px}
+  .pill{display:inline-block;background:#16213a;color:#9fb0c9;font-size:11px;padding:2px 8px;border-radius:20px;margin-left:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="t">
+    <h1>DRE · Acompanhamento Mercado Livre</h1>
+    <p>Coleta automática toda segunda às 9h (BRT) · janela de 30 dias <span id="upd"></span></p>
+  </div>
+  <div class="actions">
+    <select id="filtro"><option value="all">Todas as contas</option></select>
+    <button class="reload" onclick="load()">Atualizar</button>
+  </div>
+</header>
+<div class="wrap" id="app"><div class="empty">Carregando…</div></div>
+
+<script>
+const API = "https://qrvdqqdigzabltqgxggm.supabase.co/functions/v1/ml-dados";
+const METRICAS = [
+  ["vendas","Vendas","money"],
+  ["unidades","Unidades","int"],
+  ["ticket","Ticket médio","money"],
+  ["visitas","Visitas","int"],
+  ["qnt_vend","Qtd. vendas","int"],
+  ["conversao","Conversão","pct"],
+  ["qnt_anuncios","Qtd. anúncios","int"],
+  ["tacos","TACoS","pct"],
+  ["vendas_concluidas_60d","Vendas concluídas 60d","int"],
+];
+const nf = new Intl.NumberFormat("pt-BR");
+const cf = new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
+function fmt(v,t){ if(v==null) return "—"; const n=Number(v);
+  if(t==="money") return "R$ "+cf.format(n);
+  if(t==="pct") return cf.format(n*100)+"%";
+  return nf.format(n); }
+function br(d){const[y,m,dd]=d.split("-");return dd+"/"+m;}
+
+function tabela(tag,cls,periodos,byPeriodo){
+  let h=`<div class="tag ${cls}">${tag}</div><table><thead><tr><th class="m">Métrica</th>`;
+  periodos.forEach(p=>h+=`<th>${br(p)}</th>`);
+  h+=`</tr></thead><tbody>`;
+  for(const[k,label,t]of METRICAS){
+    h+=`<tr><td class="m">${label}</td>`;
+    periodos.forEach(p=>h+=`<td>${fmt(byPeriodo[p]?.[k],t)}</td>`);
+    h+=`</tr>`;
+  }
+  return h+`</tbody></table>`;
+}
+
+let DADOS=null;
+function render(){
+  const app=document.getElementById("app");
+  const filtro=document.getElementById("filtro").value;
+  const periodos=[...new Set(DADOS.conta.map(r=>r.periodo_fim))].sort();
+  if(!periodos.length){app.innerHTML=`<div class="empty">Ainda não há coletas registradas.</div>`;return;}
+
+  // estrutura cliente -> conta -> periodo
+  const clientes={};
+  for(const r of DADOS.conta){
+    clientes[r.cliente_id]??={nome:r.cliente,contas:{}};
+    clientes[r.cliente_id].contas[r.conta]??={};
+    clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;
+  }
+  const cliMap={};for(const r of DADOS.cliente){cliMap[r.cliente_id]??={};cliMap[r.cliente_id][r.periodo_fim]=r;}
+  const totMap={};for(const r of DADOS.total)totMap[r.periodo_fim]=r;
+
+  let html="";
+  for(const cid in clientes){
+    const cl=clientes[cid];
+    const contasNomes=Object.keys(cl.contas);
+    html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s)</div>`;
+    for(const conta of contasNomes){
+      if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue;
+      html+=tabela(conta,"conta",periodos,cl.contas[conta]);
+    }
+    if(contasNomes.length>1&&(filtro==="all"||filtro==="cli:"+cid))
+      html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});
+    html+=`</div>`;
+  }
+  if(Object.keys(clientes).length>1&&filtro==="all")
+    html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
+  html+=`<div class="foot">Razões (ticket, conversão, TACoS) recalculadas a partir dos totais — nunca média das contas.</div>`;
+  app.innerHTML=html;
+}
+
+function montaFiltro(){
+  const sel=document.getElementById("filtro");
+  const clientes={};
+  for(const r of DADOS.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:new Set()};clientes[r.cliente_id].contas.add(r.conta);}
+  let opts=`<option value="all">Todas as contas</option>`;
+  for(const cid in clientes){
+    opts+=`<option value="cli:${cid}">— ${clientes[cid].nome} (total)</option>`;
+    clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);
+  }
+  sel.innerHTML=opts;
+  sel.onchange=render;
+}
+
+async function load(){
+  document.getElementById("app").innerHTML=`<div class="empty">Carregando…</div>`;
+  try{
+    const r=await fetch(API,{cache:"no-store"});
+    DADOS=await r.json();
+    document.getElementById("upd").innerHTML=`<span class="pill">atualizado ${new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</span>`;
+    montaFiltro();render();
+  }catch(e){
+    document.getElementById("app").innerHTML=`<div class="empty">Erro ao carregar os dados.<br>${e}</div>`;
+  }
+}
+load();
+</script>
+</body>
+</html>

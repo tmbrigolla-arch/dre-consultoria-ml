@@ -211,7 +211,6 @@ async function load(){
   try{
     const r=await fetch(API,{cache:"no-store"});
     DADOS=await r.json();
-    document.getElementById("upd").innerHTML="";
     montaFiltro(); trocaAba(aba);
     document.querySelector("#subtitulo").insertAdjacentHTML("beforeend",` <span class="pill">atualizado ${new Date().toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</span>`);
   }catch(e){ document.getElementById("app").innerHTML=`<div class="empty">Erro ao carregar os dados.<br>${e}</div>`; }

@@ -39,7 +39,7 @@
   td.sub2,th.sub2{color:var(--muted);font-weight:500;padding-left:24px}
   tr:hover td{background:#f8fafc}
   tr:hover td.m{background:#f1f5fb}
-  .chg{font-size:11px;margin-top:2px}
+  .chg{font-size:11px;margin-right:5px}
   .up{color:var(--up)} .down{color:var(--down)}
   .api{font-size:9px;background:var(--accent);color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700;letter-spacing:.3px}
   .empty{padding:40px;text-align:center;color:var(--muted)}
@@ -170,7 +170,7 @@ function celula(cur,prev,tipo){
   if(prev!=null&&prev!==""&&Number(prev)!==0){
     const ch=(Number(cur)-Number(prev))/Math.abs(Number(prev));
     if(isFinite(ch)&&Math.abs(ch)>=0.0005){ const up=ch>0, pct=(Math.abs(ch)*100).toLocaleString("pt-BR",{maximumFractionDigits:1});
-      s+=`<div class="chg ${up?'up':'down'}">${up?'▲':'▼'} ${pct}%</div>`; }
+      s=`<span class="chg ${up?'up':'down'}">${up?'▲':'▼'}${pct}%</span> `+s; }
   }
   return s;
 }

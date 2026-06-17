@@ -144,7 +144,7 @@ const METRICAS_SEMANAL=[
   ["visitas","Visitas","int"],["qnt_vend","Qtd. vendas","int"],["conversao","Conversão","pct"],
   ["qnt_anuncios","Qtd. anúncios (todos os canais)","int"],
   ["anuncios_ativos","— ativos","int","sub"],["anuncios_inativos","— inativos","int","sub"],
-  ["tacos","TACoS","pct"],["vendas_concluidas_60d","Vendas concluídas 60d","int"],
+  ["tacos","TACoS","pct"],["vendas_concluidas_60d","Vendas concluídas 60d","int"],["reputacao_nivel","Reputação","txt"],["medalha","Medalha","txt"],["rep_reclamacoes_rate","Reclamações","pct"],["rep_cancel_rate","Cancelamentos","pct"],["rep_atraso_rate","Despachos com atraso","pct"],
 ];
 const METRICAS_MENSAL=[
   ["vendas","Vendas","money"],["unidades","Unidades","int"],["ticket","Ticket médio","money"],
@@ -153,7 +153,7 @@ const METRICAS_MENSAL=[
 ];
 const nf=new Intl.NumberFormat("pt-BR");
 const cf=new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2});
-function fmt(v,t){ if(v==null||v==="") return "—"; const n=Number(v);
+function fmt(v,t){ if(v==null||v==="") return "—"; if(t==="txt")return v==null?"—":String(v);const n=Number(v);
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }

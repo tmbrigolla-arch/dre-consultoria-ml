@@ -144,7 +144,7 @@ const METRICAS_SEMANAL=[
   ["visitas","Visitas","int"],["qnt_vend","Qtd. vendas","int"],["conversao","Conversão","pct"],
   ["qnt_anuncios","Qtd. anúncios (todos os canais)","int"],
   ["anuncios_ativos","— ativos","int","sub"],["anuncios_inativos","— inativos","int","sub"],
-  ["tacos","TACoS","pct"],["vendas_concluidas_60d","Vendas concluídas 60d","int"],["reputacao_nivel","Reputação","txt"],["medalha","Medalha","txt"],["rep_reclamacoes_rate","Reclamações","pct"],["rep_cancel_rate","Cancelamentos","pct"],["rep_atraso_rate","Despachos com atraso","pct"],
+  ["tacos","TACoS","pct"],["vendas_concluidas_60d","Vendas concluídas 60d","int"],["_rep_medalha","Reputação/Medalha","repmed"],["rep_reclamacoes_rate","Reclamações","pct"],["rep_cancel_rate","Cancelamentos","pct"],["rep_atraso_rate","Despachos com atraso","pct"],
 ];
 const METRICAS_MENSAL=[
   ["vendas","Vendas","money"],["unidades","Unidades","int"],["ticket","Ticket médio","money"],
@@ -174,13 +174,17 @@ function celula(cur,prev,tipo){
   }
   return s;
 }
+function medalPretty(m){const x={platinum:'Platinum',gold:'Gold',silver:'Prata',mercadolider:'MercadoLíder',mercado_lider:'MercadoLíder'};return x[String(m).toLowerCase()]||m;}
+function nivelColor(n){const s=String(n||'').toLowerCase();if(s.includes('green'))return['Verde','#1aa64b'];if(s.includes('yellow'))return['Amarelo','#e6b800'];if(s.includes('orange'))return['Laranja','#e67e22'];if(s.includes('red'))return['Vermelho','#d93025'];return[n||'—','inherit'];}
+function repMedCell(r){if(!r)return'—';if(r.medalha)return medalPretty(r.medalha);const c=nivelColor(r.reputacao_nivel);return`<span style="color:${c[1]};font-weight:600">${c[0]}</span>`;}
+function toggleKids(td){const tr=td.parentElement;const open=tr.classList.toggle('open');const cr=td.querySelector('.caret');if(cr)cr.textContent=open?'▾':'▸';let n=tr.nextElementSibling;while(n&&n.classList.contains('subrow')){n.style.display=open?'table-row':'none';n=n.nextElementSibling;}}
 function tabela(tag,cls,periodos,byPeriodo){
   let h=`<div class="tag ${cls}">${tag}</div><table><thead><tr><th class="m">Métrica</th>`;
   periodos.forEach(p=>{const api=byPeriodo[p]?.fonte==='api'?'<span class="api">API</span>':'';h+=`<th>${labelPeriodo(p)}${api}</th>`;});
   h+=`</tr></thead><tbody>`;
-  for(const[k,label,t,sub]of metricas()){
-    h+=`<tr><td class="${sub?'m sub2':'m'}">${label}</td>`;
-    periodos.forEach((p,i)=>{ h+=`<td>${celula(byPeriodo[p]?.[k], i>0?byPeriodo[periodos[i-1]]?.[k]:null, t)}</td>`; });
+  const _MA=metricas();for(let _j=0;_j<_MA.length;_j++){const[k,label,t,sub]=_MA[_j];const _kids=_MA[_j+1]&&_MA[_j+1][3]==='sub';
+    h+=`<tr${sub?' class="subrow" style="display:none"':''}>`+(t==='repmed'?`<td class="m">${label}</td>`:sub?`<td class="m sub2">${label}</td>`:_kids?`<td class="m parent" style="cursor:pointer" onclick="toggleKids(this)"><span class="caret">▸</span> ${label}</td>`:`<td class="m">${label}</td>`);
+    periodos.forEach((p,i)=>{ h+=`<td>${t==='repmed'?repMedCell(byPeriodo[p]):celula(byPeriodo[p]?.[k], i>0?byPeriodo[periodos[i-1]]?.[k]:null, t)}</td>`; });
     h+=`</tr>`;
   }
   return h+`</tbody></table>`;

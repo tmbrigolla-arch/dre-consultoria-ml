@@ -253,7 +253,7 @@ async function load(){
 async function atualizar(){
   const btn=document.getElementById("btnAtualizar");btn.disabled=true;const txt=btn.textContent;btn.textContent="Atualizando…";
   document.getElementById("app").innerHTML=`<div class="empty">Buscando dados novos direto do Mercado Livre…<br>Isso pode levar até ~30s por conta. Não feche a página.</div>`;
-  try{await fetch(COLETOR,{cache:"no-store"});}catch(e){}
+  try{const {data:{session:_s}}=await sb.auth.getSession();await fetch(COLETOR,{cache:"no-store",headers:{Authorization:"Bearer "+(_s?.access_token||"")}});}catch(e){}
   await load();
   btn.disabled=false;btn.textContent=txt;
 }

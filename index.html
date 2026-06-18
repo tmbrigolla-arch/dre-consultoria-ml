@@ -189,7 +189,7 @@ function tabela(tag,cls,periodos,byPeriodo){
   }
   return h+`</tbody></table>`;
 }
-function todosPeriodos(){ return [...new Set(dataset().conta.map(r=>r.periodo_fim))].sort(); }
+function todosPeriodos(){ const _f=document.getElementById("filtro").value; let _r=dataset().conta; if(_f&&_f!=="all"){ _r=_f.indexOf("cli:")===0?_r.filter(x=>("cli:"+x.cliente_id)===_f):_r.filter(x=>x.conta===_f); } return [...new Set(_r.map(r=>r.periodo_fim))].sort(); }
 function periodosAtivos(){ const all=todosPeriodos(); if(!periodosSel) periodosSel=all.slice(-PADRAO);
   const sel=periodosSel.filter(p=>all.includes(p)).sort(); return sel.length?sel:all.slice(-PADRAO); }
 function render(){

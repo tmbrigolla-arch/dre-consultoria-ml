@@ -202,7 +202,7 @@ function render(){
   const totMap={};for(const r of D.total)totMap[r.periodo_fim]=r;
   let html="";
   for(const cid in clientes){
-    const cl=clientes[cid];const contasNomes=Object.keys(cl.contas);
+    const cl=clientes[cid];const contasNomes=Object.keys(cl.contas).sort();
     html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s) exibido(s)</div>`;
     for(const conta of contasNomes){ if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue; html+=tabela(conta,"conta",periodos,cl.contas[conta]); }
     if(contasNomes.length>1&&(filtro==="all"||filtro==="cli:"+cid)) html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});

@@ -85,6 +85,7 @@
     <select id="filtro"><option value="all">Todas as contas</option></select>
     <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
     <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
+    <button class="ghost" id="btnFecharMes" style="display:none" onclick="fecharMes()">Fechar mês</button>
     <button class="ghost" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -219,6 +220,7 @@ function trocaAba(a){
   aba=a;periodosSel=null;
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";
+  document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
   document.getElementById("subtitulo").textContent=a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
@@ -257,6 +259,34 @@ async function atualizar(){
   await load();
   btn.disabled=false;btn.textContent=txt;
 }
+async function fecharMes(){
+  var btn=document.getElementById("btnFecharMes");
+  var now=new Date(new Date().toLocaleString("en-US",{timeZone:"America/Sao_Paulo"}));
+  var y=now.getFullYear(), m=now.getMonth(); if(m===0){y--;m=12;}
+  var def=y+"-"+String(m).padStart(2,"0");
+  var mes=prompt("Fechar qual mes? (formato AAAA-MM) Ex.: mes passado = "+def, def);
+  if(!mes) return;
+  if(!/^[0-9]{4}-[0-9]{2}$/.test(mes)){ alert("Formato invalido. Use AAAA-MM, ex.: 2026-06"); return; }
+  var contas=[...new Map((DADOS.conta||[]).map(function(r){return [r.conta_id,r.conta];})).entries()];
+  if(!contas.length){ alert("Nenhuma conta carregada."); return; }
+  var ses=await sb.auth.getSession(); var tok=(ses.data.session&&ses.data.session.access_token)||"";
+  btn.disabled=true; var t0=btn.textContent; btn.textContent="Fechando...";
+  var app=document.getElementById("app");
+  var done=0, okc=0; var fail=[];
+  for(var i=0;i<contas.length;i++){
+    var id=contas[i][0], nome=contas[i][1]; done++;
+    app.innerHTML='<div class="empty">Fechando '+mes+' no Mercado Livre... '+done+'/'+contas.length+' - '+nome+'<br>Nao feche a pagina.</div>';
+    try{
+      var r=await fetch(SB_URL+"/functions/v1/ml-fechar-mes?mes="+mes+"&conta_id="+id,{method:"POST",cache:"no-store",headers:{Authorization:"Bearer "+tok}});
+      var j=await r.json(); var row=j&&j.resultados&&j.resultados[0];
+      if(row&&row.ok) okc++; else fail.push(nome);
+    }catch(e){ fail.push(nome); }
+  }
+  await load(); aba="mensal"; trocaAba("mensal");
+  btn.disabled=false; btn.textContent=t0;
+  alert("Mes "+mes+" fechado: "+okc+" conta(s) OK"+(fail.length?("\nSem dados/erro: "+fail.join(", ")):""));
+}
+
 /* ---------- INIT ---------- */
 (async()=>{ const {data:{session}}=await sb.auth.getSession(); if(session) mostrarApp(); else mostrarLogin(); })();
 </script>

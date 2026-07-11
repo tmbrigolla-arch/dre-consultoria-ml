@@ -56,7 +56,7 @@
   .card .btn{width:100%;margin-top:18px;background:var(--accent);color:#fff;border:none;padding:12px;border-radius:9px;font-weight:600;cursor:pointer}
   .card .link{display:block;text-align:center;margin-top:14px;color:var(--accent);font-size:13px;cursor:pointer;background:none;border:none;width:100%}
   .card .err{color:var(--down);font-size:12.5px;margin-top:12px;min-height:16px}
-</style>
+.tagbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:12px 0 2px;padding:8px 10px;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px}.taglbl{font-size:12px;font-weight:600;color:#666;margin:0 2px 0 6px}.tagbar .chip{font:inherit;font-size:12px;line-height:1.4;padding:3px 10px;border:1px solid var(--line,#d0d5dd);border-radius:999px;background:#f3f4f6;color:#333;cursor:pointer}.tagbar .chip.c{background:#eef2ff}.tagbar .chip.on{background:#1F4E79;color:#fff;border-color:#1F4E79}.tagbar .chip.clr{background:#fff;color:#c00;border-color:#f1c0c0}</style>
 </head>
 <body>
 
@@ -82,7 +82,7 @@
     <p id="subtitulo"></p>
   </div>
   <div class="actions">
-    <select id="filtro"><option value="all">Todas as contas</option></select>
+    
     <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
     <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
     <button class="ghost" id="btnFecharMes" style="display:none" onclick="fecharMes()">Fechar mês</button>
@@ -93,6 +93,7 @@
   <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
   <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
 </div>
+<div id="tagbar" class="tagbar"></div>
 <div class="wrap" id="app"><div class="empty">Carregando…</div></div>
 </div>
 
@@ -191,11 +192,11 @@ function tabela(tag,cls,periodos,byPeriodo){
   }
   return h+`</tbody></table>`;
 }
-function todosPeriodos(){ const _f=document.getElementById("filtro").value; let _r=dataset().conta; if(_f&&_f!=="all"){ _r=_f.indexOf("cli:")===0?_r.filter(x=>("cli:"+x.cliente_id)===_f):_r.filter(x=>x.conta===_f); } return [...new Set(_r.map(r=>r.periodo_fim))].sort(); }
-function periodosAtivos(){ const all=todosPeriodos(); const _f=document.getElementById("filtro").value; if(window._psf!==_f){ periodosSel=null; window._psf=_f; } if(!periodosSel) periodosSel=all.slice(-PADRAO); const sel=periodosSel.filter(p=>all.includes(p)).sort(); return sel.length?sel:all.slice(-PADRAO); }
+function todosPeriodos(){ let _r=dataset().conta.filter(x=>contaVis(x.cliente_id,x.conta)); return [...new Set(_r.map(r=>r.periodo_fim))].sort(); }
+function periodosAtivos(){ const all=todosPeriodos(); const _f=selKey(); if(window._psf!==_f){ periodosSel=null; window._psf=_f; } if(!periodosSel) periodosSel=all.slice(-PADRAO); const sel=periodosSel.filter(p=>all.includes(p)).sort(); return sel.length?sel:all.slice(-PADRAO); }
 function render(){
   const app=document.getElementById("app");const D=dataset();
-  const filtro=document.getElementById("filtro").value;const periodos=periodosAtivos();
+  const periodos=periodosAtivos();
   if(!periodos.length){app.innerHTML=`<div class="empty">Sem dados ${aba==='mensal'?'mensais':'semanais'} ainda.</div>`;return;}
   const clientes={};
   for(const r of D.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:{}};clientes[r.cliente_id].contas[r.conta]??={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
@@ -204,12 +205,12 @@ function render(){
   let html="";
   for(const cid in clientes){
     const cl=clientes[cid];const contasNomes=Object.keys(cl.contas).sort();
-    html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${contasNomes.length} conta(s) · ${periodos.length} período(s) exibido(s)</div>`;
-    for(const conta of contasNomes){ if(filtro!=="all"&&filtro!==conta&&filtro!==("cli:"+cid))continue; html+=tabela(conta,"conta",periodos,cl.contas[conta]); }
-    if(contasNomes.length>1&&(filtro==="all"||filtro==="cli:"+cid)) html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});
+    const _vc=contasNomes.filter(c=>contaVis(cid,c)); if(!_vc.length)continue; html+=`<div class="cli"><h2>${cl.nome}</h2><div class="sub">${_vc.length} conta(s) · ${periodos.length} período(s) exibido(s)</div>`;
+    for(const conta of _vc){ html+=tabela(conta,"conta",periodos,cl.contas[conta]); }
+    if(_vc.length>1&&empFull(cid)) html+=tabela("TOTAL "+cl.nome,"cliente",periodos,cliMap[cid]||{});
     html+=`</div>`;
   }
-  if(Object.keys(clientes).length>1&&filtro==="all") html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
+  if(Object.keys(clientes).length>1&&SELT.size===0) html+=`<div class="cli">`+tabela("TOTAL GERAL","total",periodos,totMap)+`</div>`;
   const notaAba = aba==="mensal"
     ? `Visão <b>mensal</b> — cada coluna é um mês fechado (1º ao último dia). Ticket médio = vendas ÷ nº de vendas. "Vendas com/sem publicidade" separam pedidos atribuídos a anúncios pagos.`
     : `Qtd. anúncios = ativos + inativos em <b>todos os canais</b> (a "Gestão de Anúncios" do ML mostra menos por excluir os canais <i>proximity</i> e <i>MP merchants</i>). Razões (ticket, conversão, TACoS) recalculadas a partir dos totais.`;
@@ -226,13 +227,25 @@ function trocaAba(a){
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
   montaPeriodos();render();
 }
+let SELT=new Set();
+function selKey(){return [...SELT].sort().join('|');}
+function empFull(cid){return SELT.size===0||SELT.has('cli:'+cid);}
+function contaVis(cid,ap){return SELT.size===0||SELT.has('cli:'+cid)||SELT.has(ap);}
+function toggleTag(t){if(SELT.has(t))SELT.delete(t);else SELT.add(t);montaFiltro();montaPeriodos();render();}
+function limparTags(){SELT.clear();montaFiltro();montaPeriodos();render();}
 function montaFiltro(){
-  const sel=document.getElementById("filtro");const atual=sel.value;const clientes={};
-  for(const r of DADOS.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:new Set()};clientes[r.cliente_id].contas.add(r.conta);}
-  let opts=`<option value="all">Todas as contas</option>`;
-  for(const cid in clientes){opts+=`<option value="cli:${cid}">— ${clientes[cid].nome} (total)</option>`;clientes[cid].contas.forEach(c=>opts+=`<option value="${c}">${clientes[cid].nome} · ${c}</option>`);}
-  sel.innerHTML=opts;sel.value=atual||"all";sel.onchange=render;
+  const bar=document.getElementById("tagbar");if(!bar)return;
+  const clientes={};
+  for(const r of DADOS.conta){(clientes[r.cliente_id]=clientes[r.cliente_id]||{nome:r.cliente,contas:new Set()}).contas.add(r.conta);}
+  let h='<span class="taglbl">Empresas:</span>';
+  for(const cid in clientes){h+='<button class="chip'+(SELT.has("cli:"+cid)?" on":"")+'" data-tok="cli:'+cid+'">'+clientes[cid].nome+'</button>';}
+  h+='<span class="taglbl">Contas:</span>';
+  for(const cid in clientes){[...clientes[cid].contas].sort().forEach(function(c){h+='<button class="chip c'+(SELT.has(c)?" on":"")+'" data-tok="'+c+'">'+c+'</button>';});}
+  h+='<button class="chip clr" data-clr="1"'+(SELT.size?'':' style="display:none"')+'>× limpar filtro</button>';
+  bar.innerHTML=h;
+  bar.onclick=function(e){var el=e.target.closest("button");if(!el)return;if(el.dataset.clr){limparTags();}else if(el.dataset.tok){toggleTag(el.dataset.tok);}};
 }
+
 function montaPeriodos(){
   const all=todosPeriodos();const sel=periodosAtivos();const menu=document.getElementById("menuPeriodos");
   let h=`<label style="font-weight:600;border-bottom:1px solid var(--line)"><input type="checkbox" id="pTodos"> Mostrar todos</label>`;

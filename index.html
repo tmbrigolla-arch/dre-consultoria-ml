@@ -92,7 +92,7 @@
 </header>
 <div class="tabs">
   <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
-  <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
+  <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button><button id="tabConcorrentes" onclick="trocaAba('concorrentes')">Concorrentes</button>
 </div>
 <div id="tagbar" class="tagbar"></div>
 <div id="printhdr"></div>
@@ -251,14 +251,81 @@ async function renderMercado(){
 function trocaAba(a){
   aba=a;periodosSel=null;
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
-  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
+  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
   document.getElementById("subtitulo").textContent=a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  if(a==="mercado"){renderMercado();}else{montaPeriodos();render();}
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else{montaPeriodos();render();}
 }
 let SELT=new Set();
+async function renderConcorrentes(){
+  const app=document.getElementById('app');
+  app.innerHTML='<div class="empty">Carregando radar de concorrentes…</div>';
+  let js;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-radar-dados',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    js=await r.json();
+  }catch(e){app.innerHTML='<div class="empty">Erro ao carregar o radar.<br>'+e+'</div>';return;}
+  const contas=(js&&js.contas)||[];
+  if(!contas.length){app.innerHTML='<div class="empty">Nenhum produto no radar ainda. A coleta roda toda sexta.</div>';return;}
+  const P=v=>v==null?'—':'R$ '+cf.format(Number(v));
+  const I=v=>v==null?'—':nf.format(Number(v));
+  const PC=v=>v==null?'—':(Number(v)*100).toFixed(1).replace('.',',')+'%';
+  const out=[];
+  out.push('<div style="color:#64748b;font-size:12.5px;margin:2px 0 14px;line-height:1.5">Radar de concorrentes — mesmo produto de catálogo. Comparamos <b>seu preço</b> e <b>tráfego (visitas 30d)</b> com os concorrentes. Vendas exatas dos concorrentes o Mercado Livre não libera por API; preço e visitas já mostram o movimento. Coleta automática toda sexta.</div>');
+  for(const c of contas){
+    out.push('<div class="cli">');
+    out.push('<h2>'+c.apelido+' <span class="pill">'+(c.produto.categoria||'—')+'</span></h2>');
+    if(c.sem_dados){out.push('<div class="sub">Sem coleta ainda para este produto.</div></div>');continue;}
+    out.push('<div class="sub">Produto monitorado: '+(c.produto.link?'<a href="'+c.produto.link+'" target="_blank" rel="noopener">'+c.produto.titulo+'</a>':c.produto.titulo)+'</div>');
+    const a=c.analise, an=[];
+    if(a.nosso_preco!=null){
+      if(a.rank_preco!=null)an.push('Preço: você é o <b>'+a.rank_preco+'º</b> mais barato de '+a.total_ofertas+' ofertas.');
+      if(a.gap_vs_menor!=null&&a.gap_vs_menor>0.0001)an.push('Está <b>'+PC(a.gap_vs_menor)+'</b> acima do mais barato ('+P(a.menor_conc)+').');
+      else if(a.menor_conc!=null)an.push('Você tem o <b>menor preço</b> entre os monitorados.');
+    }
+    if(a.nossas_visitas!=null)an.push('Tráfego: <b>'+I(a.nossas_visitas)+'</b> visitas (30d) vs '+I(a.visitas_conc_total)+' somadas dos concorrentes'+(a.share_visitas!=null?' — <b>'+PC(a.share_visitas)+'</b> do tráfego do grupo':'')+'.');
+    if(a.margem_atual!=null)an.push('Margem no seu preço: <b>'+PC(a.margem_atual)+'</b>'+(a.margem_no_menor!=null?'; batendo o mais barato ('+P(a.menor_conc)+') iria para <b>'+PC(a.margem_no_menor)+'</b>'+(a.margem_no_menor<0?' (prejuízo)':''):'')+'.');
+    const f=a.flags||[]; let rec='';
+    if(f.includes('undercut')&&f.includes('perde_trafego'))rec='⚠️ Mais caro E perdendo tráfego. Reveja preço ou reforce o anúncio (título/fotos/ads).';
+    else if(f.includes('undercut')&&f.includes('lider_trafego'))rec='Mais caro mas lidera o tráfego — o mercado aceita seu posicionamento. Segure o preço.';
+    else if(f.includes('mais_barato')&&f.includes('perde_trafego'))rec='Mais barato mas não lidera visitas — o gargalo é exposição/anúncio, não preço.';
+    else if(f.includes('mais_barato')&&f.includes('lider_trafego'))rec='Mais barato e líder de tráfego — posição forte. Se a margem permitir, teste subir preço.';
+    if(a.margem_atual!=null&&a.margem_atual>=0&&a.margem_atual<0.05)rec+=(rec?' ':'')+'Margem apertada (<5%): cuidado com guerra de preço.';
+    if(rec)an.push('<span style="color:#1d4ed8"><b>Leitura:</b> '+rec+'</span>');
+    out.push('<div style="background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.7px;line-height:1.55;margin:8px 0 10px">'+an.map(x=>'• '+x).join('<br>')+'</div>');
+    out.push('<table><thead><tr><th class="m">Vendedor</th><th>Preço</th><th>Δ vs você</th><th>Visitas 30d</th><th>UF</th><th>Loja of.</th><th>Link</th></tr></thead><tbody>');
+    out.push('<tr style="background:#eef5ff"><td class="m">Você ('+c.apelido+')</td><td>'+P(a.nosso_preco)+'</td><td>—</td><td>'+I(a.nossas_visitas)+'</td><td>—</td><td>sim</td><td>'+(c.nosso&&c.nosso.link?'<a href="'+c.nosso.link+'" target="_blank" rel="noopener">abrir</a>':'—')+'</td></tr>');
+    if(!c.concorrentes.length)out.push('<tr><td class="m" colspan="7" style="text-align:left;color:#64748b">Nenhum concorrente no mesmo catálogo — produto praticamente exclusivo seu.</td></tr>');
+    for(const k of c.concorrentes){
+      const d=(a.nosso_preco!=null&&k.price!=null)?(k.price-a.nosso_preco)/a.nosso_preco:null;
+      const dtxt=d==null?'—':((d>0?'+':'')+PC(d));
+      const dcol=d==null?'':(d<0?'color:#dc2626':'color:#16a34a');
+      out.push('<tr><td class="m">'+k.vendedor+'</td><td>'+P(k.price)+'</td><td style="'+dcol+'">'+dtxt+'</td><td>'+I(k.visitas)+'</td><td>'+(k.uf||'—')+'</td><td>'+(k.loja_oficial?'sim':'não')+'</td><td>'+(k.link?'<a href="'+k.link+'" target="_blank" rel="noopener">abrir</a>':'—')+'</td></tr>');
+    }
+    out.push('</tbody></table>');
+    const idk=c.apelido.replace(/[^a-zA-Z0-9]/g,'_');
+    out.push('<div style="font-size:12.5px;margin:8px 0 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="color:#64748b">Custo unitário:</span><input id="custo_'+idk+'" type="number" step="0.01" placeholder="R$" value="'+(c.produto.custo!=null?c.produto.custo:'')+'" style="width:90px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:#1f2733"><span style="color:#64748b">Comissão ML %:</span><input id="comis_'+idk+'" type="number" step="0.1" placeholder="%" value="'+(c.produto.comissao_pct!=null?c.produto.comissao_pct:'')+'" style="width:70px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#fff;color:#1f2733"><button data-ap="'+c.apelido+'" onclick="salvarCusto(this)" style="background:var(--accent);border-color:var(--accent);padding:5px 12px">Salvar</button><span style="color:#94a3b8;font-size:11.5px">preenche a margem acima</span></div>');
+    out.push('</div>');
+  }
+  app.innerHTML=out.join('');
+}
+async function salvarCusto(btn){
+  const ap=btn.getAttribute('data-ap');
+  const idk=ap.replace(/[^a-zA-Z0-9]/g,'_');
+  const custo=document.getElementById('custo_'+idk).value;
+  const comis=document.getElementById('comis_'+idk).value;
+  btn.disabled=true; btn.textContent='…';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-radar-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({apelido:ap,custo:custo===''?null:custo,comissao_pct:comis===''?null:comis})});
+    if(r.ok){renderConcorrentes();}else{btn.disabled=false;btn.textContent='Erro';}
+  }catch(e){btn.disabled=false;btn.textContent='Erro';}
+}
+
 function selKey(){return [...SELT].sort().join('|');}
 function empFull(cid){return SELT.size===0||SELT.has('cli:'+cid);}
 function contaVis(cid,ap){return SELT.size===0||SELT.has('cli:'+cid)||SELT.has(ap);}

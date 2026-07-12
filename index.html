@@ -93,6 +93,7 @@
 <div class="tabs">
   <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
   <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
+  <button id="tabMercado" onclick="trocaAba('mercado')">Mercado</button>
 </div>
 <div id="tagbar" class="tagbar"></div>
 <div id="printhdr"></div>
@@ -104,6 +105,7 @@ const SB_URL="https://qrvdqqdigzabltqgxggm.supabase.co";
 const SB_KEY="sb_publishable_DPvztgnqrFAX8NEyUjbEew_uuCL-s3U";
 const API=SB_URL+"/functions/v1/ml-dados";
 const COLETOR=SB_URL+"/functions/v1/ml-coletor";
+const MERCADO=SB_URL+"/functions/v1/ml-mercado-dados";
 const SETUP=SB_URL+"/functions/v1/setup-master";
 const sb=window.supabase.createClient(SB_URL,SB_KEY);
 
@@ -219,15 +221,43 @@ function render(){
   html+=`<div class="foot"><b>API</b> marca os períodos coletados automaticamente. Variação % compara com o período anterior (verde = aumento, vermelho = queda).<br>${notaAba}</div>`;
   app.innerHTML=html;
 }
+async function renderMercado(){
+  const app=document.getElementById("app");
+  app.innerHTML='<div class="empty">Carregando mercado…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(MERCADO,{cache:"no-store",headers:{Authorization:"Bearer "+(session?session.access_token:"")}});
+    if(r.status===401){ mostrarLogin(); return; }
+    const M=await r.json();
+    if(!M.categorias||!M.categorias.length){ app.innerHTML='<div class="empty">Sem dados de mercado ainda.</div>'; return; }
+    const fN=function(n){return n==null?"—":nf.format(n);};
+    const fM=function(n){return n==null?"—":"R$ "+cf.format(n);};
+    const dl=function(cur,ant){ if(ant==null||!ant) return ""; const d=(cur-ant)/ant*100; const up=d>=0; return ' <span style="color:'+(up?"#1e7e34":"#c00")+';font-size:11px">'+(up?"▲":"▼")+Math.abs(d).toFixed(0)+'%</span>'; };
+    let h='<div class="foot" style="margin:6px 0 14px">Coleta de '+M.gerado+(M.data_ant?(' · comparado a '+M.data_ant):' · 1ª coleta — a variação (▲/▼) começa na próxima semana')+'. <b>Visitas 30d</b> = tráfego do anúncio (proxy de demanda). O ML não abre as unidades vendidas de terceiros.</div>';
+    for(var ci=0;ci<M.categorias.length;ci++){
+      const c=M.categorias[ci]; const rz=c.resumo;
+      h+='<div class="cli"><h2>'+c.nome+'</h2>';
+      h+='<div class="sub">'+rz.anuncios+' anúncios · '+rz.vendedores+' vendedores · faixa '+fM(rz.preco_min)+'–'+fM(rz.preco_max)+' · '+(rz.nossos?('vocês no top: '+rz.nossos):'<b style="color:#c00">vocês fora do top</b>')+'</div>';
+      h+='<div style="font-size:12px;margin:2px 0 8px">Visitas totais do nicho (30d): <b>'+fN(rz.visitas_total)+'</b>'+dl(rz.visitas_total,rz.visitas_total_ant)+'</div>';
+      let rows=""; const lim=Math.min(12,c.itens.length);
+      for(var k=0;k<lim;k++){ const it=c.itens[k];
+        const nome=it.nosso?('<b style="color:#1F4E79">'+it.rotulo+'</b>'):it.rotulo;
+        rows+='<tr'+(k%2?' style="background:#F2F2F2"':'')+'><td style="padding:3px 6px">'+(k+1)+'</td><td style="padding:3px 6px">'+nome+'</td><td style="padding:3px 6px;text-align:right">'+fM(it.price)+'</td><td style="padding:3px 6px;text-align:right;white-space:nowrap">'+fN(it.visitas_30d)+dl(it.visitas_30d,it.visitas_ant)+'</td></tr>';
+      }
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #8C8C8C"><thead><tr style="background:#1F4E79;color:#fff"><th style="padding:4px 6px;text-align:left">#</th><th style="padding:4px 6px;text-align:left">Vendedor / anúncio</th><th style="padding:4px 6px;text-align:right">Preço</th><th style="padding:4px 6px;text-align:right">Visitas 30d</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    }
+    app.innerHTML=h;
+  }catch(e){ app.innerHTML='<div class="empty">Erro ao carregar mercado.</div>'; }
+}
 function trocaAba(a){
   aba=a;periodosSel=null;
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
-  document.getElementById("tabMensal").className=a==="mensal"?"on":"";
+  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
   document.getElementById("subtitulo").textContent=a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  montaPeriodos();render();
+  if(a==="mercado"){renderMercado();}else{montaPeriodos();render();}
 }
 let SELT=new Set();
 function selKey(){return [...SELT].sort().join('|');}

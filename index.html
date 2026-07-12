@@ -274,7 +274,7 @@ async function renderConcorrentes(){
   const P=v=>v==null?'—':'R$ '+cf.format(Number(v));
   const I=v=>v==null?'—':nf.format(Number(v));
   const PC=v=>v==null?'—':(Number(v)*100).toFixed(1).replace('.',',')+'%';
-  const out=[];
+  const out=[];out.push('<div class="cli" style="padding:14px 20px"><div style="font-weight:600;font-size:14px;margin-bottom:6px">Consultar concorrentes de um anúncio</div><div style="display:flex;gap:8px;flex-wrap:wrap"><input id="qBusca" placeholder="Cole o link do anúncio/produto ou o código MLB" onkeydown="buscaAnuncioKey(event)" style="flex:1;min-width:260px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:#1f2733"><button onclick="buscaAnuncio()" style="background:var(--accent);border-color:var(--accent);padding:8px 16px">Buscar</button></div><div style="color:#94a3b8;font-size:11.5px;margin-top:5px">Cole o link do produto (página /p/MLB) ou de qualquer anúncio seu. Mostra as ofertas do mesmo catálogo na hora.</div><div id="buscaResultado" style="margin-top:10px"></div></div>');
   out.push('<div style="color:#64748b;font-size:12.5px;margin:2px 0 14px;line-height:1.5">Radar de concorrentes — mesmo produto de catálogo. Comparamos <b>seu preço</b> e <b>tráfego (visitas 30d)</b> com os concorrentes. Vendas exatas dos concorrentes o Mercado Livre não libera por API; preço e visitas já mostram o movimento. Coleta automática toda sexta.</div>');
   for(const c of contas){
     out.push('<div class="cli">');
@@ -313,6 +313,26 @@ async function renderConcorrentes(){
   }
   app.innerHTML=out.join('');
 }
+async function buscaAnuncio(){
+  const q=document.getElementById('qBusca').value.trim();
+  const box=document.getElementById('buscaResultado');
+  if(!q){box.innerHTML='';return;}
+  box.innerHTML='<div style="color:#64748b;font-size:12.5px">Buscando…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-radar-busca',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({q})});
+    const j=await r.json();
+    if(!j.resolvido){box.innerHTML='<div style="color:#b45309;font-size:12.5px">'+(j.dica||'Não consegui identificar esse anúncio. Confira o código MLB.')+'</div>';return;}
+    const P=v=>v==null?'—':'R$ '+cf.format(Number(v));const I=v=>v==null?'—':nf.format(Number(v));
+    const a=j.analise;const o=[];
+    o.push('<div class="sub" style="margin:4px 0 8px"><b>'+(j.produto.titulo||'Produto')+'</b> — '+a.n+' ofertas · menor '+P(a.menor)+' · maior '+P(a.maior)+(a.lider_visitas?' · mais visitado: '+a.lider_visitas.vendedor+' ('+I(a.lider_visitas.visitas)+' visitas)':'')+(a.nossas_ofertas?' · <span style="color:#1d4ed8">você tem '+a.nossas_ofertas+' anúncio(s) neste catálogo</span>':'')+'</div>');
+    o.push('<table><thead><tr><th class="m">Vendedor</th><th>Preço</th><th>Visitas 30d</th><th>UF</th><th>Loja of.</th><th>Link</th></tr></thead><tbody>');
+    for(const k of j.ofertas){o.push('<tr'+(k.is_ours?' style="background:#eef5ff"':'')+'><td class="m">'+(k.is_ours?'★ ':'')+k.vendedor+'</td><td>'+P(k.price)+'</td><td>'+I(k.visitas)+'</td><td>'+(k.uf||'—')+'</td><td>'+(k.loja_oficial?'sim':'não')+'</td><td><a href="'+k.link+'" target="_blank" rel="noopener">abrir</a></td></tr>');}
+    o.push('</tbody></table>');
+    box.innerHTML=o.join('');
+  }catch(e){box.innerHTML='<div style="color:#b45309;font-size:12.5px">Erro: '+e+'</div>';}
+}
+function buscaAnuncioKey(e){if(e.key==='Enter')buscaAnuncio();}
 async function salvarCusto(btn){
   const ap=btn.getAttribute('data-ap');
   const idk=ap.replace(/[^a-zA-Z0-9]/g,'_');

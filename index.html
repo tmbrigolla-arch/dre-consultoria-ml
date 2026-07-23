@@ -404,22 +404,40 @@ function renderOcelotBody(){
   else if(ocelotSub==='fornecedores')body.innerHTML=htmlOcelotFornecedores();
   else body.innerHTML=htmlOcelotConfig();
 }
-let ocelotQtd=20;
 let ocelotIncluirCancelados=false;
 let ocelotMesFiltro=null;
 let ocelotSortBy='data';
 let ocelotSortDir='desc';
+let ocelotBusca='';
+let ocelotPagina=1;
 let OCELOT_FORN_CACHE=null;
 let ocelotFornExpandido=null;
 let ocelotFornEditMapa=false;
-function ocelotToggleCancelados(chk){ocelotIncluirCancelados=chk.checked;renderOcelot();}
-function ocelotMesChange(sel){ocelotMesFiltro=sel.value||null;renderOcelot();}
+function ocelotToggleCancelados(chk){ocelotIncluirCancelados=chk.checked;ocelotPagina=1;renderOcelot();}
+function ocelotMesChange(sel){ocelotMesFiltro=sel.value||null;ocelotPagina=1;renderOcelot();}
 function ocelotSortChange(campo){
   if(ocelotSortBy===campo){ocelotSortDir=ocelotSortDir==='asc'?'desc':'asc';}
   else{ocelotSortBy=campo;ocelotSortDir='desc';}
+  ocelotPagina=1;
   renderOcelotBody();
 }
-function ocelotQtdChange(sel){ocelotQtd=sel.value==='todos'?999999:Number(sel.value);renderOcelotBody();}
+function ocelotBuscaChange(inp){
+  ocelotBusca=inp.value;
+  ocelotPagina=1;
+  renderOcelotBody();
+  const el=document.getElementById('ocelotBuscaInput');
+  if(el){el.focus();const v=el.value;el.value='';el.value=v;}
+}
+function ocelotPaginaIr(delta,total){
+  ocelotPagina=Math.min(Math.max(1,ocelotPagina+delta),total);
+  renderOcelotBody();
+}
+function ocelotPaginaJump(inp,total){
+  let n=parseInt(inp.value,10);
+  if(isNaN(n))n=1;
+  ocelotPagina=Math.min(Math.max(1,n),total);
+  renderOcelotBody();
+}
 async function editarCmvOcelot(input,itemId,mes,qtdOrig){
   const val=input.value;
   if(val===''||isNaN(Number(val)))return;
@@ -434,8 +452,13 @@ function htmlOcelotVendas(){
   const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
   const dtf=function(v){return new Date(v).toLocaleDateString('pt-BR');};
-  const todos=sortPedidos(D.pedidos);
-  const lista=todos.slice(0,ocelotQtd);
+  const filtrados=ocelotBusca?D.pedidos.filter(function(p){return String(p.order_id).indexOf(ocelotBusca)!==-1;}):D.pedidos;
+  const todos=sortPedidos(filtrados);
+  const PAGESIZE=50;
+  const totalPaginas=Math.max(1,Math.ceil(todos.length/PAGESIZE));
+  if(ocelotPagina>totalPaginas)ocelotPagina=totalPaginas;
+  if(ocelotPagina<1)ocelotPagina=1;
+  const lista=todos.slice((ocelotPagina-1)*PAGESIZE,ocelotPagina*PAGESIZE);
   const mesesOpts=(D.meses_disponiveis||[]).map(function(m){
     const dt=new Date(m+'T00:00:00Z');
     const label=dt.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'});
@@ -444,9 +467,8 @@ function htmlOcelotVendas(){
   let h='<div class="foot" style="margin:0 0 12px;text-align:left;display:flex;gap:14px;flex-wrap:wrap;align-items:center">';
   h+='<span>'+(D.mes_filtro?'Mês selecionado':('Últimos '+D.dias+' dias'))+' · '+D.resumo.n_vendas+' pedidos · '+D.resumo.n_itens+' itens vendidos.'+'</span>';
   h+='<button onclick="atualizarOcelot()" id="btnAtualizarOcelot" style="background:var(--accent);color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer">Atualizar vendas</button>';
-  h+='<label>Mostrar <select onchange="ocelotQtdChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)">';
-  for(const opt of [10,20,50,100]){h+='<option value="'+opt+'"'+(ocelotQtd===opt?' selected':'')+'>'+opt+'</option>';}
-  h+='<option value="todos"'+(ocelotQtd>=999999?' selected':'')+'>Todos ('+todos.length+')</option></select> pedidos (de '+todos.length+' no período)</label>';
+  h+='<label style="display:flex;align-items:center;gap:5px">Buscar nº pedido <input id="ocelotBuscaInput" type="text" value="'+(ocelotBusca||'')+'" oninput="ocelotBuscaChange(this)" placeholder="ex: 2000017..." style="padding:3px 8px;border-radius:6px;border:1px solid var(--line);width:160px"></label>';
+  h+='<span>'+todos.length+' pedido(s)'+(ocelotBusca?' encontrados':' no período')+'</span>';
   h+='<label>Período <select onchange="ocelotMesChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)"><option value=""'+(!ocelotMesFiltro?' selected':'')+'>Últimos 30 dias</option>'+mesesOpts+'</select></label>';
   h+='<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" onchange="ocelotToggleCancelados(this)"'+(ocelotIncluirCancelados?' checked':'')+'> Mostrar cancelados</label>';
   if(!ocelotIncluirCancelados&&D.cancelados_count)h+='<span style="color:#94a3b8">('+D.cancelados_count+' pedido(s) cancelado(s) ocultos)</span>';
@@ -497,6 +519,11 @@ function htmlOcelotVendas(){
     }
   }
   h+='</tbody></table>';
+  h+='<div class="foot" style="margin:10px 0;text-align:left;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+  h+='<button onclick="ocelotPaginaIr(-1,'+totalPaginas+')"'+(ocelotPagina<=1?' disabled':'')+' style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">« Anterior</button>';
+  h+='<span>Página <input type="number" min="1" max="'+totalPaginas+'" value="'+ocelotPagina+'" onchange="ocelotPaginaJump(this,'+totalPaginas+')" style="width:55px;padding:2px 4px;border-radius:6px;border:1px solid var(--line);text-align:center"> de '+totalPaginas+' ('+todos.length+' pedido(s), 50 por página)</span>';
+  h+='<button onclick="ocelotPaginaIr(1,'+totalPaginas+')"'+(ocelotPagina>=totalPaginas?' disabled':'')+' style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Próxima »</button>';
+  h+='</div>';
   h+='<div class="foot" style="text-align:left;margin-top:10px">CMV = valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção calculada sobre o valor BRUTO da venda. "Resultado" é só a fatia de gestão (seu lucro) — Imposto/Ads/Custo fixo aparecem em colunas próprias porque também saem do CMV pago ao fornecedor (Miguel/Alan), não do seu lucro. "estimado" = sem custo cadastrado nesse SKU. Edite o CMV direto na tabela pra cadastrar o custo real. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
   return h;
 }

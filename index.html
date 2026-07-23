@@ -567,36 +567,71 @@ function toggleOcelotPed(cls){
 }
 function htmlOcelotDetalhada(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
-  const r=D.resumo, w=D.waterfall||{};
-  const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
-  const pctf=function(a,b){return b?((a/b*100).toFixed(1).replace('.',',')+'%'):'—';};
-  const linha=function(label,val,pctTxt,bold){
-    return '<tr><td class="m" style="'+(bold?'font-weight:700':'')+'">'+label+'</td><td style="'+(bold?'font-weight:700':'')+(val<0?';color:#dc2626':'')+'">'+P(val)+'</td><td style="color:#94a3b8;width:70px">'+(pctTxt||'')+'</td></tr>';
-  };
-  let h='<div class="cli" style="max-width:560px">';
-  h+='<h2>DRE detalhada — últimos '+D.dias+' dias</h2>';
-  h+='<h3 style="margin:14px 0 4px;font-size:14px;color:#475569">Faturamento (contábil)</h3>';
-  h+='<table>';
-  h+=linha('Faturamento bruto (todos os pedidos)',w.faturamento_bruto,null);
-  h+=linha('(–) Cancelamentos',-w.cancelamentos,pctf(w.cancelamentos,w.faturamento_bruto));
-  h+=linha('(–) Devoluções',-w.devolucoes,pctf(w.devolucoes,w.faturamento_bruto));
-  h+=linha('= Faturamento líquido',w.faturamento_liquido,pctf(w.faturamento_liquido,w.faturamento_bruto),true);
-  h+=linha('(–) Impostos',-w.impostos,pctf(w.impostos,w.faturamento_liquido));
-  h+=linha('= Receita líquida',w.receita_liquida,pctf(w.receita_liquida,w.faturamento_bruto),true);
-  h+='</table>';
-  h+='<div class="foot" style="text-align:left;margin-top:6px">Cancelamentos e devoluções somam TODOS os pedidos do período coletado, mesmo com o filtro "mostrar cancelados" da DRE por venda desligado.</div>';
-  h+='<h3 style="margin:18px 0 4px;font-size:14px;color:#475569">Operacional (vendas válidas — pós taxas ML, frete e CMV)</h3>';
-  h+='<table style="margin-top:4px">';
-  h+=linha('Faturamento bruto (vendas válidas)',r.faturamento_bruto,null);
-  h+=linha('(–) Taxas Mercado Livre',-r.taxa_ml,pctf(r.taxa_ml,r.faturamento_bruto));
-  h+=linha('(–) Frete (subsídio do vendedor, estimado)',-r.frete,pctf(r.frete,r.faturamento_bruto));
-  h+=linha('(–) Devolvido',-r.devolvido,pctf(r.devolvido,r.faturamento_bruto));
-  h+=linha('= Receita líquida operacional',r.receita_liquida,pctf(r.receita_liquida,r.faturamento_bruto),true);
-  h+=linha('(–) CMV',-r.cmv,pctf(r.cmv,r.receita_liquida));
-  h+=linha('= Margem bruta / Resultado',r.margem_bruta,pctf(r.margem_bruta,r.receita_liquida),true);
-  h+='</table>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">O CMV já embute, item a item, o custo cadastrado por SKU (quando existe) OU o residual da fórmula (valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção essa calculada sobre o valor BRUTO da venda). Por isso Ads/Imposto/Gestão não aparecem como linha própria aqui — evita descontar 2x. Os Impostos do bloco contábil acima usam só o percentual de imposto (não gestão/ads/custo fixo).</div>';
-  if(D.ads_referencia&&D.ads_referencia.ad_spend!=null)h+='<div class="foot" style="text-align:left;margin-top:4px">Informativo (não somado acima): gasto real de Ads no último período coletado (até '+D.ads_referencia.periodo_fim+') = '+P(D.ads_referencia.ad_spend)+'.</div>';
+  const ped=D.pedidos||[];
+  const brl=function(v){var n=Number(v)||0;return (n<0?'-':'')+'R$ '+cf.format(Math.abs(n));};
+  const pct=function(v,base){return base?((Number(v)/base*100).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%'):'—';};
+  function soma(campo){var s=0;for(var i=0;i<ped.length;i++)s+=Number(ped[i][campo]||0);return s;}
+  const vendaAtiva=soma('valor_venda');
+  const cancelamentos=Number((D.waterfall&&D.waterfall.cancelamentos)||0);
+  const devolucoes=soma('valor_devolvido');
+  const faturamentoBruto=vendaAtiva+cancelamentos;
+  const faturamentoLiquido=faturamentoBruto-cancelamentos-devolucoes;
+  const impostos=soma('imposto_valor');
+  const receitaLiquida=faturamentoLiquido-impostos;
+  const taxaML=soma('taxa_ml');
+  const frete=soma('frete_vendedor');
+  const margemInterna=receitaLiquida-taxaML-frete;
+  const cmv=soma('cmv_total');
+  const lucroBruto=margemInterna-cmv;
+  const ads=soma('ads_valor');
+  const custoAdm=soma('custofixo_valor');
+  const resultado=lucroBruto-ads-custoAdm;
+  const mesesOpts=(D.meses_disponiveis||[]).map(function(m){
+    const dt=new Date(m+'T00:00:00Z');
+    const label=dt.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'});
+    return '<option value="'+m+'"'+(ocelotMesFiltro===m?' selected':'')+'>'+label+'</option>';
+  }).join('');
+  const paramMes=(D.parametros||[]).find(function(p){return p.mes_competencia===ocelotMesFiltro;});
+  const mesAberto=!ocelotMesFiltro||!paramMes||paramMes.fechado!==true;
+  function linha(rotulo,valor,pctTxt,tipo){
+    const estilo={
+      total:'background:rgba(255,255,255,0.04);font-weight:700;border-top:none;font-size:15px',
+      subtotal:'background:rgba(46,117,182,0.20);font-weight:700',
+      resultado:'background:rgba(62,210,122,0.18);font-weight:800;font-size:16px',
+      resultadoNeg:'background:rgba(255,107,107,0.18);font-weight:800;font-size:16px'
+    };
+    const v=Number(valor)||0;
+    const corValor=v<0?'#ff8a8a':(tipo?'#fff':'rgba(255,255,255,0.85)');
+    return '<div style="display:grid;grid-template-columns:1fr 80px 160px;align-items:center;padding:9px 18px;font-size:14px;border-top:1px solid rgba(255,255,255,0.08);'+(estilo[tipo]||'')+'">'+
+      '<span style="color:rgba(255,255,255,0.8)">'+rotulo+'</span>'+
+      '<span style="text-align:right;font-size:12px;color:rgba(255,255,255,0.45)">'+(pctTxt||'')+'</span>'+
+      '<span style="text-align:right;font-variant-numeric:tabular-nums;color:'+corValor+'">'+brl(valor)+'</span>'+
+      '</div>';
+  }
+  let h='<div class="cli">';
+  h+='<h2>DRE detalhada</h2>';
+  h+='<div style="margin:4px 0 16px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">';
+  h+='<label>Período <select onchange="ocelotMesChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)"><option value=""'+(!ocelotMesFiltro?' selected':'')+'>Últimos 30 dias</option>'+mesesOpts+'</select></label>';
+  h+='<span style="color:#94a3b8">'+ped.length+' pedido(s) no período</span>';
+  h+='</div>';
+  if(mesAberto)h+='<div style="background:rgba(232,184,75,0.10);border:1px solid rgba(232,184,75,0.35);border-radius:8px;padding:14px;margin-bottom:16px;color:#92720c;font-size:13px;line-height:1.5;max-width:900px"><b>Período em aberto.</b> Este mês ainda não foi fechado — os números abaixo são parciais e vão mudar conforme novas vendas entram e o custo fixo é recalculado.</div>';
+  h+='<div style="background:#0f172a;border:1px solid rgba(255,255,255,0.08);border-radius:12px;overflow:hidden;max-width:900px">';
+  h+=linha('FATURAMENTO BRUTO',faturamentoBruto,'100,0%','total');
+  h+=linha('(-) Cancelamentos',-cancelamentos,pct(-cancelamentos,faturamentoBruto));
+  h+=linha('(-) Devoluções',-devolucoes,pct(-devolucoes,faturamentoBruto));
+  h+=linha('FATURAMENTO LÍQUIDO',faturamentoLiquido,'100,0%','subtotal');
+  h+=linha('(-) Impostos',-impostos,pct(-impostos,faturamentoLiquido));
+  h+=linha('RECEITA LÍQUIDA',receitaLiquida,pct(receitaLiquida,faturamentoLiquido),'subtotal');
+  h+=linha('(-) Taxa Mercado Livre',-taxaML,pct(-taxaML,faturamentoLiquido));
+  h+=linha('(-) Frete pago pelo vendedor',-frete,pct(-frete,faturamentoLiquido));
+  h+=linha('MARGEM DE CONTRIBUIÇÃO INTERNA DO ML',margemInterna,pct(margemInterna,faturamentoLiquido),'subtotal');
+  h+=linha('(-) CMV (custo dos produtos)',-cmv,pct(-cmv,faturamentoLiquido));
+  h+=linha('LUCRO BRUTO',lucroBruto,pct(lucroBruto,faturamentoLiquido),'subtotal');
+  h+=linha('(-) Ads (Mercado Ads / TACoS real)',-ads,pct(-ads,faturamentoLiquido));
+  h+=linha('(-) Custo administrativo',-custoAdm,pct(-custoAdm,faturamentoLiquido));
+  h+=linha('RESULTADO LÍQUIDO',resultado,pct(resultado,faturamentoLiquido),resultado<0?'resultadoNeg':'resultado');
+  h+='</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px;max-width:900px">Cada linha é somada direto dos pedidos do período (mesma base da aba "DRE por venda"), sem dupla contagem: Taxa ML e Frete são descontados antes do CMV porque o CMV do Ocelot já é um residual (o que sobra pra pagar o fornecedor depois de tudo), não um custo de produto independente — por isso a ordem aqui difere um pouco do formato original que inspirou esse layout. "Custo administrativo" é o custo fixo mensal (aluguel, sistema etc.) rateado sobre a venda. Cancelamentos somam os pedidos cancelados no período; as demais linhas somam só os pedidos ativos.</div>';
   h+='</div>';
   return h;
 }

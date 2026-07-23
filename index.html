@@ -396,6 +396,7 @@ let ocelotSortBy='data';
 let ocelotSortDir='desc';
 let OCELOT_FORN_CACHE=null;
 let ocelotFornExpandido=null;
+let ocelotFornEditMapa=false;
 function ocelotToggleCancelados(chk){ocelotIncluirCancelados=chk.checked;renderOcelot();}
 function ocelotMesChange(sel){ocelotMesFiltro=sel.value||null;renderOcelot();}
 function ocelotSortChange(campo){
@@ -597,6 +598,27 @@ function htmlOcelotFornecedores(){
   const mesLabel=function(m){const dt=new Date(m+'T00:00:00Z');return dt.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'});};
   let h='<div class="foot" style="margin:0 0 12px;text-align:left">Quanto você deve a cada fornecedor, por mês de competência. O CMV de cada venda já é o que cabe ao fornecedor (Miguel = itens de concreto/cimento, Alan = itens de madeira/balanço) depois de imposto, gestão, ads e custo fixo retidos.</div>';
   if(!D.fornecedores||!D.fornecedores.length){h+='<div class="empty">Nenhum fornecedor cadastrado.</div>';return h;}
+  h+='<div class="cli" style="max-width:820px;margin-bottom:16px">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">';
+  h+='<h2 style="margin:0">Mapeamento de itens por fornecedor</h2>';
+  h+='<button onclick="ocelotFornToggleMapa()" style="padding:6px 14px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">'+(ocelotFornEditMapa?'Ocultar mapeamento':'Editar mapeamento de itens')+'</button>';
+  h+='</div>';
+  if(ocelotFornEditMapa){
+    h+='<div class="foot" style="margin:8px 0;text-align:left">Regra inicial: itens com "balanço"/"madeira" no título foram atribuídos ao Alan, os demais ao Miguel. Ajuste abaixo se necessário — a mudança vale para todas as vendas (passadas e futuras) desse item.</div>';
+    h+='<table style="margin-top:8px"><thead><tr><th class="m">Item</th><th>Fornecedor</th></tr></thead><tbody>';
+    const itens=D.itens_mapeaveis||[];
+    for(const it of itens){
+      h+='<tr><td class="m">'+it.titulo+' <span style="color:#94a3b8;font-size:11px">('+it.item_id+')</span></td><td>';
+      h+='<select onchange="mapearItemFornecedor(this,\''+it.item_id+'\')" style="padding:4px 8px;border-radius:6px;border:1px solid var(--line)">';
+      h+='<option value=""'+(!it.fornecedor_id?' selected':'')+'>Nenhum</option>';
+      for(const f of D.fornecedores){
+        h+='<option value="'+f.id+'"'+(it.fornecedor_id===f.id?' selected':'')+'>'+f.nome+'</option>';
+      }
+      h+='</select></td></tr>';
+    }
+    h+='</tbody></table>';
+  }
+  h+='</div>';
   for(const f of D.fornecedores){
     const expandido=ocelotFornExpandido===f.id;
     h+='<div class="cli" style="max-width:820px;margin-bottom:16px">';
@@ -634,6 +656,15 @@ function htmlOcelotFornecedores(){
   return h;
 }
 function ocelotFornToggle(id){ocelotFornExpandido=ocelotFornExpandido===id?null:id;renderOcelotBody();}
+function ocelotFornToggleMapa(){ocelotFornEditMapa=!ocelotFornEditMapa;renderOcelotBody();}
+async function mapearItemFornecedor(sel,itemId){
+  const fornecedorId=sel.value||null;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    await fetch(SB_URL+'/functions/v1/ml-ocelot-fornecedor-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'mapear_item',item_id:itemId,fornecedor_id:fornecedorId})});
+  }catch(e){}
+  renderFornecedores();
+}
 async function marcarPagoFornecedor(fornecedorId,mes){
   if(!confirm('Marcar este mês como pago? O valor fica travado no histórico; se houver devolução depois, o sistema desconta automaticamente do próximo pagamento.'))return;
   const {data:{session}}=await sb.auth.getSession();

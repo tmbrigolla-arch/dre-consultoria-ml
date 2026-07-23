@@ -410,10 +410,12 @@ let ocelotSortBy='data';
 let ocelotSortDir='desc';
 let ocelotBusca='';
 let ocelotPagina=1;
+let ocelotSoCarrinho=false;
 let OCELOT_FORN_CACHE=null;
 let ocelotFornExpandido=null;
 let ocelotFornEditMapa=false;
 function ocelotToggleCancelados(chk){ocelotIncluirCancelados=chk.checked;ocelotPagina=1;renderOcelot();}
+function ocelotToggleCarrinho(chk){ocelotSoCarrinho=chk.checked;ocelotPagina=1;renderOcelotBody();}
 function ocelotMesChange(sel){ocelotMesFiltro=sel.value||null;ocelotPagina=1;renderOcelot();}
 function ocelotSortChange(campo){
   if(ocelotSortBy===campo){ocelotSortDir=ocelotSortDir==='asc'?'desc':'asc';}
@@ -452,7 +454,9 @@ function htmlOcelotVendas(){
   const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
   const dtf=function(v){return new Date(v).toLocaleDateString('pt-BR');};
-  const filtrados=ocelotBusca?D.pedidos.filter(function(p){return String(p.order_id).indexOf(ocelotBusca)!==-1;}):D.pedidos;
+  let filtrados=D.pedidos;
+  if(ocelotSoCarrinho)filtrados=filtrados.filter(function(p){return p.is_carrinho;});
+  if(ocelotBusca)filtrados=filtrados.filter(function(p){return (p.order_ids||[p.order_id]).some(function(oid){return String(oid).indexOf(ocelotBusca)!==-1;})||String(p.pack_id||'').indexOf(ocelotBusca)!==-1;});
   const todos=sortPedidos(filtrados);
   const PAGESIZE=50;
   const totalPaginas=Math.max(1,Math.ceil(todos.length/PAGESIZE));
@@ -472,6 +476,7 @@ function htmlOcelotVendas(){
   h+='<label>Período <select onchange="ocelotMesChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)"><option value=""'+(!ocelotMesFiltro?' selected':'')+'>Últimos 30 dias</option>'+mesesOpts+'</select></label>';
   h+='<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" onchange="ocelotToggleCancelados(this)"'+(ocelotIncluirCancelados?' checked':'')+'> Mostrar cancelados</label>';
   if(!ocelotIncluirCancelados&&D.cancelados_count)h+='<span style="color:#94a3b8">('+D.cancelados_count+' pedido(s) cancelado(s) ocultos)</span>';
+  h+='<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" onchange="ocelotToggleCarrinho(this)"'+(ocelotSoCarrinho?' checked':'')+'> Mostrar só carrinhos 🛒</label>';
   h+='</div>';
   h+='<div class="foot" style="margin:0 0 10px;text-align:left;display:flex;gap:8px;align-items:center">';
   h+='<span style="color:#94a3b8">Ordenar por:</span>';
@@ -505,10 +510,10 @@ function htmlOcelotVendas(){
     const multi=p.itens.length>1;
     const margem=p.valor_liquido>0?(p.resultado/p.valor_liquido*100):null;
     const cls='ped_'+p.order_id;
-    const titulo=multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id);
+    const titulo=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
     const origem=multi?'':statusPill(p.itens[0].cmv_origem,p.status);
     const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+p.order_id+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];

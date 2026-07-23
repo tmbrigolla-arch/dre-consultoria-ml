@@ -92,7 +92,7 @@
 </header>
 <div class="tabs">
   <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
-  <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button><button id="tabConcorrentes" onclick="trocaAba('concorrentes')">Concorrentes</button>
+  <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button><button id="tabConcorrentes" onclick="trocaAba('concorrentes')">Concorrentes</button><button id="tabOcelot" onclick="trocaAba('ocelot')">Gestão Ocelot</button>
 </div>
 <div id="tagbar" class="tagbar"></div>
 <div id="printhdr"></div>
@@ -251,12 +251,13 @@ async function renderMercado(){
 function trocaAba(a){
   aba=a;periodosSel=null;
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
-  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
+  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
   document.getElementById("subtitulo").textContent=a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
+    :a==="ocelot"?"Gestão Ocelot — DRE por venda, detalhada e custos (conta própria)"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else{montaPeriodos();render();}
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else{montaPeriodos();render();}
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -344,6 +345,140 @@ async function salvarCusto(btn){
     const r=await fetch(SB_URL+'/functions/v1/ml-radar-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({apelido:ap,custo:custo===''?null:custo,comissao_pct:comis===''?null:comis})});
     if(r.ok){renderConcorrentes();}else{btn.disabled=false;btn.textContent='Erro';}
   }catch(e){btn.disabled=false;btn.textContent='Erro';}
+}
+
+let ocelotSub='vendas';let OCELOT_CACHE=null;
+async function renderOcelot(){
+  const app=document.getElementById('app');
+  app.innerHTML='<div class="empty">Carregando gestão Ocelot…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?dias=30',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    OCELOT_CACHE=await r.json();
+  }catch(e){app.innerHTML='<div class="empty">Erro ao carregar gestão Ocelot.<br>'+e+'</div>';return;}
+  renderOcelotBody();
+}
+function ocelotSubTab(s){ocelotSub=s;renderOcelotBody();}
+function ocelotSubBtn(k,label){
+  const on=ocelotSub===k;
+  return '<button onclick="ocelotSubTab(\''+k+'\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px">'+label+'</button>';
+}
+function renderOcelotBody(){
+  const app=document.getElementById('app');
+  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
+  app.innerHTML=h;
+  const body=document.getElementById('ocelotBody');
+  if(ocelotSub==='vendas')body.innerHTML=htmlOcelotVendas();
+  else if(ocelotSub==='detalhada')body.innerHTML=htmlOcelotDetalhada();
+  else body.innerHTML=htmlOcelotConfig();
+}
+function htmlOcelotVendas(){
+  const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
+  const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
+  const dtf=function(v){return new Date(v).toLocaleDateString('pt-BR');};
+  let h='<div class="foot" style="margin:0 0 12px;text-align:left">Últimos '+D.dias+' dias · '+D.resumo.n_vendas+' pedidos · '+D.resumo.n_itens+' itens vendidos. <button onclick="atualizarOcelot()" id="btnAtualizarOcelot" style="margin-left:8px;background:var(--accent);color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer">Atualizar vendas</button></div>';
+  if(!D.pedidos.length){h+='<div class="empty">Nenhuma venda no período.</div>';return h;}
+  h+='<table><thead><tr><th class="m">Data / Produto</th><th>Venda</th><th>Taxa ML</th><th>Frete</th><th>Líquido</th><th>CMV</th><th>Resultado</th><th>Margem</th></tr></thead><tbody>';
+  for(let pi=0;pi<D.pedidos.length;pi++){
+    const p=D.pedidos[pi];
+    const multi=p.itens.length>1;
+    const margem=p.valor_liquido>0?(p.resultado/p.valor_liquido*100):null;
+    const cls='ped_'+p.order_id;
+    const titulo=multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id);
+    const origem=multi?'':(p.itens[0].cmv_origem==='manual'?' <span class="pill" style="background:#1F4E79">custo cadastrado</span>':' <span class="pill" style="background:#94a3b8">estimado</span>');
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+P(p.valor_liquido)+'</td><td>'+P(p.cmv_total)+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    if(multi){
+      for(let ii=0;ii<p.itens.length;ii++){
+        const it=p.itens[ii];
+        const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+(it.cmv_origem==='manual'?' <span class="pill" style="background:#1F4E79">custo cadastrado</span>':' <span class="pill" style="background:#94a3b8">estimado</span>')+'</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+P(it.valor_liquido)+'</td><td>'+P(it.cmv_total)+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+      }
+    }
+  }
+  h+='</tbody></table>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">"estimado" = sem custo cadastrado nesse SKU: CMV calculado por fórmula (imposto+gestão+ads+custo fixo rateado) em cima do valor líquido recebido. Cadastre o custo real em "Custos & parâmetros" pra ficar preciso. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
+  return h;
+}
+function toggleOcelotPed(cls){
+  const rows=document.querySelectorAll('tr.'+cls);
+  rows.forEach(function(r){r.style.display=r.style.display==='none'?'':'none';});
+}
+function htmlOcelotDetalhada(){
+  const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
+  const r=D.resumo;
+  const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
+  const pctf=function(a,b){return b?((a/b*100).toFixed(1).replace('.',',')+'%'):'—';};
+  const linha=function(label,val,pctTxt,bold){
+    return '<tr><td class="m" style="'+(bold?'font-weight:700':'')+'">'+label+'</td><td style="'+(bold?'font-weight:700':'')+(val<0?';color:#dc2626':'')+'">'+P(val)+'</td><td style="color:#94a3b8;width:70px">'+(pctTxt||'')+'</td></tr>';
+  };
+  let h='<div class="cli" style="max-width:560px">';
+  h+='<h2>DRE detalhada — últimos '+D.dias+' dias</h2>';
+  h+='<table style="margin-top:10px">';
+  h+=linha('Faturamento bruto',r.faturamento_bruto,null);
+  h+=linha('(–) Taxas Mercado Livre',-r.taxa_ml,pctf(r.taxa_ml,r.faturamento_bruto));
+  h+=linha('(–) Frete (subsídio do vendedor, estimado)',-r.frete,pctf(r.frete,r.faturamento_bruto));
+  h+=linha('= Receita líquida',r.receita_liquida,pctf(r.receita_liquida,r.faturamento_bruto),true);
+  h+=linha('(–) CMV',-r.cmv,pctf(r.cmv,r.receita_liquida));
+  h+=linha('= Margem bruta / Resultado',r.margem_bruta,pctf(r.margem_bruta,r.receita_liquida),true);
+  h+='</table>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">O CMV já embute, item a item, o custo cadastrado por SKU (quando existe) OU a estimativa por fórmula (imposto+gestão+ads+custo fixo rateado sobre o valor líquido). Por isso Ads/Imposto/Gestão não aparecem como linha própria aqui — evita descontar 2x.</div>';
+  if(D.ads_referencia&&D.ads_referencia.ad_spend!=null)h+='<div class="foot" style="text-align:left;margin-top:4px">Informativo (não somado acima): gasto real de Ads no último período coletado (até '+D.ads_referencia.periodo_fim+') = '+P(D.ads_referencia.ad_spend)+'.</div>';
+  h+='</div>';
+  return h;
+}
+function htmlOcelotConfig(){
+  const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
+  const mesAtual=new Date().toISOString().slice(0,7)+'-01';
+  const par=(D.parametros||[]).filter(function(p){return p.mes_competencia===mesAtual;})[0]||{imposto_pct:4.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
+  let h='<div class="cli" style="max-width:640px">';
+  h+='<h2>Parâmetros da fórmula (mês '+mesAtual.slice(0,7)+')</h2>';
+  h+='<div class="sub">Usado só nos itens SEM custo cadastrado abaixo. CMV = Valor líquido recebido do ML × soma dos %.</div>';
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:13px"><label>Imposto %<br><input id="op_imposto" type="number" step="0.1" value="'+par.imposto_pct+'" style="width:70px"></label><label>Gestão conta %<br><input id="op_gestao" type="number" step="0.1" value="'+par.gestao_pct+'" style="width:70px"></label><label>Ads %<br><input id="op_ads" type="number" step="0.1" value="'+par.ads_pct+'" style="width:70px"></label><label>Custo fixo mensal R$<br><input id="op_fixo" type="number" step="1" value="'+par.custo_fixo_mensal+'" style="width:90px"></label></div>';
+  h+='<button onclick="salvarParametrosOcelot(\''+mesAtual+'\')" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Salvar parâmetros</button> ';
+  h+='<button onclick="fecharMesOcelot(\''+mesAtual+'\')" style="background:#fff;border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer;margin-left:6px">Fechar mês (trava o % do custo fixo)</button>';
+  h+='<div class="foot" style="text-align:left;margin-top:8px">'+(par.fechado?('Mês fechado — % do custo fixo travado em '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% (receita líquida do mês: '+('R$ '+cf.format(par.receita_liquida_mes))+').'):('Mês em aberto — o % do custo fixo é provisório, recalculado a cada atualização com base na receita líquida acumulada até agora.'))+'</div>';
+  h+='</div>';
+  h+='<div class="cli" style="max-width:680px">';
+  h+='<h2>Custo por SKU (CMV cadastrado)</h2>';
+  h+='<div class="sub">Cadastrado aqui = usado direto no lugar da fórmula, só no mês de competência escolhido.</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:flex-end"><label style="font-size:12px">Código MLB<br><input id="cs_item" placeholder="MLB1234567890" style="width:160px"></label><label style="font-size:12px">Mês<br><input id="cs_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:130px"></label><label style="font-size:12px">Custo R$<br><input id="cs_custo" type="number" step="0.01" style="width:100px"></label><label style="font-size:12px">Observação<br><input id="cs_obs" style="width:180px"></label><button onclick="salvarCustoSku()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button></div>';
+  h+='<table><thead><tr><th class="m">Item</th><th>Mês</th><th>Custo</th><th style="text-align:left">Observação</th></tr></thead><tbody>';
+  const custos=D.custos||[];
+  if(!custos.length)h+='<tr><td class="m" colspan="4" style="text-align:left;color:#64748b">Nenhum custo cadastrado ainda.</td></tr>';
+  for(let i=0;i<custos.length;i++){const c=custos[i];h+='<tr><td class="m">'+c.item_id+'</td><td>'+c.mes_competencia.slice(0,7)+'</td><td>R$ '+cf.format(c.custo_unitario)+'</td><td style="text-align:left">'+(c.observacao||'—')+'</td></tr>';}
+  h+='</tbody></table></div>';
+  return h;
+}
+async function atualizarOcelot(){
+  const btn=document.getElementById('btnAtualizarOcelot'); if(btn){btn.disabled=true;btn.textContent='Atualizando…';}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    await fetch(SB_URL+'/functions/v1/ml-ocelot-vendas?dias=30',{headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+  }catch(e){}
+  renderOcelot();
+}
+async function salvarParametrosOcelot(mes){
+  const body={tipo:'parametros',mes_competencia:mes,imposto_pct:Number(document.getElementById('op_imposto').value),gestao_pct:Number(document.getElementById('op_gestao').value),ads_pct:Number(document.getElementById('op_ads').value),custo_fixo_mensal:Number(document.getElementById('op_fixo').value)};
+  const {data:{session}}=await sb.auth.getSession();
+  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
+  renderOcelot();
+}
+async function fecharMesOcelot(mes){
+  if(!confirm('Fechar o mês '+mes.slice(0,7)+'? Isso trava o % do custo fixo com base na receita líquida já registrada até agora.'))return;
+  const {data:{session}}=await sb.auth.getSession();
+  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'fechar_mes',mes_competencia:mes})});
+  renderOcelot();
+}
+async function salvarCustoSku(){
+  const item=document.getElementById('cs_item').value.trim().toUpperCase();
+  const mesv=document.getElementById('cs_mes').value;
+  const custo=document.getElementById('cs_custo').value;
+  const obs=document.getElementById('cs_obs').value;
+  if(!item||!mesv||custo===''){alert('Preencha item, mês e custo.');return;}
+  const {data:{session}}=await sb.auth.getSession();
+  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'custo',item_id:item,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs})});
+  renderOcelot();
 }
 
 function selKey(){return [...SELT].sort().join('|');}

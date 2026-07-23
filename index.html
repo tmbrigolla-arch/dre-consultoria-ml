@@ -353,7 +353,8 @@ async function renderOcelot(){
   app.innerHTML='<div class="empty">Carregando gestão Ocelot…</div>';
   try{
     const {data:{session}}=await sb.auth.getSession();
-    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?dias=30',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    const qs='?dias=30'+(ocelotIncluirCancelados?'&incluir_cancelados=1':'');
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados'+qs,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
     if(r.status===401){mostrarLogin();return;}
     OCELOT_CACHE=await r.json();
   }catch(e){app.innerHTML='<div class="empty">Erro ao carregar gestão Ocelot.<br>'+e+'</div>';return;}
@@ -375,6 +376,8 @@ function renderOcelotBody(){
   else body.innerHTML=htmlOcelotConfig();
 }
 let ocelotQtd=20;
+let ocelotIncluirCancelados=false;
+function ocelotToggleCancelados(chk){ocelotIncluirCancelados=chk.checked;renderOcelot();}
 function ocelotQtdChange(sel){ocelotQtd=sel.value==='todos'?999999:Number(sel.value);renderOcelotBody();}
 async function editarCmvOcelot(input,itemId,mes,qtdOrig){
   const val=input.value;
@@ -398,10 +401,19 @@ function htmlOcelotVendas(){
   h+='<label>Mostrar <select onchange="ocelotQtdChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)">';
   for(const opt of [10,20,50,100]){h+='<option value="'+opt+'"'+(ocelotQtd===opt?' selected':'')+'>'+opt+'</option>';}
   h+='<option value="todos"'+(ocelotQtd>=999999?' selected':'')+'>Todos ('+todos.length+')</option></select> pedidos (de '+todos.length+' no período)</label>';
+  h+='<label style="display:flex;align-items:center;gap:5px"><input type="checkbox" onchange="ocelotToggleCancelados(this)"'+(ocelotIncluirCancelados?' checked':'')+'> Mostrar cancelados</label>';
+  if(!ocelotIncluirCancelados&&D.cancelados_count)h+='<span style="color:#94a3b8">('+D.cancelados_count+' pedido(s) cancelado(s) ocultos)</span>';
   h+='</div>';
   if(!lista.length){h+='<div class="empty">Nenhuma venda no período.</div>';return h;}
-  h+='<table><thead><tr><th class="m">Data / Produto</th><th>Nº pedido</th><th>Venda</th><th>Taxa ML</th><th>Frete</th><th>Líquido</th><th>CMV</th><th>Resultado</th><th>Margem</th></tr></thead><tbody>';
+  h+='<table><thead><tr><th class="m">Data / Produto</th><th>Nº pedido</th><th>Venda</th><th>Taxa ML</th><th>Frete</th><th>Devolvido</th><th>Líquido</th><th>CMV</th><th>Resultado</th><th>Margem</th></tr></thead><tbody>';
+  function statusPill(origem,status){
+    if(status==='cancelled')return ' <span class="pill" style="background:#dc2626">cancelado</span>';
+    if(status==='partially_refunded')return ' <span class="pill" style="background:#f59e0b">devolução parcial</span>';
+    if(origem==='manual')return ' <span class="pill" style="background:#1F4E79">custo cadastrado</span>';
+    return ' <span class="pill" style="background:#94a3b8">estimado</span>';
+  }
   function cmvCell(it){
+    if(it.status==='cancelled')return '—';
     const total=P(it.cmv_total);
     return '<div style="display:flex;flex-direction:column;gap:2px"><span>R$ <input type="number" step="0.01" value="'+Number(it.cmv_unitario).toFixed(2)+'" onclick="event.stopPropagation()" onchange="editarCmvOcelot(this,\''+it.item_id+'\',\''+it.mes_competencia+'\','+it.quantidade+')" style="width:64px;padding:2px 4px;border:1px solid var(--line);border-radius:5px"></span><span style="font-size:10.5px;color:#94a3b8">un.'+(it.quantidade>1?(' × '+it.quantidade+' = '+total):'')+'</span></div>';
   }
@@ -411,28 +423,28 @@ function htmlOcelotVendas(){
     const margem=p.valor_liquido>0?(p.resultado/p.valor_liquido*100):null;
     const cls='ped_'+p.order_id;
     const titulo=multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id);
-    const origem=multi?'':(p.itens[0].cmv_origem==='manual'?' <span class="pill" style="background:#1F4E79">custo cadastrado</span>':' <span class="pill" style="background:#94a3b8">estimado</span>');
+    const origem=multi?'':statusPill(p.itens[0].cmv_origem,p.status);
     const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+p.order_id+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+p.order_id+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+(it.cmv_origem==='manual'?' <span class="pill" style="background:#1F4E79">custo cadastrado</span>':' <span class="pill" style="background:#94a3b8">estimado</span>')+'</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+P(it.valor_liquido)+'</td><td>'+cmvCell(it)+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+cmvCell(it)+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }
   h+='</tbody></table>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">"estimado" = sem custo cadastrado nesse SKU: CMV calculado por fórmula (imposto+gestão+ads+custo fixo rateado) em cima do valor líquido recebido. Edite o CMV direto na tabela (campo R$) pra cadastrar o custo real — vale pro mês de competência daquela venda e atualiza todas as vendas do mesmo SKU/mês. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">"estimado" = sem custo cadastrado nesse SKU: CMV = valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção essa calculada sobre o valor BRUTO da venda. Edite o CMV direto na tabela (campo R$) pra cadastrar o custo real — vale pro mês de competência daquela venda e atualiza todas as vendas do mesmo SKU/mês. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
   return h;
 }
 function toggleOcelotPed(cls){
   const rows=document.querySelectorAll('tr.'+cls);
-  rows.forEach(function(r){r.style.display=r.style.display==='none'?'':'none';});
+  rows.forEach(function(r){r.style.display=r.style.display!=='none'?'':'none';});
 }
 function htmlOcelotDetalhada(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
-  const r=D.resumo;
+  const r=D.resumo, w=D.waterfall||{};
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
   const pctf=function(a,b){return b?((a/b*100).toFixed(1).replace('.',',')+'%'):'—';};
   const linha=function(label,val,pctTxt,bold){
@@ -440,15 +452,27 @@ function htmlOcelotDetalhada(){
   };
   let h='<div class="cli" style="max-width:560px">';
   h+='<h2>DRE detalhada — últimos '+D.dias+' dias</h2>';
-  h+='<table style="margin-top:10px">';
-  h+=linha('Faturamento bruto',r.faturamento_bruto,null);
+  h+='<h3 style="margin:14px 0 4px;font-size:14px;color:#475569">Faturamento (contábil)</h3>';
+  h+='<table>';
+  h+=linha('Faturamento bruto (todos os pedidos)',w.faturamento_bruto,null);
+  h+=linha('(–) Cancelamentos',-w.cancelamentos,pctf(w.cancelamentos,w.faturamento_bruto));
+  h+=linha('(–) Devoluções',-w.devolucoes,pctf(w.devolucoes,w.faturamento_bruto));
+  h+=linha('= Faturamento líquido',w.faturamento_liquido,pctf(w.faturamento_liquido,w.faturamento_bruto),true);
+  h+=linha('(–) Impostos',-w.impostos,pctf(w.impostos,w.faturamento_liquido));
+  h+=linha('= Receita líquida',w.receita_liquida,pctf(w.receita_liquida,w.faturamento_bruto),true);
+  h+='</table>';
+  h+='<div class="foot" style="text-align:left;margin-top:6px">Cancelamentos e devoluções somam TODOS os pedidos do período coletado, mesmo com o filtro "mostrar cancelados" da DRE por venda desligado.</div>';
+  h+='<h3 style="margin:18px 0 4px;font-size:14px;color:#475569">Operacional (vendas válidas — pós taxas ML, frete e CMV)</h3>';
+  h+='<table style="margin-top:4px">';
+  h+=linha('Faturamento bruto (vendas válidas)',r.faturamento_bruto,null);
   h+=linha('(–) Taxas Mercado Livre',-r.taxa_ml,pctf(r.taxa_ml,r.faturamento_bruto));
   h+=linha('(–) Frete (subsídio do vendedor, estimado)',-r.frete,pctf(r.frete,r.faturamento_bruto));
-  h+=linha('= Receita líquida',r.receita_liquida,pctf(r.receita_liquida,r.faturamento_bruto),true);
+  h+=linha('(–) Devolvido',-r.devolvido,pctf(r.devolvido,r.faturamento_bruto));
+  h+=linha('= Receita líquida operacional',r.receita_liquida,pctf(r.receita_liquida,r.faturamento_bruto),true);
   h+=linha('(–) CMV',-r.cmv,pctf(r.cmv,r.receita_liquida));
   h+=linha('= Margem bruta / Resultado',r.margem_bruta,pctf(r.margem_bruta,r.receita_liquida),true);
   h+='</table>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">O CMV já embute, item a item, o custo cadastrado por SKU (quando existe) OU a estimativa por fórmula (imposto+gestão+ads+custo fixo rateado sobre o valor líquido). Por isso Ads/Imposto/Gestão não aparecem como linha própria aqui — evita descontar 2x.</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">O CMV já embute, item a item, o custo cadastrado por SKU (quando existe) OU o residual da fórmula (valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção essa calculada sobre o valor BRUTO da venda). Por isso Ads/Imposto/Gestão não aparecem como linha própria aqui — evita descontar 2x. Os Impostos do bloco contábil acima usam só o percentual de imposto (não gestão/ads/custo fixo).</div>';
   if(D.ads_referencia&&D.ads_referencia.ad_spend!=null)h+='<div class="foot" style="text-align:left;margin-top:4px">Informativo (não somado acima): gasto real de Ads no último período coletado (até '+D.ads_referencia.periodo_fim+') = '+P(D.ads_referencia.ad_spend)+'.</div>';
   h+='</div>';
   return h;

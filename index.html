@@ -563,7 +563,7 @@ function sortPedidos(arr){
 }
 function toggleOcelotPed(cls){
   const rows=document.querySelectorAll('tr.'+cls);
-  rows.forEach(function(r){r.style.display=r.style.display!=='none'?'':'none';});
+  rows.forEach(function(r){r.style.display=r.style.display==='none'?'':'none';});
 }
 function htmlOcelotDetalhada(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';

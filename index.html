@@ -177,7 +177,7 @@ function fmt(v,t){ if(v==null||v==="") return "—"; if(t==="txt")return v==null
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }
-let DADOS=null, aba="semanal", periodosSel=null;
+let DADOS=null, aba=(localStorage.getItem('ocelot_aba')||"semanal"), periodosSel=null;
 function metricas(){ return aba==="mensal"?METRICAS_MENSAL:METRICAS_SEMANAL; }
 function labelPeriodo(p){ const[y,m,d]=p.split("-"); return aba==="mensal"?(MESES[+m-1]+"/"+y.slice(2)):(d+"/"+m); }
 function dataset(){ return {
@@ -263,7 +263,7 @@ async function renderMercado(){
   }catch(e){ app.innerHTML='<div class="empty">Erro ao carregar mercado.</div>'; }
 }
 function trocaAba(a){
-  aba=a;periodosSel=null;document.getElementById("app").style.maxWidth="";
+  aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
@@ -361,7 +361,7 @@ async function salvarCusto(btn){
   }catch(e){btn.disabled=false;btn.textContent='Erro';}
 }
 
-let ocelotSub='vendas';let OCELOT_CACHE=null;
+let ocelotSub=(localStorage.getItem('ocelot_sub')||'vendas');let OCELOT_CACHE=null;
 async function renderOcelot(){
   const app=document.getElementById('app');
   app.innerHTML='<div class="empty">Carregando gestão Ocelot…</div>';
@@ -384,7 +384,7 @@ async function renderFornecedores(){
   renderOcelotBody();
 }
 function ocelotSubTab(s){
-  ocelotSub=s;
+  ocelotSub=s;localStorage.setItem('ocelot_sub',s);
   if(s==='fornecedores'){renderFornecedores();return;}
   renderOcelotBody();
 }
@@ -393,6 +393,7 @@ function ocelotSubBtn(k,label){
   return '<button onclick="ocelotSubTab(\''+k+'\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px">'+label+'</button>';
 }
 function renderOcelotBody(){
+  if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   const app=document.getElementById('app');
   app.style.maxWidth=ocelotSub==='vendas'?'none':'';
   let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('fornecedores','Fornecedores')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';

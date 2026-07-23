@@ -446,7 +446,12 @@ function htmlOcelotVendas(){
   h+=sortBtn('data','Data')+sortBtn('margem','Margem')+sortBtn('mlb','MLB');
   h+='</div>';
   if(!lista.length){h+='<div class="empty">Nenhuma venda no período.</div>';return h;}
-  h+='<table><thead><tr><th class="m">Data / Produto</th><th>Nº pedido</th><th>Venda</th><th>Taxa ML</th><th>Frete</th><th>Devolvido</th><th>Líquido</th><th>CMV</th><th>Imposto</th><th>Ads</th><th>Custo fixo</th><th>Resultado</th><th>Margem</th></tr></thead><tbody>';
+  function thSort(campo,label,cls){
+    const ativo=ocelotSortBy===campo;
+    const seta=ativo?(ocelotSortDir==='asc'?' ▲':' ▼'):'';
+    return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotSortChange(\''+campo+'\')" style="cursor:pointer;user-select:none'+(ativo?';color:var(--accent)':'')+'">'+label+seta+'</th>';
+  }
+  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+thSort('cmv','CMV')+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
   function statusPill(origem,status){
     if(status==='cancelled')return ' <span class="pill" style="background:#dc2626">cancelado</span>';
     if(status==='partially_refunded')return ' <span class="pill" style="background:#f59e0b">devolução parcial</span>';
@@ -483,18 +488,28 @@ function htmlOcelotVendas(){
 function sortPedidos(arr){
   const dir=ocelotSortDir==='asc'?1:-1;
   const arr2=arr.slice();
+  const campos={
+    data:function(p){return new Date(p.data_venda_ts).getTime();},
+    pedido:function(p){return Number(p.order_id)||0;},
+    venda:function(p){return Number(p.valor_venda)||0;},
+    taxa:function(p){return Number(p.taxa_ml)||0;},
+    frete:function(p){return Number(p.frete_vendedor)||0;},
+    devolvido:function(p){return Number(p.valor_devolvido)||0;},
+    liquido:function(p){return Number(p.valor_liquido)||0;},
+    cmv:function(p){return Number(p.cmv_total)||0;},
+    imposto:function(p){return Number(p.imposto_valor)||0;},
+    ads:function(p){return Number(p.ads_valor)||0;},
+    custofixo:function(p){return Number(p.custofixo_valor)||0;},
+    resultado:function(p){return Number(p.resultado)||0;},
+    margem:function(p){return p.valor_liquido>0?(p.resultado/p.valor_liquido):-999;}
+  };
   arr2.sort(function(a,b){
     if(ocelotSortBy==='mlb'){
       const av=(a.itens[0]&&a.itens[0].item_id)||'', bv=(b.itens[0]&&b.itens[0].item_id)||'';
       return dir*(av<bv?-1:av>bv?1:0);
     }
-    let av,bv;
-    if(ocelotSortBy==='margem'){
-      av=a.valor_liquido>0?(a.resultado/a.valor_liquido):-999;
-      bv=b.valor_liquido>0?(b.resultado/b.valor_liquido):-999;
-    }else{
-      av=new Date(a.data_venda_ts).getTime(); bv=new Date(b.data_venda_ts).getTime();
-    }
+    const getter=campos[ocelotSortBy]||campos.data;
+    const av=getter(a), bv=getter(b);
     return dir*(av-bv);
   });
   return arr2;

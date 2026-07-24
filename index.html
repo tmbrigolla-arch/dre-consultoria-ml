@@ -1310,7 +1310,7 @@ function htmlQualidade(){
   }
   h+='</div>';
   h+='<div style="font-size:12.5px;color:#64748b;margin:10px 0 6px">'+D.total_anuncios+' anúncio(s) no total'+(D.truncado?(' · mostrando os '+D.mostrando+' com pior qualidade primeiro'):'')+'</div>';
-  h+='<table><thead><tr><th style="width:34px">#</th><th class="m">Anúncio</th><th>Empresa/Conta</th><th>Status</th><th>Score</th><th>Faixa</th><th>Estoque</th><th>Vendidos 30d</th><th>Criado em</th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table style="table-layout:auto;min-width:980px"><thead><tr><th style="width:34px">#</th><th class="m" style="min-width:220px">Anúncio</th><th style="min-width:150px">Empresa/Conta</th><th style="min-width:70px">Status</th><th style="min-width:60px">Score</th><th style="min-width:80px">Faixa</th><th style="min-width:70px">Estoque</th><th style="min-width:90px">Vendidos 30d</th><th style="min-width:90px">Criado em</th></tr></thead><tbody>';
   let idx=0;
   for(const it of D.itens){
     idx++;
@@ -1321,7 +1321,7 @@ function htmlQualidade(){
     h+='<td>'+(it.health!=null?(it.health*100).toFixed(0)+'%':'—')+'</td><td style="color:'+CORES[it.faixa]+';font-weight:700">'+LABELS[it.faixa]+'</td>';
     h+='<td>'+nf.format(it.estoque||0)+'</td><td>'+nf.format(it.vendidos||0)+'</td><td>'+fmtDataBR(it.date_created)+'</td></tr>';
   }
-  h+='</tbody></table>';
+  h+='</tbody></table></div>';
   h+='</div>';
   return h;
 }

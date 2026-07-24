@@ -864,33 +864,96 @@ function imprimirExtratoFornecedor(fornecedorId){
   const f=D.fornecedores.find(function(x){return x.id===fornecedorId;}); if(!f)return;
   const P=function(v){return 'R$ '+cf.format(Number(v));};
   const mesLabel=function(m){const dt=new Date(m+'T00:00:00Z');return dt.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'});};
-  let rows='';
+  // Monta uma lista única (vendas + descontos) em vez de tabelas separadas por mês -- assim dá pra
+  // filtrar por nº de pedido e ordenar clicando no cabeçalho em cima do extrato inteiro, não só dentro
+  // de cada mês. O resumo por mês (total/status) continua exibido à parte, no topo.
+  const linhas=[];
   let totalGeral=0;
+  const resumoMeses=[];
   for(const m of f.meses){
-    rows+='<tr><td colspan="5" style="background:#f1f5f9;font-weight:700;padding:8px">'+mesLabel(m.mes_competencia)+' — '+P(m.total_atual)+(m.pago?' (pago em '+new Date(m.data_pagamento).toLocaleDateString('pt-BR')+')':' (em aberto)')+'</td></tr>';
+    resumoMeses.push({mes:m.mes_competencia,label:mesLabel(m.mes_competencia),total:m.total_atual,pago:m.pago,dataPagamento:m.data_pagamento});
     for(const it of m.itens){
-      rows+='<tr><td>'+new Date(it.data_venda).toLocaleDateString('pt-BR')+'</td><td>'+it.order_id+'</td><td>'+(it.titulo||it.item_id)+'</td><td style="text-align:center">'+it.quantidade+'</td><td style="text-align:right">'+P(it.cmv)+'</td></tr>';
+      linhas.push({tipo:'venda',mes:m.mes_competencia,mesLabel:mesLabel(m.mes_competencia),data:it.data_venda,pedido:it.order_id,produto:it.titulo||it.item_id,qtd:it.quantidade,valor:it.cmv});
       totalGeral+=it.cmv;
     }
     if(m.destaques_desconto&&m.destaques_desconto.length){
-      rows+='<tr><td colspan="5" style="background:#fff7ed;font-weight:700;padding:6px 8px;color:#9a3412">Descontos aplicados neste pagamento (devolução/reclamação de meses anteriores)</td></tr>';
       for(const d of m.destaques_desconto){
-        const label=d.tipo==='devolucao'?('Devolução — venda originalmente de '+mesLabel(d.mes_origem)):('Reclamação'+(d.observacao?': '+d.observacao:''));
-        rows+='<tr style="background:#fffbeb"><td>'+(d.data_venda?new Date(d.data_venda).toLocaleDateString('pt-BR'):'—')+'</td><td>'+(d.order_id||'—')+'</td><td>'+(d.titulo||d.item_id||'')+' <span style="font-size:11px;color:#9a3412">('+label+')</span></td><td>—</td><td style="text-align:right;color:#dc2626">-'+P(d.valor)+'</td></tr>';
+        const label=d.tipo==='devolucao'?('Devolução — venda de '+mesLabel(d.mes_origem)):('Reclamação'+(d.observacao?': '+d.observacao:''));
+        linhas.push({tipo:'desconto',mes:m.mes_competencia,mesLabel:mesLabel(m.mes_competencia),data:d.data_venda||null,pedido:d.order_id||null,produto:(d.titulo||d.item_id||'')+' ('+label+')',qtd:null,valor:-Math.abs(Number(d.valor))});
       }
     }
   }
-  const html='<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>Extrato — '+f.nome+'</title><style>'+
-    'body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin-bottom:2px}p{color:#555;font-size:13px;margin-top:0}'+
-    'table{width:100%;border-collapse:collapse;margin-top:16px;font-size:13px}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}th{background:#1F4E79;color:#fff}'+
-    '.total{font-size:16px;font-weight:700;margin-top:16px;text-align:right}@media print{button{display:none}}'+
-    '</style></head><body>'+
-    '<h1>Extrato de pagamento — '+f.nome+'</h1>'+
-    '<p>Gerado em '+new Date().toLocaleDateString('pt-BR')+' · DRE Ocelot</p>'+
-    '<button onclick="window.print()" style="padding:8px 16px;border-radius:6px;border:none;background:#1F4E79;color:#fff;cursor:pointer;margin-bottom:10px">Imprimir / Salvar PDF</button>'+
-    '<table><thead><tr><th>Data</th><th>Nº pedido</th><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead><tbody>'+rows+'</tbody></table>'+
-    '<div class="total">Total geral: '+P(totalGeral)+'</div>'+
-    '</body></html>';
+  const linhasJson=JSON.stringify(linhas).replace(/<\/script/gi,'<\\/script');
+  const resumoRows=resumoMeses.map(function(m){
+    return '<tr><td>'+m.label+'</td><td style="text-align:right">'+P(m.total)+'</td><td>'+(m.pago?('pago em '+new Date(m.dataPagamento).toLocaleDateString('pt-BR')):'em aberto')+'</td></tr>';
+  }).join('');
+  const mesOpts=resumoMeses.map(function(m){
+    return '<option value="'+m.mes+'">'+m.label+' — '+(m.pago?'pago':'aberto')+'</option>';
+  }).join('');
+  const html=`<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><title>Extrato — ${f.nome}</title><style>
+    body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:20px;margin-bottom:2px}h3{font-size:14px;margin:20px 0 6px}p{color:#555;font-size:13px;margin-top:0}
+    table{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}th,td{border-bottom:1px solid #ddd;padding:6px 8px;text-align:left}
+    th{background:#1F4E79;color:#fff}
+    #extratoTable th{cursor:pointer;user-select:none;white-space:nowrap}#extratoTable th:hover{background:#163a5c}
+    #extratoTable th .seta{font-size:10px;opacity:.8}
+    tr.desconto{color:#dc2626;background:#fff7f0}
+    .total{font-size:16px;font-weight:700;margin-top:14px;text-align:right}
+    #buscaPedido{padding:7px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;width:240px;margin:10px 0}
+    #filtroMes{padding:7px 10px;border:1px solid #ccc;border-radius:6px;font-size:13px;margin:10px 0 10px 10px}
+    @media print{button,#buscaPedido,#filtroMes,.noprint{display:none}}
+    </style></head><body>
+    <h1>Extrato de pagamento — ${f.nome}</h1>
+    <p>Gerado em ${new Date().toLocaleDateString('pt-BR')} · DRE Ocelot</p>
+    <button onclick="window.print()" class="noprint" style="padding:8px 16px;border-radius:6px;border:none;background:#1F4E79;color:#fff;cursor:pointer;margin-bottom:10px">Imprimir / Salvar PDF</button>
+    <h3>Resumo por mês</h3>
+    <table><thead><tr><th>Mês</th><th style="text-align:right">Total CMV</th><th>Status</th></tr></thead><tbody>${resumoRows}</tbody></table>
+    <h3>Vendas e descontos <span style="font-weight:400;color:#666;font-size:12px">(clique no cabeçalho da coluna pra ordenar)</span></h3>
+    <input id="buscaPedido" type="text" placeholder="Buscar nº pedido..." oninput="filtrarExtrato()"><select id="filtroMes" onchange="filtrarExtrato()"><option value="">Todos os meses</option>${mesOpts}</select>
+    <table id="extratoTable"><thead><tr>
+      <th data-campo="mesLabel">Mês</th><th data-campo="data">Data</th><th data-campo="pedido">Nº pedido</th><th data-campo="produto">Produto</th><th data-campo="qtd" style="text-align:center">Qtd</th><th data-campo="valor" style="text-align:right">Valor</th>
+    </tr></thead><tbody id="extratoBody"></tbody></table>
+    <div class="total">Total geral (vendas): ${P(totalGeral)}</div>
+    <script>
+      var LINHAS=${linhasJson};
+      var sortCampo=null, sortDir=1, busca='', mesSel='';
+      function fmtBR(v){return v==null?'—':'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+      function fmtData(v){return v?new Date(v).toLocaleDateString('pt-BR'):'—';}
+      function renderExtrato(){
+        var linhas=LINHAS.slice();
+        if(mesSel)linhas=linhas.filter(function(l){return l.mes===mesSel;});
+        if(busca)linhas=linhas.filter(function(l){return l.pedido!=null&&String(l.pedido).indexOf(busca)!==-1;});
+        if(sortCampo){
+          linhas.sort(function(a,b){
+            var av=a[sortCampo],bv=b[sortCampo];
+            if(av==null&&bv==null)return 0; if(av==null)return 1; if(bv==null)return -1;
+            if(typeof av==='number'&&typeof bv==='number')return (av-bv)*sortDir;
+            return String(av).localeCompare(String(bv),'pt-BR')*sortDir;
+          });
+        }
+        var out='';
+        for(var i=0;i<linhas.length;i++){
+          var l=linhas[i];
+          out+='<tr'+(l.tipo==='desconto'?' class="desconto"':'')+'><td>'+l.mesLabel+'</td><td>'+fmtData(l.data)+'</td><td>'+(l.pedido||'—')+'</td><td>'+l.produto+'</td><td style="text-align:center">'+(l.qtd==null?'—':l.qtd)+'</td><td style="text-align:right">'+fmtBR(l.valor)+'</td></tr>';
+        }
+        document.getElementById('extratoBody').innerHTML=out||'<tr><td colspan="6" style="text-align:center;color:#888">Nenhum resultado.</td></tr>';
+        var ths=document.querySelectorAll('#extratoTable th');
+        for(var j=0;j<ths.length;j++){
+          var campo=ths[j].getAttribute('data-campo');
+          var base=ths[j].textContent.replace(/\\s*[▲▼]$/,'');
+          ths[j].textContent=base+(sortCampo===campo?(sortDir===1?' ▲':' ▼'):'');
+        }
+      }
+      function filtrarExtrato(){busca=document.getElementById('buscaPedido').value.trim();mesSel=document.getElementById('filtroMes').value;renderExtrato();}
+      Array.prototype.forEach.call(document.querySelectorAll('#extratoTable th'),function(th){
+        th.addEventListener('click',function(){
+          var campo=th.getAttribute('data-campo');
+          if(sortCampo===campo){sortDir=-sortDir;}else{sortCampo=campo;sortDir=1;}
+          renderExtrato();
+        });
+      });
+      renderExtrato();
+    <\/script>
+    </body></html>`;
   const w=window.open('','_blank');
   if(w){w.document.write(html);w.document.close();}
 }

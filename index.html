@@ -642,7 +642,7 @@ function htmlOcelotDetalhada(){
   h+=linha('(-) Cancelamentos',-cancelamentos,pct(-cancelamentos,faturamentoBruto));
   h+=linha('(-) Devoluções',-devolucoes,pct(-devolucoes,faturamentoBruto));
   h+=linha('FATURAMENTO LÍQUIDO',faturamentoLiquido,'100,0%','subtotal');
-  h+=linha('(-) Impostos',-impostos,p{t(-impostos,faturamentoLiquido));
+  h+=linha('(-) Impostos',-impostos,pct(-impostos,faturamentoLiquido));
   h+=linha('RECEITA LÍQUIDA',receitaLiquida,pct(receitaLiquida,faturamentoLiquido),'subtotal');
   h+=linha('(-) Taxa Mercado Livre',-taxaML,pct(-taxaML,faturamentoLiquido));
   h+=linha('(-) Frete pago pelo vendedor',-frete,pct(-frete,faturamentoLiquido));

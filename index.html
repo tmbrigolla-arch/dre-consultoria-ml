@@ -912,14 +912,16 @@ function imprimirExtratoFornecedor(fornecedorId){
     <table id="extratoTable"><thead><tr>
       <th data-campo="mesLabel">Mês</th><th data-campo="data">Data</th><th data-campo="pedido">Nº pedido</th><th data-campo="produto">Produto</th><th data-campo="qtd" style="text-align:center">Qtd</th><th data-campo="valor" style="text-align:right">Valor</th>
     </tr></thead><tbody id="extratoBody"></tbody></table>
-    <div class="total">Total geral (vendas): ${P(totalGeral)}</div>
+    <div class="total" id="totalDiv">Total geral (vendas): ${P(totalGeral)}</div>
     <script>
       var LINHAS=${linhasJson};
+      var TOTAL_GERAL=${totalGeral};
       var sortCampo=null, sortDir=1, busca='', mesSel='';
       function fmtBR(v){return v==null?'—':'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
       function fmtData(v){return v?new Date(v).toLocaleDateString('pt-BR'):'—';}
       function renderExtrato(){
         var linhas=LINHAS.slice();
+        var filtroAtivo=!!(mesSel||busca);
         if(mesSel)linhas=linhas.filter(function(l){return l.mes===mesSel;});
         if(busca)linhas=linhas.filter(function(l){return l.pedido!=null&&String(l.pedido).indexOf(busca)!==-1;});
         if(sortCampo){
@@ -931,11 +933,14 @@ function imprimirExtratoFornecedor(fornecedorId){
           });
         }
         var out='';
+        var totalFiltrado=0;
         for(var i=0;i<linhas.length;i++){
           var l=linhas[i];
+          if(l.tipo==='venda')totalFiltrado+=l.valor;
           out+='<tr'+(l.tipo==='desconto'?' class="desconto"':'')+'><td>'+l.mesLabel+'</td><td>'+fmtData(l.data)+'</td><td>'+(l.pedido||'—')+'</td><td>'+l.produto+'</td><td style="text-align:center">'+(l.qtd==null?'—':l.qtd)+'</td><td style="text-align:right">'+fmtBR(l.valor)+'</td></tr>';
         }
         document.getElementById('extratoBody').innerHTML=out||'<tr><td colspan="6" style="text-align:center;color:#888">Nenhum resultado.</td></tr>';
+        document.getElementById('totalDiv').textContent=(filtroAtivo?'Total filtrado (vendas): ':'Total geral (vendas): ')+fmtBR(totalFiltrado);
         var ths=document.querySelectorAll('#extratoTable th');
         for(var j=0;j<ths.length;j++){
           var campo=ths[j].getAttribute('data-campo');

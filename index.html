@@ -503,6 +503,13 @@ function htmlOcelotVendas(){
   }).join('');
   let h='<div class="foot" style="margin:0 0 12px;text-align:left;display:flex;gap:14px;flex-wrap:wrap;align-items:center">';
   h+='<span>'+(D.mes_filtro?'Mês selecionado':('Últimos '+D.dias+' dias'))+' · '+D.resumo.n_vendas+' pedidos · '+D.resumo.n_itens+' itens vendidos.'+'</span>';
+  if(D.por_forma_pagamento){
+    const fpMap={credit_card:'Cartão crédito',debit_card:'Cartão débito',account_money:'Saldo ML',bank_transfer:'Pix/Transf.',ticket:'Boleto',digital_currency:'Moeda digital',prepaid_card:'Pré-pago','não identificado':'Não identificado'};
+    const totalFp=Object.values(D.por_forma_pagamento).reduce(function(s,v){return s+v.n_vendas;},0);
+    const partes=Object.keys(D.por_forma_pagamento).sort(function(a,b){return D.por_forma_pagamento[b].n_vendas-D.por_forma_pagamento[a].n_vendas;})
+      .map(function(k){const v=D.por_forma_pagamento[k];const pct=totalFp?(v.n_vendas/totalFp*100):0;return (fpMap[k]||k)+' '+pct.toFixed(0)+'%';}).join(' · ');
+    if(partes)h+='<span style="color:#94a3b8">Pagamento: '+partes+'</span>';
+  }
   h+='<button onclick="atualizarOcelot()" id="btnAtualizarOcelot" style="background:var(--accent);color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer">Atualizar vendas</button>';
   h+='<label style="display:flex;align-items:center;gap:5px">Buscar nº pedido <input id="ocelotBuscaInput" type="text" value="'+(ocelotBusca||'')+'" oninput="ocelotBuscaChange(this)" placeholder="ex: 2000017..." style="padding:3px 8px;border-radius:6px;border:1px solid var(--line);width:160px"></label>';
   h+='<span>'+todos.length+' pedido(s)'+(ocelotBusca?' encontrados':' no período')+'</span>';
@@ -528,7 +535,12 @@ function htmlOcelotVendas(){
     const seta=ativo?(ocelotSortDir==='asc'?' ▲':' ▼'):'';
     return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotSortChange(\''+campo+'\')" style="cursor:pointer;user-select:none'+(ativo?';color:var(--accent)':'')+'">'+label+seta+'</th>';
   }
-  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+thSort('cmv','CMV')+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
+  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+'<th>Pagamento</th>'+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+thSort('cmv','CMV')+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
+  function formaPagLabel(fp,parc){
+    const map={credit_card:'Cartão crédito',debit_card:'Cartão débito',account_money:'Saldo ML',bank_transfer:'Pix/Transf.',ticket:'Boleto',digital_currency:'Moeda digital',prepaid_card:'Pré-pago'};
+    const lbl=map[fp]||fp||'—';
+    return lbl+((parc&&parc>1)?(' '+parc+'x'):'');
+  }
   function statusPill(origem,status){
     if(status==='cancelled')return ' <span class="pill" style="background:#dc2626">cancelado</span>';
     if(status==='partially_refunded')return ' <span class="pill" style="background:#f59e0b">devolução parcial</span>';
@@ -551,13 +563,13 @@ function htmlOcelotVendas(){
     const titulo=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
     const origem=multi?'':statusPill(p.itens[0].cmv_origem,p.status);
     const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
         const temBk=it.imposto_valor!=null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+cmvCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+cmvCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }
@@ -964,9 +976,12 @@ function imprimirExtratoFornecedor(fornecedorId){
 }
 
 /* ---------- CONSULTORIA / CURVA ABC ---------- */
-const CONS_MENU=[{key:'curva-abc',label:'Curva ABC'}];
+const CONS_MENU=[{key:'curva-abc',label:'Curva ABC'},{key:'qualidade',label:'Qualidade'},{key:'tendencias',label:'Tendências'},{key:'product-ads',label:'Product Ads'}];
 let consMenuSel='curva-abc';
 let CURVA_EMPRESAS=null;
+let qualEmpresaSel='todas', QUAL_CACHE=null;
+let TEND_CACHE=null;
+let adsEmpresaSel='todas', ADS_CACHE=null;
 let curvaDe=null, curvaAte=null, curvaEmpresaSel='todas';
 let curvaBase='receita';
 let CURVA_CACHE=null;
@@ -1006,8 +1021,17 @@ function renderConsultoriaBody(){
   app.innerHTML=h;
   const main=document.getElementById('consMain');
   if(consMenuSel==='curva-abc')main.innerHTML=htmlCurvaAbc();
+  else if(consMenuSel==='qualidade')main.innerHTML=htmlQualidade();
+  else if(consMenuSel==='tendencias')main.innerHTML=htmlTendencias();
+  else if(consMenuSel==='product-ads')main.innerHTML=htmlAds();
 }
-function consMenuTroca(k){consMenuSel=k;curvaView='lista';renderConsultoriaBody();}
+function consMenuTroca(k){
+  consMenuSel=k;curvaView='lista';
+  renderConsultoriaBody();
+  if(k==='qualidade'&&!QUAL_CACHE)qualCarregar();
+  else if(k==='tendencias'&&!TEND_CACHE)tendCarregar();
+  else if(k==='product-ads'&&!ADS_CACHE)adsCarregar();
+}
 function htmlCurvaAbc(){
   if(curvaView==='comparativo')return htmlCurvaComparativo();
   let h='<div class="cli">';
@@ -1248,6 +1272,141 @@ function htmlCurvaComparativo(){
     for(const p of periodos)h+='<tr><td class="m">'+fmtDataBR(p.periodo_inicio)+' a '+fmtDataBR(p.periodo_fim)+'</td><td>'+N(p.unidades)+'</td><td>'+P(p.receita)+'</td><td>'+P(p.ticket)+'</td><td>'+N(p.visitas)+'</td></tr>';
     h+='</tbody></table>';
   }
+  h+='</div>';
+  return h;
+}
+
+/* ---------- CONSULTORIA / QUALIDADE DA PUBLICACAO ---------- */
+async function qualCarregar(){
+  const main=document.getElementById('consMain');
+  if(main)main.innerHTML='<div class="empty">Carregando qualidade…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const clientesStr=qualEmpresaSel==='todas'?(CURVA_EMPRESAS||[]).map(function(e){return e.cliente_id;}).join(','):qualEmpresaSel;
+    const r=await fetch(SB_URL+'/functions/v1/ml-qualidade-dados?clientes='+encodeURIComponent(clientesStr),{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    QUAL_CACHE=await r.json();
+  }catch(e){if(main)main.innerHTML='<div class="empty">Erro ao carregar qualidade.<br>'+e+'</div>';return;}
+  renderConsultoriaBody();
+}
+function qualEmpresaTroca(cid){qualEmpresaSel=cid;qualCarregar();}
+function htmlQualidade(){
+  let h='<div class="cli">';
+  h+='<h2>Qualidade da Publicação</h2>';
+  h+='<div class="sub">Score de qualidade ("health") calculado pelo próprio Mercado Livre por anúncio — quanto mais completo/otimizado, maior o score. Faixas de corte abaixo são critério nosso (o ML não publica pontos de corte oficiais). Usa a coleta mais recente de cada conta.</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">';
+  h+='<button class="curva-chip'+(qualEmpresaSel==='todas'?' on':'')+'" onclick="qualEmpresaTroca(\'todas\')">Todas</button>';
+  for(const e of (CURVA_EMPRESAS||[])){h+='<button class="curva-chip'+(qualEmpresaSel===e.cliente_id?' on':'')+'" onclick="qualEmpresaTroca(\''+e.cliente_id+'\')">'+e.nome+'</button>';}
+  h+='</div>';
+  if(!QUAL_CACHE){h+='<div class="empty">Carregando…</div></div>';return h;}
+  const D=QUAL_CACHE;
+  if(!D.resumo||!D.itens){h+='<div class="empty">Sem dado de qualidade pra essa seleção ainda.</div></div>';return h;}
+  const CORES={excelente:'#16a34a',boa:'#2563eb',regular:'#d97706',critica:'#dc2626',sem_dado:'#94a3b8'};
+  const LABELS={excelente:'Excelente',boa:'Boa',regular:'Regular',critica:'Crítica',sem_dado:'Sem dado'};
+  h+='<div class="curva-cards" style="grid-template-columns:repeat(5,1fr)">';
+  for(const k of ['excelente','boa','regular','critica','sem_dado']){
+    const r=D.resumo[k]||{n:0,media:null};
+    h+='<div class="curva-card"><div class="lbl" style="color:'+CORES[k]+'">'+LABELS[k]+'</div><div class="val">'+r.n+'</div><div class="sub">'+(r.media!=null?'média '+(r.media*100).toFixed(0)+'%':'—')+'</div></div>';
+  }
+  h+='</div>';
+  h+='<div style="font-size:12.5px;color:#64748b;margin:10px 0 6px">'+D.total_anuncios+' anúncio(s) no total'+(D.truncado?(' · mostrando os '+D.mostrando+' com pior qualidade primeiro'):'')+'</div>';
+  h+='<table><thead><tr><th style="width:34px">#</th><th class="m">Anúncio</th><th>Empresa/Conta</th><th>Status</th><th>Score</th><th>Faixa</th><th>Estoque</th><th>Vendidos 30d</th></tr></thead><tbody>';
+  let idx=0;
+  for(const it of D.itens){
+    idx++;
+    h+='<tr><td>'+idx+'</td><td class="m">'+(it.titulo||it.item_id)+'<div style="font-size:10.5px;color:#94a3b8;font-weight:400">'+it.item_id+'</div></td>';
+    h+='<td>'+it.cliente_nome+' / '+it.conta_apelido+'</td><td>'+(it.status||'—')+'</td>';
+    h+='<td>'+(it.health!=null?(it.health*100).toFixed(0)+'%':'—')+'</td><td style="color:'+CORES[it.faixa]+';font-weight:700">'+LABELS[it.faixa]+'</td>';
+    h+='<td>'+nf.format(it.estoque||0)+'</td><td>'+nf.format(it.vendidos||0)+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  h+='</div>';
+  return h;
+}
+
+/* ---------- CONSULTORIA / TENDENCIAS ---------- */
+async function tendCarregar(){
+  const main=document.getElementById('consMain');
+  if(main)main.innerHTML='<div class="empty">Carregando tendências…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-tendencias-dados',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    TEND_CACHE=await r.json();
+  }catch(e){if(main)main.innerHTML='<div class="empty">Erro ao carregar tendências.<br>'+e+'</div>';return;}
+  renderConsultoriaBody();
+}
+function htmlTendencias(){
+  let h='<div class="cli">';
+  h+='<h2>Tendências</h2>';
+  h+='<div class="sub">Buscas em alta no Mercado Livre inteiro (site-wide — não é específico das suas contas) — sinal pra pensar em novos produtos, títulos de anúncio ou reforço de estoque. Atualizado 1x/dia.</div>';
+  if(!TEND_CACHE){h+='<div class="empty">Carregando…</div></div>';return h;}
+  const D=TEND_CACHE;
+  if(D.sem_dado||!D.itens||!D.itens.length){h+='<div class="empty">Ainda sem coleta de tendências.</div></div>';return h;}
+  h+='<div style="font-size:12.5px;color:#64748b;margin:10px 0">Top '+D.itens.length+' · '+fmtDataBR(D.data_atual)+(D.data_comparacao?(' · comparado com '+fmtDataBR(D.data_comparacao)):' · ainda sem histórico suficiente pra comparação')+'</div>';
+  h+='<table><thead><tr><th style="width:34px">#</th><th class="m">Busca</th><th>Variação</th></tr></thead><tbody>';
+  for(const it of D.itens){
+    let varTxt;
+    if(it.status==='novo')varTxt='<span style="color:#2563eb;font-weight:700">novo no top</span>';
+    else if(it.status==='subiu')varTxt='<span class="up">▲ '+it.delta+'</span>';
+    else if(it.status==='caiu')varTxt='<span class="down">▼ '+Math.abs(it.delta)+'</span>';
+    else varTxt='<span style="color:#94a3b8">estável</span>';
+    const kwHtml=it.url?('<a href="'+it.url+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">'+it.keyword+'</a>'):it.keyword;
+    h+='<tr><td>'+it.ranking+'</td><td class="m">'+kwHtml+'</td><td>'+varTxt+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  h+='</div>';
+  return h;
+}
+
+/* ---------- CONSULTORIA / PRODUCT ADS DETALHE ---------- */
+async function adsCarregar(){
+  const main=document.getElementById('consMain');
+  if(main)main.innerHTML='<div class="empty">Carregando Product Ads…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const clientesStr=adsEmpresaSel==='todas'?(CURVA_EMPRESAS||[]).map(function(e){return e.cliente_id;}).join(','):adsEmpresaSel;
+    const r=await fetch(SB_URL+'/functions/v1/ml-adsdetalhe-dados?clientes='+encodeURIComponent(clientesStr),{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    ADS_CACHE=await r.json();
+  }catch(e){if(main)main.innerHTML='<div class="empty">Erro ao carregar Product Ads.<br>'+e+'</div>';return;}
+  renderConsultoriaBody();
+}
+function adsEmpresaTroca(cid){adsEmpresaSel=cid;adsCarregar();}
+function htmlAds(){
+  let h='<div class="cli">';
+  h+='<h2>Product Ads — detalhe por campanha</h2>';
+  h+='<div class="sub">Semana mais recente coletada por conta, com histórico curto (até 8 semanas) por campanha. ROAS = receita direta atribuída ao ads ÷ custo do ads.</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:14px 0">';
+  h+='<button class="curva-chip'+(adsEmpresaSel==='todas'?' on':'')+'" onclick="adsEmpresaTroca(\'todas\')">Todas</button>';
+  for(const e of (CURVA_EMPRESAS||[])){h+='<button class="curva-chip'+(adsEmpresaSel===e.cliente_id?' on':'')+'" onclick="adsEmpresaTroca(\''+e.cliente_id+'\')">'+e.nome+'</button>';}
+  h+='</div>';
+  if(!ADS_CACHE){h+='<div class="empty">Carregando…</div></div>';return h;}
+  const D=ADS_CACHE;
+  const P=function(v){return 'R$ '+cf.format(Number(v)||0);};
+  if(!D.resumo||!D.campanhas||!D.campanhas.length){h+='<div class="empty">Sem campanhas de Product Ads pra essa seleção.</div></div>';return h;}
+  h+='<div class="curva-cards">';
+  h+='<div class="curva-card"><div class="lbl">Investimento (semana)</div><div class="val">'+P(D.resumo.custo_total)+'</div></div>';
+  h+='<div class="curva-card"><div class="lbl">Receita direta (ads)</div><div class="val">'+P(D.resumo.receita_direta_total)+'</div></div>';
+  h+='<div class="curva-card"><div class="lbl">ROAS geral</div><div class="val">'+(D.resumo.roas_geral!=null?D.resumo.roas_geral.toFixed(2).replace('.',',')+'x':'—')+'</div></div>';
+  h+='<div class="curva-card"><div class="lbl">CTR geral</div><div class="val">'+(D.resumo.ctr_geral!=null?D.resumo.ctr_geral.toFixed(2).replace('.',',')+'%':'—')+'</div></div>';
+  h+='</div>';
+  h+='<table><thead><tr><th class="m">Campanha</th><th>Empresa/Conta</th><th>Status</th><th>Custo</th><th>Cliques</th><th>Impr.</th><th>CTR</th><th>CPC</th><th>Receita direta</th><th>Vendas ads</th><th>ROAS</th><th>Tendência (8 sem.)</th></tr></thead><tbody>';
+  for(const c of D.campanhas){
+    const spark=(c.historico||[]).map(function(hh){return hh.cost;});
+    const maxSpark=Math.max.apply(null,spark.concat([1]));
+    let sparkHtml='<div style="display:flex;gap:2px;align-items:flex-end;height:22px">';
+    for(const v of spark){sparkHtml+='<div style="width:5px;background:#93c5fd;height:'+Math.max(2,(v/maxSpark)*22)+'px" title="R$ '+cf.format(v)+'"></div>';}
+    sparkHtml+='</div>';
+    h+='<tr><td class="m">'+(c.campaign_name||c.campaign_id)+'</td><td>'+c.cliente_nome+' / '+c.conta_apelido+'</td><td>'+(c.status||'—')+'</td>';
+    h+='<td>'+P(c.cost)+'</td><td>'+nf.format(c.clicks)+'</td><td>'+nf.format(c.prints)+'</td>';
+    h+='<td>'+(c.ctr!=null?c.ctr.toFixed(2).replace('.',',')+'%':'—')+'</td><td>'+(c.cpc!=null?P(c.cpc):'—')+'</td>';
+    h+='<td>'+P(c.direct_amount)+'</td><td>'+nf.format(c.direct_units_quantity)+'</td>';
+    h+='<td style="'+(c.roas!=null&&c.roas<3?'color:#dc2626':'color:#16a34a')+'">'+(c.roas!=null?c.roas.toFixed(2).replace('.',',')+'x':'—')+'</td>';
+    h+='<td>'+sparkHtml+'</td></tr>';
+  }
+  h+='</tbody></table>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">ROAS abaixo de 3x em vermelho — critério nosso (ajustável conforme sua margem real: se sua margem bruta é X%, o ROAS mínimo pra não ter prejuízo com ads é aproximadamente 1/X).</div>';
   h+='</div>';
   return h;
 }

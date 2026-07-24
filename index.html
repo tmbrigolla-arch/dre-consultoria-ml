@@ -520,6 +520,7 @@ function htmlOcelotVendas(){
     if(status==='cancelled')return ' <span class="pill" style="background:#dc2626">cancelado</span>';
     if(status==='partially_refunded')return ' <span class="pill" style="background:#f59e0b">devolução parcial</span>';
     if(origem==='manual')return ' <span class="pill" style="background:#1F4E79">custo cadastrado</span>';
+    if(origem==='formula_devolvido')return ' <span class="pill" style="background:#dc2626">CMV zerado (devolução)</span>';
     if(origem==='formula_piso')return ' <span class="pill" style="background:#0891b2">preço mínimo assumido</span>';
     if(origem==='formula_teto')return ' <span class="pill" style="background:#7c3aed">preço máximo assumido</span>';
     return ' <span class="pill" style="background:#94a3b8">estimado</span>';

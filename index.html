@@ -1310,14 +1310,16 @@ function htmlQualidade(){
   }
   h+='</div>';
   h+='<div style="font-size:12.5px;color:#64748b;margin:10px 0 6px">'+D.total_anuncios+' anúncio(s) no total'+(D.truncado?(' · mostrando os '+D.mostrando+' com pior qualidade primeiro'):'')+'</div>';
-  h+='<table><thead><tr><th style="width:34px">#</th><th class="m">Anúncio</th><th>Empresa/Conta</th><th>Status</th><th>Score</th><th>Faixa</th><th>Estoque</th><th>Vendidos 30d</th></tr></thead><tbody>';
+  h+='<table><thead><tr><th style="width:34px">#</th><th class="m">Anúncio</th><th>Empresa/Conta</th><th>Status</th><th>Score</th><th>Faixa</th><th>Estoque</th><th>Vendidos 30d</th><th>Criado em</th></tr></thead><tbody>';
   let idx=0;
   for(const it of D.itens){
     idx++;
-    h+='<tr><td>'+idx+'</td><td class="m">'+(it.titulo||it.item_id)+'<div style="font-size:10.5px;color:#94a3b8;font-weight:400">'+it.item_id+'</div></td>';
+    const tituloTxt=(it.titulo||it.item_id);
+    const tituloHtml=it.permalink?('<a href="'+it.permalink+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+tituloTxt+'</a>'):tituloTxt;
+    h+='<tr><td>'+idx+'</td><td class="m">'+tituloHtml+'<div style="font-size:10.5px;color:#94a3b8;font-weight:400">'+it.item_id+'</div></td>';
     h+='<td>'+it.cliente_nome+' / '+it.conta_apelido+'</td><td>'+(it.status||'—')+'</td>';
     h+='<td>'+(it.health!=null?(it.health*100).toFixed(0)+'%':'—')+'</td><td style="color:'+CORES[it.faixa]+';font-weight:700">'+LABELS[it.faixa]+'</td>';
-    h+='<td>'+nf.format(it.estoque||0)+'</td><td>'+nf.format(it.vendidos||0)+'</td></tr>';
+    h+='<td>'+nf.format(it.estoque||0)+'</td><td>'+nf.format(it.vendidos||0)+'</td><td>'+fmtDataBR(it.date_created)+'</td></tr>';
   }
   h+='</tbody></table>';
   h+='</div>';
@@ -1391,7 +1393,7 @@ function htmlAds(){
   h+='<div class="curva-card"><div class="lbl">ROAS geral</div><div class="val">'+(D.resumo.roas_geral!=null?D.resumo.roas_geral.toFixed(2).replace('.',',')+'x':'—')+'</div></div>';
   h+='<div class="curva-card"><div class="lbl">CTR geral</div><div class="val">'+(D.resumo.ctr_geral!=null?D.resumo.ctr_geral.toFixed(2).replace('.',',')+'%':'—')+'</div></div>';
   h+='</div>';
-  h+='<table><thead><tr><th class="m">Campanha</th><th>Empresa/Conta</th><th>Status</th><th>Custo</th><th>Cliques</th><th>Impr.</th><th>CTR</th><th>CPC</th><th>Receita direta</th><th>Vendas ads</th><th>ROAS</th><th>Tendência (8 sem.)</th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table style="table-layout:auto;min-width:1180px"><thead><tr><th class="m" style="min-width:170px">Campanha</th><th style="min-width:130px">Empresa/Conta</th><th style="min-width:70px">Status</th><th style="min-width:90px">Custo</th><th style="min-width:70px">Cliques</th><th style="min-width:80px">Impr.</th><th style="min-width:60px">CTR</th><th style="min-width:70px">CPC</th><th style="min-width:100px">Receita direta</th><th style="min-width:80px">Vendas ads</th><th style="min-width:70px">ROAS</th><th style="min-width:110px">Tendência (8 sem.)</th></tr></thead><tbody>';
   for(const c of D.campanhas){
     const spark=(c.historico||[]).map(function(hh){return hh.cost;});
     const maxSpark=Math.max.apply(null,spark.concat([1]));
@@ -1405,7 +1407,7 @@ function htmlAds(){
     h+='<td style="'+(c.roas!=null&&c.roas<3?'color:#dc2626':'color:#16a34a')+'">'+(c.roas!=null?c.roas.toFixed(2).replace('.',',')+'x':'—')+'</td>';
     h+='<td>'+sparkHtml+'</td></tr>';
   }
-  h+='</tbody></table>';
+  h+='</tbody></table></div>';
   h+='<div class="foot" style="text-align:left;margin-top:10px">ROAS abaixo de 3x em vermelho — critério nosso (ajustável conforme sua margem real: se sua margem bruta é X%, o ROAS mínimo pra não ter prejuízo com ads é aproximadamente 1/X).</div>';
   h+='</div>';
   return h;

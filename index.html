@@ -980,6 +980,29 @@ const CONS_MENU=[{key:'curva-abc',label:'Curva ABC'},{key:'qualidade',label:'Qua
 let consMenuSel='curva-abc';
 let CURVA_EMPRESAS=null;
 let qualEmpresaSel='todas', QUAL_CACHE=null;
+let qualSortBy='health', qualSortDir='asc';
+function qualSortChange(campo){
+  if(qualSortBy===campo){qualSortDir=qualSortDir==='asc'?'desc':'asc';}
+  else{qualSortBy=campo;qualSortDir=(campo==='estoque'||campo==='vendidos'||campo==='date_created')?'desc':'asc';}
+  renderConsultoriaBody();
+}
+function thQual(campo,label,cls,minW){
+  const ativo=qualSortBy===campo;
+  const seta=ativo?(qualSortDir==='asc'?' ▲':' ▼'):'';
+  const st='cursor:pointer;user-select:none'+(minW?';min-width:'+minW+'px':'')+(ativo?';color:var(--accent)':'');
+  return '<th'+(cls?' class="'+cls+'"':'')+' style="'+st+'" onclick="qualSortChange(\''+campo+'\')">'+label+seta+'</th>';
+}
+function qualItemVal(it,campo){
+  if(campo==='health')return it.health==null?2:it.health;
+  if(campo==='titulo')return (it.titulo||it.item_id||'').toLowerCase();
+  if(campo==='empresa')return (it.cliente_nome+' / '+it.conta_apelido).toLowerCase();
+  if(campo==='status')return (it.status||'').toLowerCase();
+  if(campo==='faixa'){const rank={excelente:0,boa:1,regular:2,critica:3,sem_dado:4};return rank[it.faixa]??5;}
+  if(campo==='estoque')return it.estoque||0;
+  if(campo==='vendidos')return it.vendidos||0;
+  if(campo==='date_created')return it.date_created||'';
+  return 0;
+}
 let TEND_CACHE=null;
 let adsEmpresaSel='todas', ADS_CACHE=null;
 let curvaDe=null, curvaAte=null, curvaEmpresaSel='todas';
@@ -1310,9 +1333,14 @@ function htmlQualidade(){
   }
   h+='</div>';
   h+='<div style="font-size:12.5px;color:#64748b;margin:10px 0 6px">'+D.total_anuncios+' anúncio(s) no total'+(D.truncado?(' · mostrando os '+D.mostrando+' com pior qualidade primeiro'):'')+'</div>';
-  h+='<div style="overflow-x:auto"><table style="table-layout:auto;min-width:980px"><thead><tr><th style="width:34px">#</th><th class="m" style="min-width:220px">Anúncio</th><th style="min-width:150px">Empresa/Conta</th><th style="min-width:70px">Status</th><th style="min-width:60px">Score</th><th style="min-width:80px">Faixa</th><th style="min-width:70px">Estoque</th><th style="min-width:90px">Vendidos 30d</th><th style="min-width:90px">Criado em</th></tr></thead><tbody>';
+  const itensOrdenados=D.itens.slice().sort((a,b)=>{
+    const av=qualItemVal(a,qualSortBy), bv=qualItemVal(b,qualSortBy);
+    const c=av<bv?-1:(av>bv?1:0);
+    return qualSortDir==='asc'?c:-c;
+  });
+  h+='<div style="overflow-x:auto"><table style="table-layout:auto;min-width:980px"><thead><tr><th style="width:34px">#</th>'+thQual('titulo','Anúncio','m',220)+thQual('empresa','Empresa/Conta',null,150)+thQual('status','Status',null,70)+thQual('health','Score',null,60)+thQual('faixa','Faixa',null,80)+thQual('estoque','Estoque',null,70)+thQual('vendidos','Vendidos 30d',null,90)+thQual('date_created','Criado em',null,90)+'</tr></thead><tbody>';
   let idx=0;
-  for(const it of D.itens){
+  for(const it of itensOrdenados){
     idx++;
     const tituloTxt=(it.titulo||it.item_id);
     const tituloHtml=it.permalink?('<a href="'+it.permalink+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+tituloTxt+'</a>'):tituloTxt;

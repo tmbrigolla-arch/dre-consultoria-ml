@@ -384,6 +384,107 @@ async function salvarCusto(btn){
 }
 
 let ocelotSub=(localStorage.getItem('ocelot_sub')||'vendas');let OCELOT_CACHE=null;
+let OCELOT_ENTREGAS_CACHE=null;let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
+const ENT_STATUS_LABEL={pending:'Aguardando (fabricação/pagamento)',ready_to_ship:'Pronto para envio',shipped:'A caminho',delivered:'Entregue',not_delivered:'Tentativa de entrega falhou',cancelled:'Cancelado'};
+const ENT_STATUS_COR={pending:'#f59e0b',ready_to_ship:'#0891b2',shipped:'#1F4E79',delivered:'#16a34a',not_delivered:'#dc2626',cancelled:'#94a3b8'};
+async function renderEntregas(){
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-entregas-dados?filtro='+ocelotEntregasFiltro+'&dias=60',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(r.status===401){mostrarLogin();return;}
+    OCELOT_ENTREGAS_CACHE=await r.json();
+  }catch(e){OCELOT_ENTREGAS_CACHE={pedidos:[],erro:String(e)};}
+  renderOcelotBody();
+}
+function entregasFiltro(f){ocelotEntregasFiltro=f;localStorage.setItem('ocelot_ent_filtro',f);OCELOT_ENTREGAS_CACHE=null;renderEntregas();}
+function entFiltroBtn(k,label){
+  const on=ocelotEntregasFiltro===k;
+  return '<button onclick="entregasFiltro(\''+k+'\')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px;font-size:13px">'+label+'</button>';
+}
+function toggleEntregaCard(cls){
+  const els=document.querySelectorAll('.'+cls);
+  els.forEach(function(e){e.style.display=e.style.display==='none'?'':'none';});
+}
+async function ocultarEntrega(orderIdsStr,oculto){
+  if(oculto&&!confirm('Remover este pedido da lista de entregas?'))return;
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    await fetch(SB_URL+'/functions/v1/ml-ocelot-entregas-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({order_ids:JSON.parse(decodeURIComponent(orderIdsStr)),oculto:oculto})});
+  }catch(e){}
+  OCELOT_ENTREGAS_CACHE=null;renderEntregas();
+}
+function dtf2(s){
+  if(!s)return '';
+  const p=String(s).split('-');
+  if(p.length!==3)return s;
+  return p[2]+'/'+p[1]+'/'+p[0];
+}
+function htmlOcelotEntregas(){
+  const D=OCELOT_ENTREGAS_CACHE;
+  let h='<div style="margin-bottom:16px">'+entFiltroBtn('a_entregar','A entregar')+entFiltroBtn('entregue','Já entregue')+'</div>';
+  if(!D)return h+'<div class="empty">Sem dados.</div>';
+  const pedidos=D.pedidos||[];
+  if(!pedidos.length)return h+'<div class="empty">Nenhum pedido nesta lista.</div>';
+  for(let pi=0;pi<pedidos.length;pi++){
+    const p=pedidos[pi];
+    const cls='ent_'+pi;
+    const st=p.shipping_status||'pending';
+    const label=ENT_STATUS_LABEL[st]||'Aguardando dados de envio';
+    const cor=ENT_STATUS_COR[st]||'#94a3b8';
+    const e=p.entrega||{};
+    const dataMostrar=p.entregue?(e.data_entrega_real||''):(e.data_entrega_estimada||'');
+    const dataLabel=p.entregue?'Entregue em ':'Previsão de entrega: ';
+    const multi=p.itens.length>1;
+    const capa=p.itens[0];
+    h+='<div class="cli" style="margin-bottom:14px">';
+    h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">';
+    h+='<div style="display:flex;gap:12px;align-items:flex-start">';
+    if(capa.thumbnail)h+='<img src="'+capa.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)" onerror="this.style.display=\'none\'">';
+    h+='<div>';
+    h+='<div><span class="pill" style="background:'+cor+';margin-left:0;margin-right:8px">'+label+'</span>'+(dataMostrar?('<span style="font-size:12px;color:var(--muted)">'+dataLabel+dtf2(dataMostrar)+'</span>'):'')+'</div>';
+    if(multi){
+      h+='<div style="cursor:pointer;font-weight:600;margin-top:4px" onclick="toggleEntregaCard(\''+cls+'\')">🛒 Carrinho — '+p.itens.length+' itens ▸</div>';
+    }else{
+      h+='<div style="font-weight:600;margin-top:4px">'+(capa.permalink?('<a href="'+capa.permalink+'" target="_blank" rel="noopener">'+(capa.titulo||capa.item_id)+'</a>'):(capa.titulo||capa.item_id))+' <span style="color:var(--muted);font-weight:400">× '+capa.quantidade+'</span></div>';
+      if(capa.estoque!=null)h+='<div style="font-size:12px;color:var(--muted)">Estoque atual: '+capa.estoque+' un.</div>';
+    }
+    if(p.buyer_nickname||e.receiver_city)h+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+(e.receiver_city?(e.receiver_city+'/'+(e.receiver_state||'')):'')+'</div>';
+    h+='</div></div>';
+    if(p.entregue)h+='<button onclick="ocultarEntrega(\''+encodeURIComponent(JSON.stringify(p.order_ids))+'\',true)" style="padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:12px">Ocultar</button>';
+    h+='</div>';
+    if(multi){
+      h+='<div class="'+cls+'" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">';
+      for(let ii=0;ii<p.itens.length;ii++){
+        const it=p.itens[ii];
+        h+='<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">';
+        if(it.thumbnail)h+='<img src="'+it.thumbnail+'" style="width:40px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line)" onerror="this.style.display=\'none\'">';
+        h+='<div>'+(it.permalink?('<a href="'+it.permalink+'" target="_blank" rel="noopener">'+(it.titulo||it.item_id)+'</a>'):(it.titulo||it.item_id))+' <span style="color:var(--muted)">× '+it.quantidade+'</span>'+(it.estoque!=null?(' <span style="font-size:11px;color:var(--muted)">— estoque: '+it.estoque+'</span>'):'')+'</div>';
+        h+='</div>';
+      }
+      h+='</div>';
+    }
+    if(e.receiver_address_line||e.receiver_comment){
+      h+='<div style="font-size:12px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">'+(e.receiver_address_line||'')+(e.receiver_neighborhood?(', '+e.receiver_neighborhood):'')+(e.receiver_comment?('<br><i>Obs.: '+e.receiver_comment+'</i>'):'')+'</div>';
+    }
+    const perguntas=e.perguntas||[];
+    const mensagens=e.mensagens||[];
+    if(perguntas.length||mensagens.length){
+      h+='<div style="font-size:12px;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">';
+      for(let qi=0;qi<perguntas.length;qi++){
+        const q=perguntas[qi];
+        h+='<div style="margin-bottom:4px"><b>Pergunta antes da compra:</b> "'+(q.pergunta||'')+'"'+(q.resposta?(' — resp.: "'+q.resposta+'"'):'')+'</div>';
+      }
+      for(let mi=0;mi<mensagens.length;mi++){
+        const m=mensagens[mi];
+        h+='<div style="margin-bottom:4px"><b>'+(m.de==='comprador'?'Comprador':'Vendedor')+':</b> '+(m.texto||'')+'</div>';
+      }
+      h+='</div>';
+    }
+    h+='</div>';
+  }
+  return h;
+}
+
 async function renderOcelot(){
   const app=document.getElementById('app');
   app.innerHTML='<div class="empty">Carregando gestão Ocelot…</div>';
@@ -408,6 +509,7 @@ async function renderFornecedores(){
 function ocelotSubTab(s){
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);
   if(s==='fornecedores'){renderFornecedores();return;}
+  if(s==='entregas'){renderEntregas();return;}
   renderOcelotBody();
 }
 function ocelotSubBtn(k,label){
@@ -416,14 +518,16 @@ function ocelotSubBtn(k,label){
 }
 function renderOcelotBody(){
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
+  if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
   const app=document.getElementById('app');
   app.style.maxWidth=ocelotSub==='vendas'?'none':'';
-  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('fornecedores','Fornecedores')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
+  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('entregas','Controle de Entregas')+ocelotSubBtn('fornecedores','Fornecedores')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
   app.innerHTML=h;
   const body=document.getElementById('ocelotBody');
   if(ocelotSub==='vendas')body.innerHTML=htmlOcelotVendas();
   else if(ocelotSub==='detalhada')body.innerHTML=htmlOcelotDetalhada();
   else if(ocelotSub==='fornecedores')body.innerHTML=htmlOcelotFornecedores();
+  else if(ocelotSub==='entregas')body.innerHTML=htmlOcelotEntregas();
   else body.innerHTML=htmlOcelotConfig();
 }
 let ocelotFiltroCats={cancelada:false,devolucao:false,cmvZero:false};

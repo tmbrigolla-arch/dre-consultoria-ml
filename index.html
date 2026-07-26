@@ -441,6 +441,9 @@ function htmlOcelotEntregas(){
     const e=p.entrega||{};
     const dataMostrar=p.entregue?(e.data_entrega_real||''):(e.data_entrega_estimada||'');
     const dataLabel=p.entregue?'Entregue em ':'Previsão de entrega: ';
+    const diasRest=(!p.entregue&&dataMostrar)?Math.round((new Date(dataMostrar+'T00:00:00')-new Date(new Date().toISOString().slice(0,10)+'T00:00:00'))/86400000):null;
+    const prazoTxt=diasRest===null?'':(diasRest<0?' · ATRASADO '+(-diasRest)+'d':diasRest===0?' · vence hoje':diasRest===1?' · falta 1 dia':' · faltam '+diasRest+' dias');
+    const prazoCor=diasRest===null?'var(--muted)':(diasRest<=1?'#dc2626':diasRest<=4?'#f59e0b':'var(--muted)');
     const multi=p.itens.length>1;
     const capa=p.itens[0];
     h+='<div class="cli" style="margin-bottom:14px">';
@@ -448,7 +451,7 @@ function htmlOcelotEntregas(){
     h+='<div style="display:flex;gap:12px;align-items:flex-start">';
     if(capa.thumbnail)h+='<img src="'+capa.thumbnail+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)" onerror="this.style.display=\'none\'">';
     h+='<div>';
-    h+='<div><span class="pill" style="background:'+cor+';margin-left:0;margin-right:8px">'+label+'</span>'+(dataMostrar?('<span style="font-size:12px;color:var(--muted)">'+dataLabel+dtf2(dataMostrar)+'</span>'):'')+'</div>';
+    h+='<div><span class="pill" style="background:'+cor+';margin-left:0;margin-right:8px">'+label+'</span>'+(dataMostrar?('<span style="font-size:12px;color:'+prazoCor+';font-weight:'+(diasRest!==null&&diasRest<=4?700:400)+'">'+dataLabel+dtf2(dataMostrar)+prazoTxt+'</span>'):'')+'</div>';
     if(multi){
       h+='<div style="cursor:pointer;font-weight:600;margin-top:4px" onclick="toggleEntregaCard(\''+cls+'\')">🛒 Carrinho — '+p.itens.length+' itens ▸</div>';
     }else{

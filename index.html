@@ -385,6 +385,7 @@ async function salvarCusto(btn){
 
 let ocelotSub=(localStorage.getItem('ocelot_sub')||'vendas');let OCELOT_CACHE=null;
 let OCELOT_ENTREGAS_CACHE=null;let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
+let ocelotEntregasStatusFiltro=(localStorage.getItem('ocelot_ent_status')||null);
 const ENT_STATUS_LABEL={pending:'Aguardando (fabricação/pagamento)',ready_to_ship:'Pronto para envio',shipped:'A caminho',delivered:'Entregue',not_delivered:'Tentativa de entrega falhou',cancelled:'Cancelado'};
 const ENT_STATUS_COR={pending:'#f59e0b',ready_to_ship:'#0891b2',shipped:'#1F4E79',delivered:'#16a34a',not_delivered:'#dc2626',cancelled:'#94a3b8'};
 async function renderEntregas(){
@@ -396,10 +397,15 @@ async function renderEntregas(){
   }catch(e){OCELOT_ENTREGAS_CACHE={pedidos:[],erro:String(e)};}
   renderOcelotBody();
 }
-function entregasFiltro(f){ocelotEntregasFiltro=f;localStorage.setItem('ocelot_ent_filtro',f);OCELOT_ENTREGAS_CACHE=null;renderEntregas();}
+function entregasFiltro(f){ocelotEntregasFiltro=f;ocelotEntregasStatusFiltro=null;localStorage.setItem('ocelot_ent_filtro',f);localStorage.removeItem('ocelot_ent_status');OCELOT_ENTREGAS_CACHE=null;renderEntregas();}
+function entregasFiltroPronto(){ocelotEntregasFiltro='a_entregar';ocelotEntregasStatusFiltro='ready_to_ship';localStorage.setItem('ocelot_ent_filtro','a_entregar');localStorage.setItem('ocelot_ent_status','ready_to_ship');OCELOT_ENTREGAS_CACHE=null;renderEntregas();}
 function entFiltroBtn(k,label){
-  const on=ocelotEntregasFiltro===k;
+  const on=ocelotEntregasFiltro===k&&!ocelotEntregasStatusFiltro;
   return '<button onclick="entregasFiltro(\''+k+'\')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px;font-size:13px">'+label+'</button>';
+}
+function entProntoBtn(){
+  const on=ocelotEntregasStatusFiltro==='ready_to_ship';
+  return '<button onclick="entregasFiltroPronto()" style="padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#0891b2':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px;font-size:13px">Pronto p/ agência</button>';
 }
 function toggleEntregaCard(cls){
   const els=document.querySelectorAll('.'+cls);
@@ -421,10 +427,11 @@ function dtf2(s){
 }
 function htmlOcelotEntregas(){
   const D=OCELOT_ENTREGAS_CACHE;
-  let h='<div style="margin-bottom:16px">'+entFiltroBtn('a_entregar','A entregar')+entFiltroBtn('entregue','Já entregue')+'</div>';
+  let h='<div style="margin-bottom:16px">'+entFiltroBtn('a_entregar','A entregar')+entProntoBtn()+entFiltroBtn('entregue','Já entregue')+'</div>';
   if(!D)return h+'<div class="empty">Sem dados.</div>';
-  const pedidos=D.pedidos||[];
-  if(!pedidos.length)return h+'<div class="empty">Nenhum pedido nesta lista.</div>';
+  let pedidos=D.pedidos||[];
+  if(ocelotEntregasStatusFiltro)pedidos=pedidos.filter(function(p){return (p.shipping_status||'pending')===ocelotEntregasStatusFiltro;});
+  if(!pedidos.length)return h+'<div class="empty">'+(ocelotEntregasStatusFiltro?'Nenhum pedido pronto para levar na agência agora.':'Nenhum pedido nesta lista.')+'</div>';
   for(let pi=0;pi<pedidos.length;pi++){
     const p=pedidos[pi];
     const cls='ent_'+pi;

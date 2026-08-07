@@ -35,6 +35,7 @@
   table{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:6px;table-layout:fixed}
   th.m,td.m{width:240px;white-space:normal;word-break:break-word}
   th,td{border:1px solid var(--line);padding:7px 12px;text-align:right;white-space:nowrap;vertical-align:top}
+  td.ped,th.ped{white-space:normal;word-break:break-all}
   th{background:#f5f7fb;font-weight:600;color:#334155}
   th.m,td.m{text-align:left;background:#fafbfd;font-weight:600}
   td.sub2,th.sub2{color:var(--muted);font-weight:500;padding-left:24px}
@@ -719,7 +720,7 @@ function htmlOcelotVendas(){
     const qtdColuna=multi?p.itens.reduce(function(s,x){return s+Number(x.quantidade||0);},0):p.itens[0].quantidade;
     const custoUnitColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':custoUnitCell(p.itens[0]);
     const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td>'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+custoUnitColuna+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td class="ped">'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+custoUnitColuna+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];

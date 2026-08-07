@@ -625,6 +625,7 @@ function htmlOcelotVendas(){
   const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
   const dtf=function(v){return new Date(v).toLocaleDateString('pt-BR');};
+  function tituloLink(txt,permalink){return permalink?('<a href="'+permalink+'" target="_blank" rel="noopener" style="color:inherit">'+txt+'</a>'):txt;}
   let filtrados=D.pedidos;
   const ocelotCatsAtivas=Object.keys(ocelotFiltroCats).filter(function(k){return ocelotFiltroCats[k];});
   if(ocelotCatsAtivas.length===0){
@@ -684,7 +685,7 @@ function htmlOcelotVendas(){
     const seta=ativo?(ocelotSortDir==='asc'?' ▲':' ▼'):'';
     return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotSortChange(\''+campo+'\')" style="cursor:pointer;user-select:none'+(ativo?';color:var(--accent)':'')+'">'+label+seta+'</th>';
   }
-  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+'<th>Pagamento</th>'+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+'<th>Qtd</th><th>Custo unit.</th>'+thSort('cmv','CMV')+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
+  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+'<th>MLB</th><th>Pagamento</th>'+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+'<th>Qtd</th><th>Custo unit.</th>'+thSort('cmv','CMV')+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
   function formaPagLabel(fp,parc){
     const map={credit_card:'Cartão crédito',debit_card:'Cartão débito',account_money:'Saldo ML',bank_transfer:'Pix/Transf.',ticket:'Boleto',digital_currency:'Moeda digital',prepaid_card:'Pré-pago'};
     const lbl=map[fp]||fp||'—';
@@ -715,18 +716,20 @@ function htmlOcelotVendas(){
     const multi=p.itens.length>1;
     const margem=p.valor_liquido>0?(p.resultado/p.valor_liquido*100):null;
     const cls='ped_'+p.order_id;
-    const titulo=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
+    const tituloTxt=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
+    const titulo=(!p.is_carrinho&&!multi)?tituloLink(tituloTxt,p.itens[0].permalink):tituloTxt;
+    const mlbColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':p.itens[0].item_id;
     const origem=multi?'':statusPill(p.itens[0].cmv_origem,p.status);
     const qtdColuna=multi?p.itens.reduce(function(s,x){return s+Number(x.quantidade||0);},0):p.itens[0].quantidade;
     const custoUnitColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':custoUnitCell(p.itens[0]);
     const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td class="ped">'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+custoUnitColuna+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td class="ped">'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+mlbColuna+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+custoUnitColuna+'</td><td>'+cmvColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
         const temBk=it.imposto_valor!=null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+(it.titulo||it.item_id)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+custoUnitCell(it)+'</td><td>'+cmvCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+tituloLink(it.titulo||it.item_id,it.permalink)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td class="sub2">'+it.item_id+'</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+custoUnitCell(it)+'</td><td>'+cmvCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }

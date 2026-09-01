@@ -385,7 +385,7 @@ async function salvarCusto(btn){
 }
 
 let ocelotSub=(function(){var s=localStorage.getItem('ocelot_sub');return (s==='entregas'||s==='fornecedores')?'config':(s||'vendas');})();let OCELOT_CACHE=null;
-let OCELOT_ENTREGAS_CACHE=null;let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
+let OCELOT_ENTREGAS_CACHE=null;let OCELOT_DRE_CACHE=null;let ocelotDreMes=null;const OCELOT_CONTA_ID='30fa53d4-60c0-40f6-9832-63b4cb313797';let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
 let ocelotEntregasStatusFiltro=(localStorage.getItem('ocelot_ent_status')||null);
 const ENT_STATUS_LABEL={pending:'Aguardando (fabricação/pagamento)',ready_to_ship:'Pronto para envio',shipped:'A caminho',delivered:'Entregue',not_delivered:'Tentativa de entrega falhou',cancelled:'Cancelado'};
 const ENT_STATUS_COR={pending:'#f59e0b',ready_to_ship:'#0891b2',shipped:'#1F4E79',delivered:'#16a34a',not_delivered:'#dc2626',cancelled:'#94a3b8'};
@@ -517,8 +517,99 @@ async function renderFornecedores(){
   }catch(e){}
   renderOcelotBody();
 }
+async function renderOcelotDre(){
+  const app=document.getElementById('app');
+  if(!OCELOT_DRE_CACHE)app.innerHTML='<div class="empty">Carregando DRE da Ocelot…</div>';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dre',{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({conta_id:OCELOT_CONTA_ID})});
+    if(r.status===401){mostrarLogin();return;}
+    OCELOT_DRE_CACHE=await r.json();
+    const ms=OCELOT_DRE_CACHE.meses||[];
+    if((!ocelotDreMes||ms.indexOf(ocelotDreMes)<0)&&ms.length)ocelotDreMes=ms[0];
+  }catch(e){OCELOT_DRE_CACHE={erro:String(e),dres:[],meses:[]};}
+  renderOcelotBody();
+}
+function dreMesSel(m){ocelotDreMes=m;renderOcelotBody();}
+function dreBRL(v){v=Number(v||0);return (v<0?'-':'')+'R$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function drePct(v){return (v===null||v===undefined)?'--':String(Number(v).toFixed(1)).replace('.',',')+'%';}
+function dreMesLabel(m){const M=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];const p=String(m).split('-');return M[parseInt(p[1],10)-1]+'/'+p[0];}
+function dreLinha(rot,val,base,tipo){
+  const pct=(base&&Number(base)!==0)?String((Number(val)/Number(base)*100).toFixed(1)).replace('.',',')+'%':'';
+  let st='padding:7px 10px;border-bottom:1px solid var(--line);';
+  let sv=st+'text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;';
+  if(tipo==='total'){st+='font-weight:700;background:#eef4fa;';sv+='font-weight:700;background:#eef4fa;';}
+  else if(tipo==='sub'){st+='padding-left:30px;color:#666;font-size:13px;';sv+='color:#666;font-size:13px;';}
+  else if(tipo==='final'){st+='font-weight:700;background:#1F4E79;color:#fff;';sv+='font-weight:700;background:#1F4E79;color:#fff;';}
+  const cor=(tipo!=='final'&&Number(val)<0)?'color:#dc2626;':'';
+  return '<tr><td style="'+st+'">'+rot+'</td><td style="'+sv+cor+'">'+dreBRL(val)+'</td><td style="'+sv+'">'+pct+'</td></tr>';
+}
+function dreCard(rot,val,sub,cor){
+  return '<div style="flex:1;min-width:180px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff"><div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:.4px">'+rot+'</div><div style="font-size:22px;font-weight:700;margin-top:4px;'+(cor||'')+'">'+val+'</div><div style="font-size:12px;color:#888;margin-top:2px">'+(sub||'')+'</div></div>';
+}
+function htmlOcelotDre(){
+  const c=OCELOT_DRE_CACHE||{};
+  if(c.erro)return '<div class="empty">Erro ao carregar a DRE.<br>'+c.erro+'</div>';
+  const dres=c.dres||[];
+  if(!dres.length)return '<div class="empty">Nenhum mes com venda encontrado.</div>';
+  let d=null;
+  for(let i=0;i<dres.length;i++){if(dres[i].mes===ocelotDreMes){d=dres[i];break;}}
+  if(!d)d=dres[0];
+  const o=d.operacao,rc=d.receita_ocelot,cu=d.custos,rs=d.resultado,pr=d.parametros,cn=d.conciliacao,q=d.qualidade;
+  const base=o.faturamento_efetivo;
+  let h='<div style="margin-bottom:14px">';
+  (c.meses||[]).forEach(function(m){
+    const on=(m===d.mes);
+    h+='<button onclick="dreMesSel(\''+m+'\')" style="padding:6px 13px;margin:0 6px 6px 0;border-radius:6px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer">'+dreMesLabel(m)+'</button>';
+  });
+  h+='</div>';
+  if(d.mes_em_curso)h+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px"><b>Mes em curso.</b> Os numeros ainda vao mudar ate o fechamento.</div>';
+  if(!pr.tem_parametro)h+='<div style="background:#fee2e2;border:1px solid #dc2626;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px"><b>Sem parametros cadastrados para este mes.</b> A DRE esta usando os valores padrao (imposto 4,5% / gestao 5,5% / ads 5% / fixo R$ 800). Cadastre em Custos &amp; parametros.</div>';
+  h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">';
+  h+=dreCard('Faturamento efetivo',dreBRL(base),o.pedidos+' pedidos · ticket '+dreBRL(o.ticket_medio),'');
+  h+=dreCard('Receita retida pela Ocelot',dreBRL(rc.total),'taxa de gestao '+dreBRL(rc.taxa_gestao),'');
+  h+=dreCard('Resultado da Ocelot',dreBRL(rs.valor),drePct(rs.pct_sobre_receita)+' da receita retida',Number(rs.valor)<0?'color:#dc2626':'color:#16a34a');
+  h+=dreCard('Repasse ao fornecedor',dreBRL(o.repasse_fornecedor),'CMV residual',''); 
+  h+='</div>';
+  h+='<table style="width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px">';
+  h+='<tr><th style="text-align:left;padding:9px 10px;background:#f6f8fa;border-bottom:2px solid var(--line)">OPERACAO NO MERCADO LIVRE</th><th style="text-align:right;padding:9px 10px;background:#f6f8fa;border-bottom:2px solid var(--line);width:150px">Valor</th><th style="text-align:right;padding:9px 10px;background:#f6f8fa;border-bottom:2px solid var(--line);width:80px">%</th></tr>';
+  h+=dreLinha('Faturamento bruto',o.faturamento_bruto,null,'');
+  h+=dreLinha('(-) Devolucoes',-o.devolucoes,null,'');
+  h+=dreLinha('= Faturamento efetivo',base,base,'total');
+  h+=dreLinha('(-) Taxa Mercado Livre (repassada)',-o.taxa_ml,base,'');
+  h+=dreLinha('(-) Frete do vendedor (repassado)',-o.frete_vendedor,base,'');
+  h+=dreLinha('= Valor liquido recebido',o.valor_liquido,base,'total');
+  h+=dreLinha('(-) Repasse ao fornecedor',-o.repasse_fornecedor,base,'');
+  h+=dreLinha('= RECEITA RETIDA PELA OCELOT',rc.total,base,'total');
+  h+=dreLinha('Taxa de gestao ('+drePct(pr.gestao_pct)+')',rc.taxa_gestao,base,'sub');
+  h+=dreLinha('Retencao de imposto ('+drePct(pr.imposto_pct)+')',rc.ret_imposto,base,'sub');
+  h+=dreLinha('Retencao de ads ('+drePct(pr.ads_pct)+')',rc.ret_ads,base,'sub');
+  h+=dreLinha('Retencao de custo fixo ('+drePct(pr.fixo_pct)+')',rc.ret_custo_fixo,base,'sub');
+  if(Math.abs(Number(rc.efeito_piso_teto))>=0.01)h+=dreLinha('Efeito piso/teto do CMV',rc.efeito_piso_teto,base,'sub');
+  h+='<tr><th colspan="3" style="text-align:left;padding:9px 10px;background:#f6f8fa;border-top:2px solid var(--line);border-bottom:2px solid var(--line)">CUSTOS DA OCELOT</th></tr>';
+  h+=dreLinha('(-) Imposto',-cu.imposto,base,'');
+  h+=dreLinha('(-) Ads real (fatura ML)',-cu.ads_real,base,'');
+  h+=dreLinha('(-) Custo fixo',-cu.custo_fixo,base,'');
+  h+=dreLinha('(-) Tarifas ML nao repassadas',-cu.tarifas_nao_repassadas,base,'');
+  (cu.detalhe||[]).forEach(function(x){h+=dreLinha(x.categoria+' ('+x.lancamentos+')',-x.valor,base,'sub');});
+  h+=dreLinha('= RESULTADO DA OCELOT',rs.valor,base,'final');
+  h+='</table>';
+  h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">';
+  h+='<div style="flex:1;min-width:290px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff"><div style="font-weight:700;margin-bottom:8px">Onde o resultado se forma</div><div style="font-size:13px;line-height:1.8">Taxa de gestao: <b>'+dreBRL(rc.taxa_gestao)+'</b><br>Sobra/falta em ads: <b style="'+(Number(rs.gap_ads)<0?'color:#dc2626':'color:#16a34a')+'">'+dreBRL(rs.gap_ads)+'</b><br>Sobra/falta no custo fixo: <b style="'+(Number(rs.gap_fixo)<0?'color:#dc2626':'color:#16a34a')+'">'+dreBRL(rs.gap_fixo)+'</b><br>Tarifas nao repassadas: <b style="color:#dc2626">'+dreBRL(-cu.tarifas_nao_repassadas)+'</b><hr style="border:0;border-top:1px solid var(--line);margin:8px 0">Resultado: <b>'+dreBRL(rs.valor)+'</b> · '+drePct(rs.pct_sobre_faturamento)+' do faturamento</div></div>';
+  h+='<div style="flex:1;min-width:290px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff"><div style="font-weight:700;margin-bottom:8px">Conciliacao com a fatura do ML</div><div style="font-size:13px;line-height:1.8">Taxa ML no sistema: '+dreBRL(cn.taxa_ml_sistema)+'<br>Taxa ML na fatura: '+dreBRL(cn.taxa_ml_fatura)+'<br>Frete no sistema: '+dreBRL(cn.frete_sistema)+'<br>Frete na fatura (bruto): '+dreBRL(cn.frete_fatura_bruto)+'<br>Parcelamento neutro: '+dreBRL(cn.parcelamento_neutro)+'<br>Fatura total: '+dreBRL(cn.fatura_total)+'</div><div style="font-size:12px;color:#888;margin-top:8px">'+cn.nota+'</div></div>';
+  h+='</div>';
+  h+='<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff;margin-top:12px;font-size:13px"><div style="font-weight:700;margin-bottom:6px">Qualidade do dado</div>CMV: '+q.cmv_residual+' residual · '+q.cmv_cadastrado+' com custo cadastrado · '+q.cmv_piso_teto+' no piso/teto.<br>Origem do % de ads: <b>'+pr.ads_origem+'</b>'+(pr.fechado?' · mes fechado':' · mes aberto');
+  if((q.tarifas_nao_mapeadas||[]).length){
+    h+='<div style="margin-top:8px;color:#b45309"><b>Tarifas do ML sem tratamento definido:</b> ';
+    h+=(q.tarifas_nao_mapeadas||[]).map(function(x){return x.codigo+' ('+dreBRL(x.total)+' — '+x.exemplo+')';}).join(', ');
+    h+='. Estao entrando como custo da Ocelot ate serem classificadas.</div>';
+  }
+  h+='</div>';
+  return h;
+}
 function ocelotSubTab(s){
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);
+  if(s==='dre'){if(OCELOT_DRE_CACHE){renderOcelotBody();}else{renderOcelotDre();}return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
   renderOcelotBody();
@@ -528,14 +619,16 @@ function ocelotSubBtn(k,label){
   return '<button onclick="ocelotSubTab(\''+k+'\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px">'+label+'</button>';
 }
 function renderOcelotBody(){
+  if(ocelotSub==='dre'&&!OCELOT_DRE_CACHE){renderOcelotDre();return;}
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
   const app=document.getElementById('app');
   app.style.maxWidth=ocelotSub==='vendas'?'none':'';
-  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
+  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('dre','DRE mensal')+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
   app.innerHTML=h;
   const body=document.getElementById('ocelotBody');
-  if(ocelotSub==='vendas')body.innerHTML=htmlOcelotVendas();
+  if(ocelotSub==='dre')body.innerHTML=htmlOcelotDre();
+  else if(ocelotSub==='vendas')body.innerHTML=htmlOcelotVendas();
   else if(ocelotSub==='detalhada')body.innerHTML=htmlOcelotDetalhada();
   else if(ocelotSub==='fornecedores')body.innerHTML=htmlOcelotFornecedores();
   else if(ocelotSub==='entregas')body.innerHTML=htmlOcelotEntregas();

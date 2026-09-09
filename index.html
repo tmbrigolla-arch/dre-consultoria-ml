@@ -1244,131 +1244,289 @@ function skuInputCell(a){
 }
 function precoTxt(p){return p==null?'—':('R$ '+cf.format(Number(p)));}
 function statusPt(s){const m={active:'ativo',paused:'pausado',closed:'encerrado',under_review:'em revisão'};return m[s]||s||'—';}
-function linhasAnuncios(k,lista,skuDoGrupo){
-  let h='';
-  for(let i=0;i<lista.length;i++){
-    const a=lista[i];
-    a.sku_atual=(skuDoGrupo!==undefined?skuDoGrupo:(a.sku||''));
-    const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,58))+'</a>'):escH(String(a.titulo||'').slice(0,58));
-    const mlb=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id;
-    h+='<tr class="skl_'+k+'" style="display:none;background:#16233d">'
-      +'<td class="m sub2" style="font-size:11.5px">'+mlb+'</td>'
-      +'<td style="text-align:left;font-size:12px">'+tit+'</td>'
-      +'<td class="n">'+precoTxt(a.preco)+'</td>'
-      +'<td class="n" style="font-size:11.5px;color:var(--muted)">'+statusPt(a.status)+'</td>'
-      +'<td class="n">'+skuInputCell(a)+'</td>'
-      +'<td class="n"></td></tr>';
+/* ============================================================
+   TABELA UNIFICADA DE PRODUTOS (09/09/2026)
+   Antes eram 3 tabelas: "Cadastro de custo por produto (SKU)",
+   "Historico de custos cadastrados" e "Produtos (SKU) e anuncios".
+   Viraram UMA: 1 linha por SKU (mais os anuncios sem SKU no fim).
+   - A coluna "Custo <mes>" e um input que grava direto naquele SKU+mes
+     (campo vazio = apaga o custo e o produto volta pra formula).
+   - O mes vem do seletor no topo, entao da pra corrigir mes fechado.
+   - Clicar na linha abre os anuncios daquele SKU + todos os meses de
+     custo ja cadastrados nele (com botao de apagar).
+   Salvar NAO refaz a tela toda (perderia o scroll): atualiza o cache
+   local, repinta so a linha e recarrega o cache em segundo plano pra
+   pegar o id real da linha nova (ml-ocelot-set nao devolve id).
+   ============================================================ */
+let ocelotCustoMes=(new Date().toISOString().slice(0,7));
+let ocelotSoSemCusto=false;
+let OCELOT_LINHAS={};
+function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
+function ocelotMesSel(){return ocelotCustoMes+'-01';}
+function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
+function ocelotSetCustoMes(v){if(!v)return;ocelotCustoMes=String(v).slice(0,7);renderOcelotBody();}
+function ocelotToggleSemCusto(chk){ocelotSoSemCusto=!!chk.checked;renderOcelotBody();}
+function ocelotCustosDe(l){
+  const custos=(OCELOT_CACHE&&OCELOT_CACHE.custos)||[], out=[];
+  for(let i=0;i<custos.length;i++){
+    const c=custos[i];
+    if(l.tipo==='sku'){if(c.sku&&c.sku===l.chave)out.push(c);}
+    else if(!c.sku&&c.item_id===l.chave)out.push(c);
   }
+  out.sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia));});
+  return out;
+}
+function ocelotRefCustos(l,mes){
+  const lista=ocelotCustosDe(l);
+  let ant=null,atual=null;
+  for(let i=0;i<lista.length;i++){
+    const m=String(lista[i].mes_competencia).slice(0,10);
+    if(m===mes){if(!atual)atual=lista[i];}
+    else if(m<mes&&!ant)ant=lista[i];
+  }
+  return {ant:ant,atual:atual,lista:lista};
+}
+function ocelotLinhasProdutos(){
+  const D=OCELOT_CACHE||{}, skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
+  const mes=ocelotMesSel(), linhas=[], vistos={};
+  for(let i=0;i<skus.length;i++){
+    const s=skus[i];
+    const l={tipo:'sku',chave:s.sku,titulo:s.titulo||'',n:s.n_mlbs||0,ativos:s.ativos,unid:s.unid||0,pmin:s.preco_min,pmax:s.preco_max,anuncios:s.anuncios||[]};
+    const r=ocelotRefCustos(l,mes); l.ant=r.ant; l.atual=r.atual; linhas.push(l);
+  }
+  for(let i=0;i<semSku.length;i++){
+    const x=semSku[i]; vistos[x.item_id]=1;
+    const l={tipo:'mlb',chave:x.item_id,titulo:x.titulo||'',n:1,unid:x.unid||0,pmin:x.preco,pmax:x.preco,permalink:x.permalink,status:x.status,anuncios:[]};
+    const r=ocelotRefCustos(l,mes); l.ant=r.ant; l.atual=r.atual; linhas.push(l);
+  }
+  for(let i=0;i<custos.length;i++){
+    const c=custos[i];
+    if(c.sku||!c.item_id||vistos[c.item_id])continue;
+    vistos[c.item_id]=1;
+    const l={tipo:'mlb',chave:c.item_id,titulo:'',n:1,unid:0,pmin:null,pmax:null,anuncios:[]};
+    const r=ocelotRefCustos(l,mes); l.ant=r.ant; l.atual=r.atual; linhas.push(l);
+  }
+  linhas.sort(function(a,b){
+    if(a.tipo!==b.tipo)return a.tipo==='sku'?-1:1;
+    return (b.unid||0)-(a.unid||0)||String(a.chave).localeCompare(String(b.chave));
+  });
+  for(let i=0;i<linhas.length;i++)linhas[i].k='p'+i;
+  return linhas;
+}
+function htmlUltimoCusto(l){
+  if(!l.ant)return '<span style="color:var(--muted)">&mdash;</span>';
+  let s='R$ '+cf.format(l.ant.custo_unitario)+' <span style="color:var(--muted);font-size:11px">'+mesBr(l.ant.mes_competencia)+'</span>';
+  if(!l.atual)s+=' <button onclick="event.stopPropagation();aplicarCustoRef(\''+l.k+'\')" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:4px">Repetir</button>';
+  return s;
+}
+function htmlHistoricoLinha(l){
+  const lista=ocelotCustosDe(l);
+  if(!lista.length)return '<div style="font-size:12px;color:var(--muted)">Nenhum custo cadastrado at&eacute; agora.</div>';
+  let h='<table style="width:100%;max-width:640px;border-collapse:collapse;font-size:12px">';
+  h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">M&ecirc;s</th><th style="text-align:right;padding:3px 6px">Custo</th><th style="text-align:left;padding:3px 6px">Observa&ccedil;&atilde;o</th><th></th></tr>';
+  for(let i=0;i<lista.length;i++){
+    const c=lista[i];
+    h+='<tr><td style="padding:3px 6px">'+mesBr(c.mes_competencia)+(c.conferir?' <span style="font-size:10px;background:#a16207;color:#fff;padding:1px 5px;border-radius:4px">conferir</span>':'')+'</td>'
+      +'<td style="padding:3px 6px;text-align:right">R$ '+cf.format(c.custo_unitario)+'</td>'
+      +'<td style="padding:3px 6px;color:var(--muted)">'+escH(c.observacao||'—')+'</td>'
+      +'<td style="padding:3px 6px;text-align:right">'+(c.id?('<button onclick="event.stopPropagation();apagarCustoHist(\''+l.k+'\',\''+c.id+'\')" title="Apagar" style="background:transparent;border:1px solid var(--line);color:#f87171;padding:1px 7px;border-radius:6px;cursor:pointer">&times;</button>'):'')+'</td></tr>';
+  }
+  return h+'</table>';
+}
+function htmlExpansaoLinha(l){
+  let h='';
+  if(l.tipo==='sku'){
+    const an=l.anuncios||[];
+    h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncios com este SKU ('+an.length+')</div>';
+    if(!an.length)h+='<div style="font-size:12px;color:var(--muted)">Nenhum an&uacute;ncio na &uacute;ltima coleta.</div>';
+    else{
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+      h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">MLB</th><th style="text-align:left;padding:3px 6px">An&uacute;ncio</th><th style="text-align:right;padding:3px 6px">Pre&ccedil;o</th><th style="text-align:right;padding:3px 6px">Situa&ccedil;&atilde;o</th><th style="text-align:right;padding:3px 6px">SKU no ML</th></tr>';
+      for(let i=0;i<an.length;i++){
+        const a=an[i]; a.sku_atual=l.chave;
+        const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,60))+'</a>'):escH(String(a.titulo||'').slice(0,60));
+        const mlb=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id;
+        h+='<tr><td style="padding:3px 6px;font-size:11.5px">'+mlb+'</td><td style="padding:3px 6px">'+tit+'</td>'
+          +'<td style="padding:3px 6px;text-align:right">'+precoTxt(a.preco)+'</td>'
+          +'<td style="padding:3px 6px;text-align:right;color:var(--muted);font-size:11.5px">'+statusPt(a.status)+'</td>'
+          +'<td style="padding:3px 6px;text-align:right">'+skuInputCell(a)+'</td></tr>';
+      }
+      h+='</table>';
+    }
+  }else{
+    const a={item_id:l.chave,sku_atual:''};
+    h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncio sem SKU no Mercado Livre</div>';
+    h+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preencher o SKU aqui grava no an&uacute;ncio do ML; na pr&oacute;xima coleta ele passa a usar o custo do produto e some desta lista.</div>';
+    h+='<div style="display:flex;gap:8px;align-items:center;font-size:12px">SKU: '+skuInputCell(a)+'</div>';
+  }
+  h+='<div style="font-size:12.5px;font-weight:600;margin:12px 0 4px">Custos cadastrados por m&ecirc;s</div>';
+  h+='<div id="chist_'+l.k+'">'+htmlHistoricoLinha(l)+'</div>';
   return h;
 }
-function htmlOcelotCatalogo(){
-  const D=OCELOT_CACHE; if(!D)return '';
-  const skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
-  const mesAtual=new Date().toISOString().slice(0,7)+'-01';
-  const custoSku={}, custoMlb={};
-  for(let i=0;i<custos.length;i++){const c=custos[i];if(String(c.mes_competencia)!==mesAtual)continue;if(c.sku)custoSku[c.sku]=c.custo_unitario;else if(c.item_id)custoMlb[c.item_id]=c.custo_unitario;}
+function htmlOcelotProdutos(){
+  const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
+  const mes=ocelotMesSel(), linhas=ocelotLinhasProdutos();
+  OCELOT_LINHAS={};
+  let comCusto=0,repetir=0,semNada=0;
+  for(let i=0;i<linhas.length;i++){
+    const l=linhas[i]; OCELOT_LINHAS[l.k]=l;
+    if(l.atual)comCusto++;else if(l.ant)repetir++;else semNada++;
+  }
   let h='<div class="cli">';
-  h+='<h2>Produtos (SKU) e anúncios</h2>';
-  h+='<div class="sub">Clique no SKU para abrir os anúncios daquele produto. O campo SKU é editável e <b>grava no anúncio do Mercado Livre</b> (com registro do valor anterior).'+(D.itens_periodo?(' Preço e situação da coleta de '+String(D.itens_periodo).split('-').reverse().join('/')+'.'):'')+'</div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU</th><th style="text-align:left">Produto</th><th class="n">Anúncios</th><th class="n">Un. vendidas</th><th class="n">Preço no ML</th><th class="n">Custo do mês</th></tr></thead><tbody>';
-  for(let i=0;i<skus.length;i++){
-    const s=skus[i], k='s'+i;
-    const faixa=(s.preco_min==null)?'—':((s.preco_min===s.preco_max)?precoTxt(s.preco_min):(precoTxt(s.preco_min)+' a '+precoTxt(s.preco_max)));
-    const cst=custoSku[s.sku]!=null?('R$ '+cf.format(custoSku[s.sku])):'<span style="color:var(--muted)">—</span>';
-    h+='<tr style="cursor:pointer" onclick="toggleSkuLinhas(\''+k+'\')">'
-      +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">&#9656;</span> <b>'+escH(s.sku)+'</b></td>'
-      +'<td style="text-align:left">'+escH(String(s.titulo||'').slice(0,52))+'</td>'
-      +'<td class="n">'+s.n_mlbs+(s.ativos<s.n_mlbs?('<span style="color:var(--muted);font-size:11px"> ('+s.ativos+' ativos)</span>'):'')+'</td>'
-      +'<td class="n">'+s.unid+'</td>'
+  h+='<h2>Produtos (SKU), custo e an&uacute;ncios</h2>';
+  h+='<div class="sub">Uma linha por produto. O custo &eacute; por <b>SKU</b> e vale para <b>todos os an&uacute;ncios daquele SKU</b> no m&ecirc;s escolhido &mdash; digite na coluna do m&ecirc;s para cadastrar, apague o campo para o produto voltar &agrave; f&oacute;rmula. Clique na linha para ver os an&uacute;ncios e o hist&oacute;rico de custos.'+(D.itens_periodo?(' Pre&ccedil;o e situa&ccedil;&atilde;o da coleta de '+String(D.itens_periodo).split('-').reverse().join('/')+'.'):'')+'</div>';
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0">';
+  h+='<label style="font-size:12px">M&ecirc;s de compet&ecirc;ncia<br><input type="month" value="'+ocelotCustoMes+'" onchange="ocelotSetCustoMes(this.value)" style="width:158px"></label>';
+  h+='<div><button id="btnAplicarCustoRef" onclick="aplicarTodosCustoRef()"'+(repetir?'':' disabled style="display:none"')+' style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Repetir '+repetir+' custo(s) do m&ecirc;s anterior em '+mesBr(mes)+'</button> <span id="stAplicarCustoRef" style="font-size:12px;color:var(--muted)"></span></div>';
+  h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
+  h+='</div>';
+  h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / an&uacute;ncio</th><th style="text-align:left">Produto</th><th class="n">An&uacute;ncios</th><th class="n">Un. vendidas</th><th class="n">Pre&ccedil;o no ML</th><th class="n">Custo '+mesBr(mes)+'</th><th class="n">&Uacute;ltimo custo antes</th></tr></thead><tbody>';
+  let mostradas=0;
+  for(let i=0;i<linhas.length;i++){
+    const l=linhas[i], k=l.k;
+    if(ocelotSoSemCusto&&l.atual)continue;
+    mostradas++;
+    const selo=(l.tipo==='mlb')?' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>':'';
+    const tit=(l.tipo==='mlb'&&l.permalink)?('<a href="'+l.permalink+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit">'+escH(String(l.titulo).slice(0,58))+'</a>'):escH(String(l.titulo).slice(0,58));
+    const faixa=(l.pmin==null)?'<span style="color:var(--muted)">&mdash;</span>':((l.pmin===l.pmax)?precoTxt(l.pmin):(precoTxt(l.pmin)+' a '+precoTxt(l.pmax)));
+    const nAn=l.n+((l.ativos!=null&&l.ativos<l.n)?('<span style="color:var(--muted);font-size:11px"> ('+l.ativos+' ativos)</span>'):'');
+    const inp='<input id="ci_'+k+'" type="number" step="0.01" value="'+(l.atual?Number(l.atual.custo_unitario).toFixed(2):'')+'" placeholder="&mdash;" onclick="event.stopPropagation()" onchange="salvarCustoLinha(\''+k+'\')" style="width:92px;text-align:right'+(l.atual?';border-color:#34d399':'')+'">'
+      +'<div id="cst_'+k+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
+    h+='<tr style="cursor:pointer'+((!l.ant&&!l.atual&&!l.unid)?';opacity:.6':'')+'" onclick="toggleSkuLinhas(\''+k+'\')">'
+      +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">&#9656;</span> <b>'+escH(l.chave)+'</b>'+selo+'</td>'
+      +'<td style="text-align:left">'+(tit||'<span style="color:var(--muted)">&mdash;</span>')+'</td>'
+      +'<td class="n">'+nAn+'</td>'
+      +'<td class="n">'+l.unid+'</td>'
       +'<td class="n">'+faixa+'</td>'
-      +'<td class="n">'+cst+'</td></tr>';
-    h+=linhasAnuncios(k,s.anuncios||[],s.sku);
+      +'<td class="n">'+inp+'</td>'
+      +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td></tr>';
+    h+='<tr class="skl_'+k+'" style="display:none"><td colspan="7" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
+  if(!mostradas)h+='<tr><td class="m" colspan="7" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';
   h+='</tbody></table></div>';
-  if(semSku.length){
-    h+='<h3 style="margin:18px 0 4px;font-size:14px">Anúncios sem SKU ('+semSku.length+' com venda)</h3>';
-    h+='<div class="sub">Sem SKU o custo precisa ser cadastrado anúncio por anúncio. Preencha o SKU aqui e o anúncio passa a usar o cadastro por produto.</div>';
-    h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">MLB</th><th style="text-align:left">Produto</th><th class="n">Preço no ML</th><th class="n">Situação</th><th class="n">SKU</th><th class="n">Un. vendidas</th></tr></thead><tbody>';
-    for(let i=0;i<semSku.length;i++){
-      const a=semSku[i]; a.sku_atual='';
-      const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,58))+'</a>'):escH(String(a.titulo||'').slice(0,58));
-      h+='<tr><td class="m" style="font-size:11.5px">'+(a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id)+'</td>'
-        +'<td style="text-align:left;font-size:12px">'+tit+'</td>'
-        +'<td class="n">'+precoTxt(a.preco)+'</td>'
-        +'<td class="n" style="font-size:11.5px;color:var(--muted)">'+statusPt(a.status)+'</td>'
-        +'<td class="n">'+skuInputCell(a)+'</td>'
-        +'<td class="n">'+a.unid+'</td></tr>';
-    }
-    h+='</tbody></table></div>';
-  }
   h+='</div>';
   return h;
 }
-function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
-function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
-function ocelotRefCustos(){
-  const D=OCELOT_CACHE||{}, custos=D.custos||[], mesAtual=ocelotMesAtual(), map={};
-  for(let i=0;i<custos.length;i++){
-    const c=custos[i], k=c.sku?('sku:'+c.sku):('mlb:'+c.item_id);
-    (map[k]=map[k]||[]).push(c);
-  }
-  const out={}, ks=Object.keys(map);
-  for(let i=0;i<ks.length;i++){
-    const lista=map[ks[i]].slice().sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia));});
-    let ant=null, atual=null;
-    for(let j=0;j<lista.length;j++){
-      const m=String(lista[j].mes_competencia).slice(0,10);
-      if(m===mesAtual){if(!atual)atual=lista[j];}
-      else if(m<mesAtual&&!ant)ant=lista[j];
-    }
-    out[ks[i]]={ant:ant,atual:atual};
-  }
-  return out;
+function ocelotMsgSt(el,txt,cor){
+  if(!el)return;
+  el.textContent=txt; el.style.color=cor||'var(--muted)';
+  if(txt==='salvo'||txt==='apagado')setTimeout(function(){if(el.textContent===txt)el.textContent='';},3000);
 }
-function htmlOcelotCustoRef(){
-  const D=OCELOT_CACHE||{}, skus=D.skus||[], semSku=D.itens_sem_sku||[];
-  const mesAtual=ocelotMesAtual(), ref=ocelotRefCustos();
-  const infoSem={};
-  for(let i=0;i<semSku.length;i++)infoSem[semSku[i].item_id]=semSku[i];
-  const linhas=[];
-  for(let i=0;i<skus.length;i++){
-    const s=skus[i], r=ref['sku:'+s.sku]||{};
-    linhas.push({tipo:'sku',chave:s.sku,titulo:s.titulo||'',n:s.n_mlbs||0,ant:r.ant||null,atual:r.atual||null});
+function ocelotAtualizaContadores(){
+  const mes=ocelotMesSel(); let a=0,b=0,c=0,n=0;
+  for(const k in OCELOT_LINHAS){
+    const l=OCELOT_LINHAS[k], r=ocelotRefCustos(l,mes);
+    l.ant=r.ant; l.atual=r.atual; n++;
+    if(r.atual)a++;else if(r.ant)b++;else c++;
   }
-  const ks=Object.keys(ref);
-  for(let i=0;i<ks.length;i++){
-    if(ks[i].slice(0,4)!=='mlb:')continue;
-    const id=ks[i].slice(4), inf=infoSem[id]||{}, r=ref[ks[i]];
-    linhas.push({tipo:'mlb',chave:id,titulo:inf.titulo||'',n:1,ant:r.ant||null,atual:r.atual||null});
+  const el=document.getElementById('ocContadores');
+  if(el)el.innerHTML=a+' com custo em '+mesBr(mes)+' &middot; '+b+' com custo em m&ecirc;s anterior &middot; '+c+' sem custo nenhum &middot; '+n+' linhas.';
+  const btn=document.getElementById('btnAplicarCustoRef');
+  if(btn){
+    if(b){btn.style.display='';btn.disabled=false;btn.innerHTML='Repetir '+b+' custo(s) do m&ecirc;s anterior em '+mesBr(mes);}
+    else btn.style.display='none';
   }
-  linhas.sort(function(a,b){
-    const ga=(a.ant&&!a.atual)?0:(a.atual?1:2), gb=(b.ant&&!b.atual)?0:(b.atual?1:2);
-    return ga-gb||String(a.chave).localeCompare(String(b.chave));
-  });
-  let pend=0,jaTem=0,semNada=0;
-  for(let i=0;i<linhas.length;i++){const l=linhas[i];if(l.atual)jaTem++;else if(l.ant)pend++;else semNada++;}
-  let h='<h3 style="margin:22px 0 4px;font-size:14px">Custo de refer&ecirc;ncia por produto &mdash; 1 linha por SKU</h3>';
-  h+='<div class="sub">&Uacute;ltimo custo cadastrado em m&ecirc;s <b>anterior</b> ao atual. O bot&atilde;o repete esse mesmo custo em '+mesBr(mesAtual)+' &mdash; produto sem custo no m&ecirc;s da venda cai na f&oacute;rmula. <b>'+jaTem+'</b> j&aacute; com custo em '+mesBr(mesAtual)+' &middot; <b>'+pend+'</b> com custo anterior a repetir &middot; <b>'+semNada+'</b> sem custo nenhum.</div>';
-  if(pend)h+='<div style="margin:10px 0"><button id="btnAplicarCustoRef" onclick="aplicarTodosCustoRef()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Repetir os '+pend+' custos no m&ecirc;s '+mesBr(mesAtual)+'</button> <span id="stAplicarCustoRef" style="font-size:12px;color:var(--muted)"></span></div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / an&uacute;ncio</th><th style="text-align:left">Produto</th><th class="n">An&uacute;ncios</th><th class="n">&Uacute;ltimo custo</th><th class="n">M&ecirc;s de origem</th><th class="n">M&ecirc;s '+mesBr(mesAtual)+'</th><th class="n">A&ccedil;&atilde;o</th></tr></thead><tbody>';
-  for(let i=0;i<linhas.length;i++){
-    const l=linhas[i];
-    const chave=(l.tipo==='sku')?escH(l.chave):(escH(l.chave)+' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>');
-    const ult=l.ant?('R$ '+cf.format(l.ant.custo_unitario)):'<span style="color:var(--muted)">&mdash;</span>';
-    const org=l.ant?mesBr(l.ant.mes_competencia):'<span style="color:var(--muted)">&mdash;</span>';
-    const atu=l.atual?('<span style="color:var(--up)">R$ '+cf.format(l.atual.custo_unitario)+'</span>'):'<span style="color:var(--muted)">&mdash;</span>';
-    let acao='<span style="color:var(--muted);font-size:11.5px">'+(l.atual?'j&aacute; cadastrado':'sem custo anterior')+'</span>';
-    if(l.ant&&!l.atual)acao='<button onclick="aplicarCustoRef(\''+l.tipo+'\',\''+escH(l.chave)+'\','+Number(l.ant.custo_unitario)+',\''+String(l.ant.mes_competencia).slice(0,7)+'\')" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11.5px">Repetir</button>';
-    h+='<tr'+((!l.ant&&!l.atual)?' style="opacity:.5"':'')+'><td class="m">'+chave+'</td>'
-      +'<td style="text-align:left">'+escH(String(l.titulo).slice(0,52))+'</td>'
-      +'<td class="n">'+l.n+'</td>'
-      +'<td class="n">'+ult+'</td>'
-      +'<td class="n">'+org+'</td>'
-      +'<td class="n">'+atu+'</td>'
-      +'<td class="n">'+acao+'</td></tr>';
+}
+function ocelotCacheCusto(l,mes,valor,obs){
+  const D=OCELOT_CACHE||{}; D.custos=D.custos||[];
+  for(let i=0;i<D.custos.length;i++){
+    const c=D.custos[i];
+    const bate=(l.tipo==='sku')?(c.sku===l.chave):(!c.sku&&c.item_id===l.chave);
+    if(bate&&String(c.mes_competencia).slice(0,10)===mes){
+      if(valor==null){D.custos.splice(i,1);return;}
+      c.custo_unitario=valor; c.observacao=obs; c.conferir=false; c.conflito=null; return;
+    }
   }
-  h+='</tbody></table></div>';
-  return h;
+  if(valor!=null)D.custos.push({id:null,sku:(l.tipo==='sku')?l.chave:null,item_id:(l.tipo==='sku')?null:l.chave,mes_competencia:mes,custo_unitario:valor,observacao:obs,conferir:false});
+}
+async function ocelotRecarregaCache(){
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const qs=(ocelotMesFiltro?('?mes='+ocelotMesFiltro):('?dias=30'));
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados'+qs,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(!r.ok)return false;
+    const j=await r.json();
+    if(j&&j.custos){OCELOT_CACHE=j;return true;}
+  }catch(e){}
+  return false;
+}
+function ocelotRepintaLinha(k){
+  const l=OCELOT_LINHAS[k]; if(!l)return;
+  const r=ocelotRefCustos(l,ocelotMesSel());
+  l.ant=r.ant; l.atual=r.atual;
+  const inp=document.getElementById('ci_'+k);
+  if(inp){inp.value=l.atual?Number(l.atual.custo_unitario).toFixed(2):'';inp.style.borderColor=l.atual?'#34d399':'';}
+  const u=document.getElementById('cult_'+k); if(u)u.innerHTML=htmlUltimoCusto(l);
+  const hi=document.getElementById('chist_'+k); if(hi)hi.innerHTML=htmlHistoricoLinha(l);
+}
+async function salvarCustoLinha(k,obs){
+  const l=OCELOT_LINHAS[k]; if(!l)return;
+  const inp=document.getElementById('ci_'+k), st=document.getElementById('cst_'+k), mes=ocelotMesSel();
+  const bruto=String(inp?inp.value:'').trim().replace(',','.');
+  const atual=l.atual;
+  if(bruto===''){
+    if(!atual)return;
+    if(!confirm('Apagar o custo de '+mesBr(mes)+' em '+l.chave+'?\n\nSem custo cadastrado o produto volta para a fórmula neste mês.')){if(inp)inp.value=Number(atual.custo_unitario).toFixed(2);return;}
+    let id=atual.id;
+    if(!id){await ocelotRecarregaCache();const rr=ocelotRefCustos(l,mes);id=rr.atual?rr.atual.id:null;}
+    if(!id){ocelotMsgSt(st,'não achei o registro — atualize a tela','#fbbf24');return;}
+    ocelotMsgSt(st,'apagando…');
+    if(await ocelotSetCusto({tipo:'custo_apagar',id:id})){
+      ocelotCacheCusto(l,mes,null,null); ocelotRepintaLinha(k); ocelotAtualizaContadores(); ocelotMsgSt(st,'apagado','#fbbf24');
+    }else ocelotMsgSt(st,'');
+    return;
+  }
+  const v=Number(bruto);
+  if(!(v>0)){alert('Custo inválido.');if(inp)inp.value=atual?Number(atual.custo_unitario).toFixed(2):'';return;}
+  if(atual&&Number(atual.custo_unitario)===v)return;
+  ocelotMsgSt(st,'salvando…');
+  const p={tipo:'custo',mes_competencia:mes,custo_unitario:v,observacao:obs||'cadastrado na tela de produtos'};
+  if(l.tipo==='sku')p.sku=l.chave;else p.item_id=l.chave;
+  if(await ocelotSetCusto(p)){
+    ocelotCacheCusto(l,mes,v,p.observacao);
+    ocelotRepintaLinha(k); ocelotAtualizaContadores(); ocelotMsgSt(st,'salvo','#34d399');
+    ocelotRecarregaCache();
+  }else ocelotMsgSt(st,'');
+}
+async function aplicarCustoRef(k){
+  const l=OCELOT_LINHAS[k]; if(!l||!l.ant)return;
+  const inp=document.getElementById('ci_'+k); if(!inp)return;
+  inp.value=Number(l.ant.custo_unitario).toFixed(2);
+  await salvarCustoLinha(k,'repetido do mês '+mesBr(l.ant.mes_competencia));
+}
+async function apagarCustoHist(k,id){
+  if(!confirm('Apagar este custo cadastrado? O produto volta para a fórmula naquele mês.'))return;
+  if(await ocelotSetCusto({tipo:'custo_apagar',id:id})){
+    await ocelotRecarregaCache();
+    ocelotRepintaLinha(k); ocelotAtualizaContadores();
+  }
+}
+async function aplicarTodosCustoRef(){
+  const mes=ocelotMesSel(), pend=[];
+  for(const k in OCELOT_LINHAS){const l=OCELOT_LINHAS[k];if(l.ant&&!l.atual)pend.push(l);}
+  if(!pend.length)return;
+  if(!confirm('Repetir o último custo de '+pend.length+' produto(s) no mês '+mesBr(mes)+'?\n\nCada um vira um cadastro do mês '+mesBr(mes)+', que você pode ajustar ou apagar depois. Os meses anteriores não mudam.'))return;
+  const btn=document.getElementById('btnAplicarCustoRef'), st=document.getElementById('stAplicarCustoRef');
+  if(btn){btn.disabled=true;btn.style.opacity='.6';}
+  const {data:{session}}=await sb.auth.getSession();
+  const tok=session?session.access_token:'';
+  let ok=0,err=0,feito=0;
+  async function um(l){
+    const body={tipo:'custo',mes_competencia:mes,custo_unitario:Number(l.ant.custo_unitario),observacao:'repetido do mês '+mesBr(l.ant.mes_competencia)};
+    if(l.tipo==='sku')body.sku=l.chave;else body.item_id=l.chave;
+    try{
+      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify(body)});
+      let j={};try{j=await r.json();}catch(e){}
+      if(!r.ok||(j&&j.error))err++;else ok++;
+    }catch(e){err++;}
+    feito++; if(st)st.textContent=feito+'/'+pend.length;
+  }
+  for(let i=0;i<pend.length;i+=5)await Promise.all(pend.slice(i,i+5).map(um));
+  if(st)st.textContent='';
+  alert('Custos gravados em '+mesBr(mes)+': '+ok+(err?(' · falhas: '+err):''));
+  await ocelotRecarregaCache();
+  renderOcelotBody();
 }
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
@@ -1414,52 +1572,7 @@ function htmlOcelotConfig(){
     h+='</tbody></table></div></div>';
   }
 
-  h+='<div class="cli">';
-  h+='<h2>Cadastro de custo por produto (SKU)</h2>';
-  h+='<div class="sub">O custo é cadastrado por <b>SKU</b> e vale para <b>todos os anúncios daquele SKU</b> no mês escolhido. Cadastrado aqui = usado direto no lugar da fórmula.</div>';
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:flex-end">';
-  h+='<label style="font-size:12px">Produto (SKU)<br><select id="cs_sku" style="min-width:340px;max-width:100%"><option value="">— escolha o SKU —</option>';
-  for(let i=0;i<skus.length;i++){const s=skus[i];h+='<option value="'+escH(s.sku)+'">'+escH(s.sku)+' — '+escH(String(s.titulo).slice(0,52))+' ('+s.n_mlbs+' anúncio'+(s.n_mlbs>1?'s':'')+' · '+s.unid+' un)</option>';}
-  h+='</select></label>';
-  h+='<label style="font-size:12px">Mês<br><input id="cs_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:158px"></label>';
-  h+='<label style="font-size:12px">Custo R$<br><input id="cs_custo" type="number" step="0.01" style="width:100px"></label>';
-  h+='<label style="font-size:12px">Observação<br><input id="cs_obs" style="width:200px"></label>';
-  h+='<button onclick="salvarCustoSku()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button>';
-  h+='</div>';
-  if(semSku.length){
-    h+='<details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">Anúncio sem SKU no Mercado Livre ('+semSku.length+' com venda) — cadastrar por MLB</summary>';
-    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:flex-end">';
-    h+='<label style="font-size:12px">Anúncio<br><select id="cx_item" style="min-width:340px"><option value="">— escolha o anúncio —</option>';
-    for(let i=0;i<semSku.length;i++){const x=semSku[i];h+='<option value="'+escH(x.item_id)+'">'+escH(x.item_id)+' — '+escH(String(x.titulo).slice(0,52))+' ('+x.unid+' un)</option>';}
-    h+='</select></label>';
-    h+='<label style="font-size:12px">Mês<br><input id="cx_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:158px"></label>';
-    h+='<label style="font-size:12px">Custo R$<br><input id="cx_custo" type="number" step="0.01" style="width:100px"></label>';
-    h+='<label style="font-size:12px">Observação<br><input id="cx_obs" style="width:200px"></label>';
-    h+='<button onclick="salvarCustoMlb()" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button>';
-    h+='</div>';
-    h+='<div class="foot" style="text-align:left">Preencher o campo SKU desses anúncios no Mercado Livre faz eles caírem no cadastro por SKU automaticamente na próxima coleta.</div>';
-    h+='</details>';
-  }
-  h+=htmlOcelotCustoRef();
-  h+='<h3 style="margin:22px 0 4px;font-size:14px">Histórico de custos cadastrados</h3>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / anúncio</th><th style="text-align:left">Produto</th><th class="n">Anúncios</th><th class="n">Mês</th><th class="n">Custo</th><th style="text-align:left">Observação</th><th class="n"></th></tr></thead><tbody>';
-  if(!custos.length)h+='<tr><td class="m" colspan="7" style="text-align:left;color:var(--muted)">Nenhum custo cadastrado ainda.</td></tr>';
-  const ord=custos.slice().sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia))||String(a.sku||a.item_id).localeCompare(String(b.sku||b.item_id));});
-  for(let i=0;i<ord.length;i++){
-    const c=ord[i], inf=infoSku[c.sku]||{};
-    const chave=c.sku?escH(c.sku):(escH(c.item_id)+' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>');
-    h+='<tr><td class="m">'+chave+(c.conferir?' <span style="font-size:10px;background:#a16207;color:#fff;padding:1px 5px;border-radius:4px">conferir</span>':'')+'</td>';
-    h+='<td style="text-align:left">'+escH(String(inf.titulo||'').slice(0,52)||'—')+'</td>';
-    h+='<td class="n">'+(c.sku?(inf.n_mlbs||0):1)+'</td>';
-    h+='<td class="n">'+String(c.mes_competencia).slice(0,7)+'</td>';
-    h+='<td class="n">R$ '+cf.format(c.custo_unitario)+'</td>';
-    h+='<td class="obs" style="text-align:left">'+escH(c.observacao||'—')+'</td>';
-    h+='<td class="n"><button onclick="apagarCustoSku(\''+c.id+'\')" title="Apagar" style="background:transparent;border:1px solid var(--line);color:#f87171;padding:3px 9px;border-radius:6px;cursor:pointer">×</button></td></tr>';
-  }
-  h+='</tbody></table></div>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">'+skus.length+' SKUs no catálogo · '+custos.filter(function(c){return c.sku;}).length+' com custo cadastrado.</div>';
-  h+='</div>';
-  h+=htmlOcelotCatalogo();
+  h+=htmlOcelotProdutos();
   return h;
 }
 async function atualizarOcelot(){
@@ -1490,22 +1603,6 @@ async function ocelotSetCusto(payload){
   if(j&&j.error){alert('Erro ao salvar: '+j.error);return false;}
   return true;
 }
-async function salvarCustoSku(){
-  const sku=document.getElementById('cs_sku').value;
-  const mesv=document.getElementById('cs_mes').value;
-  const custo=document.getElementById('cs_custo').value;
-  const obs=document.getElementById('cs_obs').value;
-  if(!sku||!mesv||custo===''){alert('Escolha o SKU, o mês e o custo.');return;}
-  if(await ocelotSetCusto({tipo:'custo',sku:sku,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs}))renderOcelot();
-}
-async function salvarCustoMlb(){
-  const item=document.getElementById('cx_item').value;
-  const mesv=document.getElementById('cx_mes').value;
-  const custo=document.getElementById('cx_custo').value;
-  const obs=document.getElementById('cx_obs').value;
-  if(!item||!mesv||custo===''){alert('Escolha o anúncio, o mês e o custo.');return;}
-  if(await ocelotSetCusto({tipo:'custo',item_id:item,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs}))renderOcelot();
-}
 async function confirmarCustoSku(id){
   const D=OCELOT_CACHE||{};
   const c=(D.custos||[]).filter(function(x){return String(x.id)===String(id);})[0];
@@ -1517,42 +1614,6 @@ async function confirmarCustoSku(id){
   if(c.sku)payload.sku=c.sku;else payload.item_id=c.item_id;
   if(await ocelotSetCusto(payload))renderOcelot();
 }
-async function aplicarCustoRef(tipo,chave,custo,mesOrig){
-  const p={tipo:'custo',mes_competencia:ocelotMesAtual(),custo_unitario:Number(custo),observacao:'repetido do mês '+mesBr(mesOrig)};
-  if(tipo==='sku')p.sku=chave;else p.item_id=chave;
-  if(await ocelotSetCusto(p))renderOcelot();
-}
-async function aplicarTodosCustoRef(){
-  const ref=ocelotRefCustos(), ks=Object.keys(ref), mesAtual=ocelotMesAtual(), pend=[];
-  for(let i=0;i<ks.length;i++){const r=ref[ks[i]];if(r.ant&&!r.atual)pend.push(r.ant);}
-  if(!pend.length)return;
-  if(!confirm('Repetir o último custo de '+pend.length+' produto(s) no mês '+mesBr(mesAtual)+'?\n\nCada um vira um cadastro do mês '+mesBr(mesAtual)+', que você pode ajustar ou apagar depois. O histórico dos meses anteriores não muda.'))return;
-  const btn=document.getElementById('btnAplicarCustoRef'), st=document.getElementById('stAplicarCustoRef');
-  if(btn){btn.disabled=true;btn.style.opacity='.6';}
-  const {data:{session}}=await sb.auth.getSession();
-  const tok=session?session.access_token:'';
-  let ok=0,err=0,feito=0;
-  async function um(c){
-    const body={tipo:'custo',mes_competencia:mesAtual,custo_unitario:Number(c.custo_unitario),observacao:'repetido do mês '+mesBr(c.mes_competencia)};
-    if(c.sku)body.sku=c.sku;else body.item_id=c.item_id;
-    try{
-      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify(body)});
-      let j={};try{j=await r.json();}catch(e){}
-      if(!r.ok||(j&&j.error))err++;else ok++;
-    }catch(e){err++;}
-    feito++;
-    if(st)st.textContent=feito+'/'+pend.length;
-  }
-  for(let i=0;i<pend.length;i+=5)await Promise.all(pend.slice(i,i+5).map(um));
-  if(st)st.textContent='';
-  alert('Custos gravados em '+mesBr(mesAtual)+': '+ok+(err?(' · falhas: '+err):''));
-  renderOcelot();
-}
-async function apagarCustoSku(id){
-  if(!confirm('Apagar este custo cadastrado? Os anúncios voltam a usar a fórmula neste mês.'))return;
-  if(await ocelotSetCusto({tipo:'custo_apagar',id:id}))renderOcelot();
-}
-
 function htmlOcelotFornecedores(){
   const D=OCELOT_FORN_CACHE; if(!D)return '<div class="empty">Carregando…</div>';
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};

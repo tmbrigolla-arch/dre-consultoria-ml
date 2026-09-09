@@ -215,6 +215,24 @@
   #app [style*="background:#f1f5f9"]{background:#1b2740!important}
   #app [style*="background:#f9fafb"]{background:#16233d!important}
   #app hr{border-color:var(--line)}
+  #app .cadwrap{overflow-x:auto}
+  #app .vndwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #app table.vnd{table-layout:fixed;min-width:1780px}
+  #app table.vnd th,#app table.vnd td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:5px 8px;font-size:12.5px;vertical-align:middle}
+  #app table.vnd th.m,#app table.vnd td.m{width:352px;max-width:352px;white-space:nowrap;word-break:normal}
+  #app table.vnd th.org,#app table.vnd td.org{width:112px}
+  #app table.vnd th.ped,#app table.vnd td.ped{width:120px;white-space:nowrap;word-break:normal;font-size:11.5px}
+  #app table.vnd th.mlb,#app table.vnd td.mlb{width:118px;font-size:11.5px}
+  #app table.vnd th.pg,#app table.vnd td.pg{width:98px;font-size:11.5px}
+  #app table.vnd .pill{font-size:10px;padding:1px 6px}
+  #app table.vnd a{text-decoration:none;border-bottom:1px solid rgba(148,163,184,.45)}
+  #app table.vnd a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+  #app table.cad{table-layout:auto}
+  #app table.cad th,#app table.cad td{white-space:normal;word-break:break-word;vertical-align:middle}
+  #app table.cad td.n,#app table.cad th.n{white-space:nowrap;text-align:right}
+  #app table.cad td.m,#app table.cad th.m{width:auto;min-width:150px}
+  #app table.cad td.det{font-size:11.5px;color:var(--muted);line-height:1.5;min-width:230px}
+  #app table.cad td.obs{font-size:11.5px;min-width:180px}
   /* impressao / PDF: sempre claro */
   @media print{
     :root{color-scheme:light}
@@ -267,7 +285,7 @@
     <button id="ocnDre" onclick="ocelotSubTab('dre')">DRE mensal</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
     <button id="ocnDetalhada" onclick="ocelotSubTab('detalhada')">DRE detalhada</button>
-    <button id="ocnConfig" onclick="ocelotSubTab('config')">Custos &amp; parâmetros</button>
+    <button id="ocnConfig" onclick="ocelotSubTab('config')">Cadastro</button>
   </div>
   <div class="foot2">Antoninho Pickups</div>
 </aside>
@@ -448,7 +466,7 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={dre:"DRE mensal",vendas:"DRE por venda",detalhada:"DRE detalhada",config:"Custos & par\u00e2metros"};return L[ocelotSub]||"DRE mensal";}
+function ocelotSubLabel(){var L={dre:"DRE mensal",vendas:"DRE por venda",detalhada:"DRE detalhada",config:"Cadastro"};return L[ocelotSub]||"DRE mensal";}
 function sincOcelotNav(){
   var ids={dre:"ocnDre",vendas:"ocnVendas",detalhada:"ocnDetalhada",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
@@ -851,13 +869,18 @@ function ocelotPaginaJump(inp,total){
   ocelotPagina=Math.min(Math.max(1,n),total);
   renderOcelotBody();
 }
-async function editarCmvOcelot(input,itemId,mes,qtdOrig){
+async function editarCmvOcelot(input,itemId,mes,qtdOrig,sku){
   const val=input.value;
   if(val===''||isNaN(Number(val)))return;
   input.disabled=true;
+  // v2 (09/09/2026): o custo passou a ser cadastrado por SKU. Se o anuncio tem SKU, editar aqui
+  // aplica o custo a TODOS os anuncios do mesmo SKU naquele mes (e o que o Tiago pediu). Anuncio
+  // sem SKU continua gravando por MLB.
+  const payload={tipo:'custo',mes_competencia:mes,custo_unitario:Number(val),observacao:'editado na DRE por venda'};
+  if(sku)payload.sku=sku;else payload.item_id=itemId;
   try{
     const {data:{session}}=await sb.auth.getSession();
-    await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'custo',item_id:itemId,mes_competencia:mes,custo_unitario:Number(val),observacao:'editado na DRE por venda'})});
+    await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(payload)});
   }catch(e){}
   await renderOcelot();
 }
@@ -909,6 +932,12 @@ function htmlOcelotVendas(){
   const P=function(v){return v==null?'—':'R$ '+cf.format(Number(v));};
   const dtf=function(v){return new Date(v).toLocaleDateString('pt-BR');};
   function tituloLink(txt,permalink){return permalink?('<a href="'+permalink+'" target="_blank" rel="noopener" style="color:inherit">'+txt+'</a>'):txt;}
+  // v3 (09/09/2026): pedido do Tiago — titulo e numero do pedido abrem a VENDA no painel do ML,
+  // e o MLB abre o ANUNCIO publico. Painel de vendas do ML: /vendas/<order_id>/detalhe.
+  function vendaURL(orderId){return 'https://www.mercadolivre.com.br/vendas/'+orderId+'/detalhe';}
+  function linkVenda(txt,orderId){return orderId?('<a href="'+vendaURL(orderId)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit">'+txt+'</a>'):txt;}
+  function linkAnuncio(txt,permalink){return permalink?('<a href="'+permalink+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit">'+txt+'</a>'):txt;}
+  function cortaTitulo(t,n){t=String(t||'');return t.length>n?(t.slice(0,n)+'…'):t;}
   let filtrados=D.pedidos;
   const ocelotCatsAtivas=Object.keys(ocelotFiltroCats).filter(function(k){return ocelotFiltroCats[k];});
   if(ocelotCatsAtivas.length===0){
@@ -986,11 +1015,20 @@ function htmlOcelotVendas(){
     const seta=ativo?(ocelotSortDir==='asc'?' ▲':' ▼'):'';
     return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotSortChange(\''+campo+'\')" style="cursor:pointer;user-select:none'+(ativo?';color:var(--accent)':'')+'">'+label+seta+'</th>';
   }
-  h+='<table><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido')+'<th>MLB</th><th>Pagamento</th>'+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+'<th>Qtd</th><th>Custo unit.</th>'+thSort('cmv','CMV')+'<th>Resp. CMV</th>'+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
+  h+='<div class="vndwrap"><table class="vnd"><thead><tr>'+thSort('data','Data / Produto','m')+thSort('pedido','Nº pedido','ped')+'<th class="mlb">MLB</th><th class="pg">Pagamento</th>'+thSort('venda','Venda')+thSort('taxa','Taxa ML')+thSort('frete','Frete')+thSort('devolvido','Devolvido')+thSort('liquido','Líquido')+'<th>Qtd</th>'+thSort('cmv','CMV')+'<th class="org">Origem CMV</th><th>Resp. CMV</th>'+thSort('imposto','Imposto')+thSort('ads','Ads')+thSort('custofixo','Custo fixo')+thSort('resultado','Resultado')+thSort('margem','Margem')+'</tr></thead><tbody>';
   function formaPagLabel(fp,parc){
     const map={credit_card:'Cartão crédito',debit_card:'Cartão débito',account_money:'Saldo ML',bank_transfer:'Pix/Transf.',ticket:'Boleto',digital_currency:'Moeda digital',prepaid_card:'Pré-pago'};
     const lbl=map[fp]||fp||'—';
     return lbl+((parc&&parc>1)?(' '+parc+'x'):'');
+  }
+  // v3 (09/09/2026): o selo saiu de dentro da celula do titulo (onde era cortado pelo ellipsis da
+  // linha unica) e virou coluna propria "Origem CMV", com rotulo curto.
+  function origemPill(origem,status){
+    var m={cancelled:['cancelado','#dc2626'],partially_refunded:['dev. parcial','#f59e0b']};
+    if(m[status])return '<span class="pill" style="background:'+m[status][1]+';color:#fff">'+m[status][0]+'</span>';
+    var o={manual:['cadastrado','#1F4E79'],formula_devolvido:['CMV zerado','#dc2626'],formula_piso:['piso','#0891b2'],formula_teto:['teto','#7c3aed'],estorno_fornecedor:['estorno forn.','#16a34a']};
+    var x=o[origem]||['estimado','#33455f'];
+    return '<span class="pill" style="background:'+x[1]+';color:#fff">'+x[0]+'</span>';
   }
   function statusPill(origem,status){
     if(status==='cancelled')return ' <span class="pill" style="background:#dc2626">cancelado</span>';
@@ -1006,7 +1044,7 @@ function htmlOcelotVendas(){
   }
   function custoUnitCell(it){
     if(it.status==='cancelled')return '—';
-    return 'R$ <input type="number" step="0.01" value="'+Number(it.cmv_unitario).toFixed(2)+'" onclick="event.stopPropagation()" onchange="editarCmvOcelot(this,\''+it.item_id+'\',\''+it.mes_competencia+'\','+it.quantidade+')" style="width:64px;padding:2px 4px;border:1px solid var(--line);border-radius:5px">';
+    return 'R$ <input type="number" step="0.01" value="'+Number(it.cmv_unitario).toFixed(2)+'" onclick="event.stopPropagation()" onchange="editarCmvOcelot(this,\''+it.item_id+'\',\''+it.mes_competencia+'\','+it.quantidade+',\''+(it.sku||'')+'\')" title="'+(it.sku?('SKU '+it.sku+' — salvar aqui aplica este custo a TODOS os anuncios deste SKU no mes'):'Anuncio sem SKU — o custo vale so para este MLB')+'" style="width:64px;padding:2px 4px;border:1px solid var(--line);border-radius:5px">';
   }
   function cmvCell(it){
     if(it.status==='cancelled')return '—';
@@ -1024,30 +1062,29 @@ function htmlOcelotVendas(){
     const margem=p.valor_liquido>0?(p.resultado/p.valor_liquido*100):null;
     const cls='ped_'+p.order_id;
     const tituloTxt=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
-    const titulo=(!p.is_carrinho&&!multi)?tituloLink(tituloTxt,p.itens[0].permalink):tituloTxt;
-    const mlbColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':p.itens[0].item_id;
-    const origem=multi?'':statusPill(p.itens[0].cmv_origem,p.status);
+    const titulo=linkVenda(cortaTitulo(tituloTxt,44),p.order_id);
+    const mlbColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':linkAnuncio(p.itens[0].item_id,p.itens[0].permalink);
+    const origem=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':origemPill(p.itens[0].cmv_origem,p.status);
     const qtdColuna=multi?p.itens.reduce(function(s,x){return s+Number(x.quantidade||0);},0):p.itens[0].quantidade;
-    const custoUnitColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':custoUnitCell(p.itens[0]);
-    const cmvColuna=multi?P(p.cmv_total)+'<div style="font-size:10.5px;color:#94a3b8">expanda p/ editar por item</div>':cmvCell(p.itens[0]);
+    const cmvColuna=multi?P(p.cmv_total):cmvCell(p.itens[0]);
     const respColuna=multi?(p.itens.some(function(x){return x.status==='partially_refunded';})?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':'<span style="color:#94a3b8;font-size:11px">—</span>'):respSelectorCell(p.itens[0]);
-    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+origem+'</td><td class="ped">'+(p.is_carrinho?('🛒 '+p.pack_id+'<div style="font-size:10px;color:#94a3b8;font-weight:400">'+p.order_ids.length+' pedidos</div>'):p.order_id)+'</td><td>'+mlbColuna+'</td><td>'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+custoUnitColuna+'</td><td>'+cmvColuna+'</td><td>'+respColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+    h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m" title="'+escH(tituloTxt)+'">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+'</td><td class="ped">'+(p.is_carrinho?linkVenda('🛒 '+p.pack_id+' ('+p.order_ids.length+')',p.order_id):linkVenda(p.order_id,p.order_id))+'</td><td class="mlb">'+mlbColuna+'</td><td class="pg">'+formaPagLabel(p.forma_pagamento,p.parcelas)+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+cmvColuna+'</td><td class="org">'+origem+'</td><td>'+respColuna+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
     if(multi){
       for(let ii=0;ii<p.itens.length;ii++){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
         const temBk=it.imposto_valor!=null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2">— '+tituloLink(it.titulo||it.item_id,it.permalink)+' (x'+it.quantidade+')'+statusPill(it.cmv_origem,it.status)+'</td><td class="sub2">—</td><td class="sub2">'+it.item_id+'</td><td class="sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+custoUnitCell(it)+'</td><td>'+cmvCell(it)+'</td><td>'+respSelectorCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2" title="'+escH(it.titulo||it.item_id)+'">— '+linkVenda(cortaTitulo(it.titulo||it.item_id,40),it.order_id)+' (x'+it.quantidade+')</td><td class="ped sub2">'+linkVenda(it.order_id,it.order_id)+'</td><td class="mlb sub2">'+linkAnuncio(it.item_id,it.permalink)+'</td><td class="pg sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+cmvCell(it)+'</td><td class="org">'+origemPill(it.cmv_origem,it.status)+'</td><td>'+respSelectorCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }
-  h+='</tbody></table>';
+  h+='</tbody></table></div>';
   h+='<div class="foot" style="margin:10px 0;text-align:left;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
   h+='<button onclick="ocelotPaginaIr(-1,'+totalPaginas+')"'+(ocelotPagina<=1?' disabled':'')+' style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">« Anterior</button>';
   h+='<span>Página <input type="number" min="1" max="'+totalPaginas+'" value="'+ocelotPagina+'" onchange="ocelotPaginaJump(this,'+totalPaginas+')" style="width:55px;padding:2px 4px;border-radius:6px;border:1px solid var(--line);text-align:center"> de '+totalPaginas+' ('+todos.length+' pedido(s), 50 por página)</span>';
   h+='<button onclick="ocelotPaginaIr(1,'+totalPaginas+')"'+(ocelotPagina>=totalPaginas?' disabled':'')+' style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:#fff;cursor:pointer">Próxima »</button>';
   h+='</div>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">CMV = valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção calculada sobre o valor BRUTO da venda. "Resultado" é só a fatia de gestão (seu lucro) — Imposto/Ads/Custo fixo aparecem em colunas próprias porque também saem do CMV pago ao fornecedor (Miguel/Alan), não do seu lucro. "estimado" = sem custo cadastrado nesse SKU. Edite o CMV direto na tabela pra cadastrar o custo real. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">CMV = valor líquido recebido menos a retenção de imposto+gestão+ads(TACoS real via API)+custo fixo, retenção calculada sobre o valor BRUTO da venda. "Resultado" é só a fatia de gestão (seu lucro) — Imposto/Ads/Custo fixo aparecem em colunas próprias porque também saem do CMV pago ao fornecedor (Miguel/Alan), não do seu lucro. "estimado" = sem custo cadastrado nesse SKU — cadastre o custo na aba <b>Cadastro</b> (por SKU, vale para todos os anuncios do mesmo produto). Titulo e n&ordm; do pedido abrem a venda no painel do ML; o MLB abre o anuncio. Frete é estimativa (heurística via API de envios) — ainda não validada 1:1 contra seu extrato do ML.</div>';
   return h;
 }
 function sortPedidos(arr){
@@ -1153,27 +1190,85 @@ function htmlOcelotDetalhada(){
   h+='</div>';
   return h;
 }
+function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
   const mesAtual=new Date().toISOString().slice(0,7)+'-01';
   const par=(D.parametros||[]).filter(function(p){return p.mes_competencia===mesAtual;})[0]||{imposto_pct:4.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
-  let h='<div class="cli" style="max-width:640px">';
+  const skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
+  const infoSku={};
+  for(let i=0;i<skus.length;i++)infoSku[skus[i].sku]=skus[i];
+  let h='<div class="cli" style="max-width:660px">';
   h+='<h2>Parâmetros da fórmula (mês '+mesAtual.slice(0,7)+')</h2>';
-  h+='<div class="sub">Usado só nos itens SEM custo cadastrado abaixo. CMV = Valor líquido recebido do ML × soma dos %.</div>';
+  h+='<div class="sub">Usado só nos produtos SEM custo cadastrado abaixo. CMV = Valor líquido recebido do ML × soma dos %.</div>';
   h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:13px"><label>Imposto %<br><input id="op_imposto" type="number" step="0.1" value="'+par.imposto_pct+'" style="width:70px"></label><label>Gestão conta %<br><input id="op_gestao" type="number" step="0.1" value="'+par.gestao_pct+'" style="width:70px"></label><label>Ads %<br><input id="op_ads" type="number" step="0.1" value="'+par.ads_pct+'" style="width:70px"></label><label>Custo fixo mensal R$<br><input id="op_fixo" type="number" step="1" value="'+par.custo_fixo_mensal+'" style="width:90px"></label></div>';
   h+='<button onclick="salvarParametrosOcelot(\''+mesAtual+'\')" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Salvar parâmetros</button> ';
-  h+='<button onclick="fecharMesOcelot(\''+mesAtual+'\')" style="background:#fff;border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer;margin-left:6px">Fechar mês (trava o % do custo fixo)</button>';
+  h+='<button onclick="fecharMesOcelot(\''+mesAtual+'\')" style="background:transparent;border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer;margin-left:6px">Fechar mês (trava o % do custo fixo)</button>';
   h+='<div class="foot" style="text-align:left;margin-top:8px">'+(par.fechado?('Mês fechado — % do custo fixo travado em '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% (receita líquida do mês: '+('R$ '+cf.format(par.receita_liquida_mes))+').'):('Mês em aberto — o % do custo fixo é provisório, recalculado a cada atualização com base na receita líquida acumulada até agora.'))+'</div>';
   h+='</div>';
-  h+='<div class="cli" style="max-width:680px">';
-  h+='<h2>Custo por SKU (CMV cadastrado)</h2>';
-  h+='<div class="sub">Cadastrado aqui = usado direto no lugar da fórmula, só no mês de competência escolhido.</div>';
-  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:flex-end"><label style="font-size:12px">Código MLB<br><input id="cs_item" placeholder="MLB1234567890" style="width:160px"></label><label style="font-size:12px">Mês<br><input id="cs_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:130px"></label><label style="font-size:12px">Custo R$<br><input id="cs_custo" type="number" step="0.01" style="width:100px"></label><label style="font-size:12px">Observação<br><input id="cs_obs" style="width:180px"></label><button onclick="salvarCustoSku()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button></div>';
-  h+='<table><thead><tr><th class="m">Item</th><th>Mês</th><th>Custo</th><th style="text-align:left">Observação</th></tr></thead><tbody>';
-  const custos=D.custos||[];
-  if(!custos.length)h+='<tr><td class="m" colspan="4" style="text-align:left;color:#64748b">Nenhum custo cadastrado ainda.</td></tr>';
-  for(let i=0;i<custos.length;i++){const c=custos[i];h+='<tr><td class="m">'+c.item_id+'</td><td>'+c.mes_competencia.slice(0,7)+'</td><td>R$ '+cf.format(c.custo_unitario)+'</td><td style="text-align:left">'+(c.observacao||'—')+'</td></tr>';}
+
+  const pend=custos.filter(function(c){return c.conferir;});
+  if(pend.length){
+    h+='<div class="cli" style="border-color:#a16207">';
+    h+='<h2>Conferir — '+pend.length+' custo(s) migrado(s) por média</h2>';
+    h+='<div class="sub">Estes produtos tinham custos <b>diferentes</b> cadastrados em anúncios distintos do mesmo SKU. Entraram com a média ponderada pela quantidade vendida. Ajuste se precisar e confirme para tirar o alerta.</div>';
+    h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / produto</th><th class="n">Mês</th><th class="n">Custo aplicado</th><th style="text-align:left">O que existia antes, por anúncio</th><th class="n">Ação</th></tr></thead><tbody>';
+    for(let i=0;i<pend.length;i++){
+      const c=pend[i];
+      const det=(c.conflito||[]).map(function(x){return x.mlb+': R$ '+cf.format(x.custo)+' ('+x.qtd+' un)';}).join(' · ');
+      const inf=infoSku[c.sku]||{};
+      h+='<tr><td class="m">'+escH(c.sku||c.item_id)+'<div style="font-weight:400;font-size:11.5px;color:var(--muted)">'+escH(inf.titulo||'')+(inf.n_mlbs?(' · '+inf.n_mlbs+' anúncios'):'')+'</div></td>';
+      h+='<td class="n">'+String(c.mes_competencia).slice(0,7)+'</td>';
+      h+='<td class="n">R$ <input type="number" step="0.01" value="'+Number(c.custo_unitario).toFixed(2)+'" id="cfm_'+c.id+'" style="width:82px"></td>';
+      h+='<td class="det" style="text-align:left">'+escH(det||'—')+'</td>';
+      h+='<td class="n"><button onclick="confirmarCustoSku(\''+c.id+'\')" style="background:var(--accent);color:#fff;border:none;padding:5px 12px;border-radius:6px;cursor:pointer">Confirmar</button></td></tr>';
+    }
+    h+='</tbody></table></div></div>';
+  }
+
+  h+='<div class="cli">';
+  h+='<h2>Cadastro de custo por produto (SKU)</h2>';
+  h+='<div class="sub">O custo é cadastrado por <b>SKU</b> e vale para <b>todos os anúncios daquele SKU</b> no mês escolhido. Cadastrado aqui = usado direto no lugar da fórmula.</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;align-items:flex-end">';
+  h+='<label style="font-size:12px">Produto (SKU)<br><select id="cs_sku" style="min-width:340px;max-width:100%"><option value="">— escolha o SKU —</option>';
+  for(let i=0;i<skus.length;i++){const s=skus[i];h+='<option value="'+escH(s.sku)+'">'+escH(s.sku)+' — '+escH(String(s.titulo).slice(0,52))+' ('+s.n_mlbs+' anúncio'+(s.n_mlbs>1?'s':'')+' · '+s.unid+' un)</option>';}
+  h+='</select></label>';
+  h+='<label style="font-size:12px">Mês<br><input id="cs_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:158px"></label>';
+  h+='<label style="font-size:12px">Custo R$<br><input id="cs_custo" type="number" step="0.01" style="width:100px"></label>';
+  h+='<label style="font-size:12px">Observação<br><input id="cs_obs" style="width:200px"></label>';
+  h+='<button onclick="salvarCustoSku()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button>';
+  h+='</div>';
+  if(semSku.length){
+    h+='<details style="margin-bottom:12px"><summary style="cursor:pointer;font-size:12.5px;color:var(--muted)">Anúncio sem SKU no Mercado Livre ('+semSku.length+' com venda) — cadastrar por MLB</summary>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:flex-end">';
+    h+='<label style="font-size:12px">Anúncio<br><select id="cx_item" style="min-width:340px"><option value="">— escolha o anúncio —</option>';
+    for(let i=0;i<semSku.length;i++){const x=semSku[i];h+='<option value="'+escH(x.item_id)+'">'+escH(x.item_id)+' — '+escH(String(x.titulo).slice(0,52))+' ('+x.unid+' un)</option>';}
+    h+='</select></label>';
+    h+='<label style="font-size:12px">Mês<br><input id="cx_mes" type="month" value="'+mesAtual.slice(0,7)+'" style="width:158px"></label>';
+    h+='<label style="font-size:12px">Custo R$<br><input id="cx_custo" type="number" step="0.01" style="width:100px"></label>';
+    h+='<label style="font-size:12px">Observação<br><input id="cx_obs" style="width:200px"></label>';
+    h+='<button onclick="salvarCustoMlb()" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Adicionar / atualizar</button>';
+    h+='</div>';
+    h+='<div class="foot" style="text-align:left">Preencher o campo SKU desses anúncios no Mercado Livre faz eles caírem no cadastro por SKU automaticamente na próxima coleta.</div>';
+    h+='</details>';
+  }
+  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / anúncio</th><th style="text-align:left">Produto</th><th class="n">Anúncios</th><th class="n">Mês</th><th class="n">Custo</th><th style="text-align:left">Observação</th><th class="n"></th></tr></thead><tbody>';
+  if(!custos.length)h+='<tr><td class="m" colspan="7" style="text-align:left;color:var(--muted)">Nenhum custo cadastrado ainda.</td></tr>';
+  const ord=custos.slice().sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia))||String(a.sku||a.item_id).localeCompare(String(b.sku||b.item_id));});
+  for(let i=0;i<ord.length;i++){
+    const c=ord[i], inf=infoSku[c.sku]||{};
+    const chave=c.sku?escH(c.sku):(escH(c.item_id)+' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>');
+    h+='<tr><td class="m">'+chave+(c.conferir?' <span style="font-size:10px;background:#a16207;color:#fff;padding:1px 5px;border-radius:4px">conferir</span>':'')+'</td>';
+    h+='<td style="text-align:left">'+escH(String(inf.titulo||'').slice(0,52)||'—')+'</td>';
+    h+='<td class="n">'+(c.sku?(inf.n_mlbs||0):1)+'</td>';
+    h+='<td class="n">'+String(c.mes_competencia).slice(0,7)+'</td>';
+    h+='<td class="n">R$ '+cf.format(c.custo_unitario)+'</td>';
+    h+='<td class="obs" style="text-align:left">'+escH(c.observacao||'—')+'</td>';
+    h+='<td class="n"><button onclick="apagarCustoSku(\''+c.id+'\')" title="Apagar" style="background:transparent;border:1px solid var(--line);color:#f87171;padding:3px 9px;border-radius:6px;cursor:pointer">×</button></td></tr>';
+  }
   h+='</tbody></table></div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">'+skus.length+' SKUs no catálogo · '+custos.filter(function(c){return c.sku;}).length+' com custo cadastrado.</div>';
+  h+='</div>';
   return h;
 }
 async function atualizarOcelot(){
@@ -1196,15 +1291,43 @@ async function fecharMesOcelot(mes){
   await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'fechar_mes',mes_competencia:mes})});
   renderOcelot();
 }
+async function ocelotSetCusto(payload){
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(payload)});
+  let j={};try{j=await r.json();}catch(e){}
+  if(j&&j.error){alert('Erro ao salvar: '+j.error);return false;}
+  return true;
+}
 async function salvarCustoSku(){
-  const item=document.getElementById('cs_item').value.trim().toUpperCase();
+  const sku=document.getElementById('cs_sku').value;
   const mesv=document.getElementById('cs_mes').value;
   const custo=document.getElementById('cs_custo').value;
   const obs=document.getElementById('cs_obs').value;
-  if(!item||!mesv||custo===''){alert('Preencha item, mês e custo.');return;}
-  const {data:{session}}=await sb.auth.getSession();
-  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'custo',item_id:item,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs})});
-  renderOcelot();
+  if(!sku||!mesv||custo===''){alert('Escolha o SKU, o mês e o custo.');return;}
+  if(await ocelotSetCusto({tipo:'custo',sku:sku,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs}))renderOcelot();
+}
+async function salvarCustoMlb(){
+  const item=document.getElementById('cx_item').value;
+  const mesv=document.getElementById('cx_mes').value;
+  const custo=document.getElementById('cx_custo').value;
+  const obs=document.getElementById('cx_obs').value;
+  if(!item||!mesv||custo===''){alert('Escolha o anúncio, o mês e o custo.');return;}
+  if(await ocelotSetCusto({tipo:'custo',item_id:item,mes_competencia:mesv+'-01',custo_unitario:Number(custo),observacao:obs}))renderOcelot();
+}
+async function confirmarCustoSku(id){
+  const D=OCELOT_CACHE||{};
+  const c=(D.custos||[]).filter(function(x){return String(x.id)===String(id);})[0];
+  if(!c)return;
+  const el=document.getElementById('cfm_'+id);
+  const val=el?Number(el.value):Number(c.custo_unitario);
+  if(isNaN(val)){alert('Custo inválido.');return;}
+  const payload={tipo:'custo',mes_competencia:c.mes_competencia,custo_unitario:val,observacao:'conferido e confirmado por SKU'};
+  if(c.sku)payload.sku=c.sku;else payload.item_id=c.item_id;
+  if(await ocelotSetCusto(payload))renderOcelot();
+}
+async function apagarCustoSku(id){
+  if(!confirm('Apagar este custo cadastrado? Os anúncios voltam a usar a fórmula neste mês.'))return;
+  if(await ocelotSetCusto({tipo:'custo_apagar',id:id}))renderOcelot();
 }
 
 function htmlOcelotFornecedores(){

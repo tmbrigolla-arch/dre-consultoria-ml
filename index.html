@@ -142,7 +142,95 @@
     .wrap{padding:14px 12px 40px}
     #tagbar{margin:14px 12px 0}
   }
-  @media print{.sidebar,#navtoggle,.scrim,header{display:none!important}.shell{display:block}.mainarea{display:block}.wrap{padding:0!important;max-width:100%!important}}
+  /* ================= TEMA ESCURO ================= */
+  :root{color-scheme:dark;--bg:#0b1220;--panel:#131f36;--panel2:#0f1a2e;--line:#243250;--ink:#e2e8f0;--muted:#8ca0bd;--accent:#2563eb;--head:#0f172a;--up:#34d399;--down:#f87171}
+  body{background:var(--bg);color:var(--ink)}
+  header{background:var(--head);color:#fff;border-bottom:1px solid #1e293b;box-shadow:none}
+  header .t h1{color:#fff}
+  header .t p{color:#9fb0c9}
+  header select,header button,header .dd>summary{background:#16213a;color:#fff;border:1px solid #2c3a52}
+  header button.reload{background:var(--accent);border-color:var(--accent)}
+  header button.reload:hover{background:#1d4fd8}
+  header button.ghost{background:transparent}
+  header button.ghost:hover{background:#16213a}
+  header .dd[open]>summary{background:var(--accent);border-color:var(--accent)}
+  header .pill{background:#16213a;color:#9fb0c9}
+  #navtoggle{background:#16213a;color:#fff;border-color:#2c3a52}
+  .dd .menu{background:var(--panel);color:var(--ink);border-color:var(--line);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .dd .menu label:hover{background:#1b2b47}
+  .tagbar{background:var(--panel);border-color:var(--line)}
+  .taglbl{color:var(--muted)}
+  .tagbar .chip{background:#1b2740;color:#cbd5e1;border-color:var(--line)}
+  .tagbar .chip.c{background:#16233d}
+  .tagbar .chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .tagbar .chip.clr{background:transparent;color:#f87171;border-color:#5b2020}
+  .cli{background:var(--panel);border-color:var(--line);box-shadow:0 1px 2px rgba(0,0,0,.35)}
+  .cli h2{color:#fff}
+  .cli .sub{color:var(--muted)}
+  .tag.conta{background:#3a2f10;color:#fbbf24}
+  .tag.cliente{background:#0f2f22;color:#34d399}
+  .tag.total{background:#152a4d;color:#8ab4f8}
+  th,td{border-color:var(--line)}
+  th{background:#16213a;color:#cbd5e1}
+  th.m,td.m{background:var(--panel2);color:#e2e8f0}
+  td{color:var(--ink)}
+  td.sub2,th.sub2{color:var(--muted)}
+  tr:hover td{background:#18263f}
+  tr:hover td.m{background:#1b2b47}
+  .empty,.foot{color:var(--muted)}
+  .card{background:var(--panel);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.6)}
+  .card h2{color:#fff}
+  .card p,.card label{color:var(--muted)}
+  .card input{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  input,select,textarea{background:var(--panel2);color:var(--ink);border-color:var(--line)}
+  .cons-nav{background:var(--panel);border-color:var(--line)}
+  .cons-nav button{color:var(--ink)} .cons-nav button:hover{background:#1b2b47}
+  .curva-card{background:var(--panel);border-color:var(--line)}
+  .curva-chip{background:#1b2740;color:#cbd5e1;border-color:var(--line)}
+  .curva-bar-wrap{background:#1b2740}
+  .curva-expand{background:var(--panel2);border-color:var(--line)}
+  /* sub-itens da Ocelot no menu lateral */
+  #tabOcelot .caret{margin-left:auto;font-size:10px;opacity:.65}
+  #tabOcelot.on{background:#18233c;color:#fff;box-shadow:none}
+  #ocnDre,#ocnVendas,#ocnDetalhada,#ocnConfig{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
+  #ocnDre:hover,#ocnVendas:hover,#ocnDetalhada:hover,#ocnConfig:hover{background:#18233c;color:#fff}
+  #ocnDre.on,#ocnVendas.on,#ocnDetalhada.on,#ocnConfig.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+  /* estilos inline gerados pelo JS */
+  #app [style*="background:#fff"]{background:var(--panel2)!important;color:var(--ink)!important;border-color:var(--line)!important}
+  #app [style*="color:#1f2733"]{color:var(--ink)!important}
+  #app [style*="color:#333"]{color:var(--ink)!important}
+  #app [style*="color:#666"],#app [style*="color:#888"],#app [style*="color:#555"],#app [style*="color:#64748b"],#app [style*="color:#475569"]{color:var(--muted)!important}
+  #app [style*="background:#f6f8fa"]{background:#16213a!important;color:#cbd5e1!important;border-color:var(--line)!important}
+  #app [style*="background:#eef4fa"]{background:#1b2b47!important;color:#fff!important}
+  #app [style*="background:#F2F2F2"]{background:#16233d!important}
+  #app [style*="background:#f8fafc"]{background:var(--panel2)!important;border-color:var(--line)!important}
+  #app [style*="background:#eef5ff"]{background:#16233d!important}
+  #app [style*="#8C8C8C"]{border-color:var(--line)!important}
+  #app [style*="background:#fef3c7"]{background:#3a2e0c!important;border-color:#a16207!important;color:#fde68a!important}
+  #app [style*="background:#fee2e2"]{background:#3d1418!important;border-color:#b91c1c!important;color:#fecaca!important}
+  #app [style*="color:#1F4E79"]{color:#8ab4f8!important}
+  #app [style*="background:#94a3b8"]{background:#33455f!important;color:#cbd5e1!important}
+  #app [style*="background:#fafbfd"]{background:#16233d!important}
+  #app [style*="background:#f5f7fb"]{background:#16213a!important}
+  #app [style*="background:#f1f5f9"]{background:#1b2740!important}
+  #app [style*="background:#f9fafb"]{background:#16233d!important}
+  #app hr{border-color:var(--line)}
+  /* impressao / PDF: sempre claro */
+  @media print{
+    :root{color-scheme:light}
+    html,body{background:#fff!important}
+    *{box-shadow:none!important}
+    body,div,span,p,b,i,label,table,tbody,thead,tr,td,th,h1,h2,h3,h4,ul,ol,li{background-color:#fff!important;color:#111!important;border-color:#bbb!important}
+    th{background-color:#eef2f7!important}
+    td.m,th.m{background-color:#f7f9fc!important}
+    .tag{background-color:#eef2f7!important;color:#111!important;border:1px solid #ccd6e5!important}
+    .chg.up,.up{color:#15803d!important} .chg.down,.down{color:#b91c1c!important}
+    .api{background-color:#1F4E79!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #printhdr h1{color:#1F4E79!important}
+    .sidebar,#navtoggle,.scrim,header,#tagbar,.tabs{display:none!important}
+    .shell,.mainarea{display:block!important}
+    .wrap{padding:0!important;max-width:100%!important}
+  }
 </style>
 </head>
 <body>
@@ -172,7 +260,13 @@
     <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
     <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
   </div>
-  <button id="tabOcelot" onclick="trocaAba('ocelot')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>Gestão Ocelot</button>
+  <button id="tabOcelot" onclick="trocaAba('ocelot')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>Gestão Ocelot<span class="caret" id="caretOce">&#9656;</span></button>
+  <div class="navsub" id="navsubOcelot" style="display:none">
+    <button id="ocnDre" onclick="ocelotSubTab('dre')">DRE mensal</button>
+    <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
+    <button id="ocnDetalhada" onclick="ocelotSubTab('detalhada')">DRE detalhada</button>
+    <button id="ocnConfig" onclick="ocelotSubTab('config')">Custos &amp; parâmetros</button>
+  </div>
   <div class="foot2">Antoninho Pickups</div>
 </aside>
 <div class="mainarea">
@@ -352,12 +446,22 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
+function ocelotSubLabel(){var L={dre:"DRE mensal",vendas:"DRE por venda",detalhada:"DRE detalhada",config:"Custos & par\u00e2metros"};return L[ocelotSub]||"DRE mensal";}
+function sincOcelotNav(){
+  var ids={dre:"ocnDre",vendas:"ocnVendas",detalhada:"ocnDetalhada",config:"ocnConfig"};
+  for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
+  var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
+}
 function sincNav(a){
-  var cons=(a==="semanal"||a==="mensal");
+  var cons=(a==="semanal"||a==="mensal"),oce=(a==="ocelot");
   var g=document.getElementById("navsubConsultoria");if(g)g.style.display=cons?"":"none";
   var nc=document.getElementById("navConsultoria");if(nc)nc.className=cons?"grpon":"";
   var c=document.getElementById("caretCons");if(c)c.innerHTML=cons?"&#9662;":"&#9656;";
-  var h=document.getElementById("h1sec");if(h)h.textContent=cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):"Gest\u00e3o Ocelot";
+  var go=document.getElementById("navsubOcelot");if(go)go.style.display=oce?"":"none";
+  var co=document.getElementById("caretOce");if(co)co.innerHTML=oce?"&#9662;":"&#9656;";
+  var h=document.getElementById("h1sec");
+  if(h)h.textContent=cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):(oce?"Gest\u00e3o Ocelot":"Painel");
+  if(oce)sincOcelotNav();
   toggleNav(false);
 }
 function trocaAba(a){
@@ -634,10 +738,11 @@ function htmlOcelotDre(){
   const o=d.operacao,rc=d.receita_ocelot,cu=d.custos,rs=d.resultado,pr=d.parametros,cn=d.conciliacao,q=d.qualidade;
   const base=o.faturamento_efetivo;
   let h='<div style="margin-bottom:14px">';
+  h+='<label style="font-size:12.5px;color:var(--muted)">M\u00eas de compet\u00eancia <select onchange="dreMesSel(this.value)" style="padding:7px 12px;border-radius:8px;border:1px solid var(--line);font-weight:600;font-size:13px;margin-left:6px;min-width:140px">';
   (c.meses||[]).forEach(function(m){
-    const on=(m===d.mes);
-    h+='<button onclick="dreMesSel(\''+m+'\')" style="padding:6px 13px;margin:0 6px 6px 0;border-radius:6px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer">'+dreMesLabel(m)+'</button>';
+    h+='<option value="'+m+'"'+(m===d.mes?' selected':'')+'>'+dreMesLabel(m)+'</option>';
   });
+  h+='</select></label>';
   h+='</div>';
   if(d.mes_em_curso)h+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px"><b>Mes em curso.</b> Os numeros ainda vao mudar ate o fechamento.</div>';
   if(!pr.tem_parametro)h+='<div style="background:#fee2e2;border:1px solid #dc2626;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px"><b>Sem parametros cadastrados para este mes.</b> A DRE esta usando os valores padrao (imposto 4,5% / gestao 5,5% / ads 5% / fixo R$ 800). Cadastre em Custos &amp; parametros.</div>';
@@ -684,23 +789,21 @@ function htmlOcelotDre(){
   return h;
 }
 function ocelotSubTab(s){
-  ocelotSub=s;localStorage.setItem('ocelot_sub',s);
+  ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
   if(s==='dre'){if(OCELOT_DRE_CACHE){renderOcelotBody();}else{renderOcelotDre();}return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
   renderOcelotBody();
 }
-function ocelotSubBtn(k,label){
-  const on=ocelotSub===k;
-  return '<button onclick="ocelotSubTab(\''+k+'\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--line);background:'+(on?'#1F4E79':'#fff')+';color:'+(on?'#fff':'#333')+';font-weight:600;cursor:pointer;margin-right:8px">'+label+'</button>';
-}
+function ocelotSubBtn(k,label){return '';}
 function renderOcelotBody(){
   if(ocelotSub==='dre'&&!OCELOT_DRE_CACHE){renderOcelotDre();return;}
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
   const app=document.getElementById('app');
   app.style.maxWidth=ocelotSub==='vendas'?'none':'';
-  let h='<div style="margin:4px 0 16px">'+ocelotSubBtn('dre','DRE mensal')+ocelotSubBtn('vendas','DRE por venda')+ocelotSubBtn('detalhada','DRE detalhada')+ocelotSubBtn('config','Custos & parâmetros')+'</div><div id="ocelotBody"></div>';
+  sincOcelotNav();
+  let h='<div id="ocelotBody"></div>';
   app.innerHTML=h;
   const body=document.getElementById('ocelotBody');
   if(ocelotSub==='dre')body.innerHTML=htmlOcelotDre();

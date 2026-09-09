@@ -1304,6 +1304,72 @@ function htmlOcelotCatalogo(){
   h+='</div>';
   return h;
 }
+function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
+function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
+function ocelotRefCustos(){
+  const D=OCELOT_CACHE||{}, custos=D.custos||[], mesAtual=ocelotMesAtual(), map={};
+  for(let i=0;i<custos.length;i++){
+    const c=custos[i], k=c.sku?('sku:'+c.sku):('mlb:'+c.item_id);
+    (map[k]=map[k]||[]).push(c);
+  }
+  const out={}, ks=Object.keys(map);
+  for(let i=0;i<ks.length;i++){
+    const lista=map[ks[i]].slice().sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia));});
+    let ant=null, atual=null;
+    for(let j=0;j<lista.length;j++){
+      const m=String(lista[j].mes_competencia).slice(0,10);
+      if(m===mesAtual){if(!atual)atual=lista[j];}
+      else if(m<mesAtual&&!ant)ant=lista[j];
+    }
+    out[ks[i]]={ant:ant,atual:atual};
+  }
+  return out;
+}
+function htmlOcelotCustoRef(){
+  const D=OCELOT_CACHE||{}, skus=D.skus||[], semSku=D.itens_sem_sku||[];
+  const mesAtual=ocelotMesAtual(), ref=ocelotRefCustos();
+  const infoSem={};
+  for(let i=0;i<semSku.length;i++)infoSem[semSku[i].item_id]=semSku[i];
+  const linhas=[];
+  for(let i=0;i<skus.length;i++){
+    const s=skus[i], r=ref['sku:'+s.sku]||{};
+    linhas.push({tipo:'sku',chave:s.sku,titulo:s.titulo||'',n:s.n_mlbs||0,ant:r.ant||null,atual:r.atual||null});
+  }
+  const ks=Object.keys(ref);
+  for(let i=0;i<ks.length;i++){
+    if(ks[i].slice(0,4)!=='mlb:')continue;
+    const id=ks[i].slice(4), inf=infoSem[id]||{}, r=ref[ks[i]];
+    linhas.push({tipo:'mlb',chave:id,titulo:inf.titulo||'',n:1,ant:r.ant||null,atual:r.atual||null});
+  }
+  linhas.sort(function(a,b){
+    const ga=(a.ant&&!a.atual)?0:(a.atual?1:2), gb=(b.ant&&!b.atual)?0:(b.atual?1:2);
+    return ga-gb||String(a.chave).localeCompare(String(b.chave));
+  });
+  let pend=0,jaTem=0,semNada=0;
+  for(let i=0;i<linhas.length;i++){const l=linhas[i];if(l.atual)jaTem++;else if(l.ant)pend++;else semNada++;}
+  let h='<h3 style="margin:22px 0 4px;font-size:14px">Custo de refer&ecirc;ncia por produto &mdash; 1 linha por SKU</h3>';
+  h+='<div class="sub">&Uacute;ltimo custo cadastrado em m&ecirc;s <b>anterior</b> ao atual. O bot&atilde;o repete esse mesmo custo em '+mesBr(mesAtual)+' &mdash; produto sem custo no m&ecirc;s da venda cai na f&oacute;rmula. <b>'+jaTem+'</b> j&aacute; com custo em '+mesBr(mesAtual)+' &middot; <b>'+pend+'</b> com custo anterior a repetir &middot; <b>'+semNada+'</b> sem custo nenhum.</div>';
+  if(pend)h+='<div style="margin:10px 0"><button id="btnAplicarCustoRef" onclick="aplicarTodosCustoRef()" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Repetir os '+pend+' custos no m&ecirc;s '+mesBr(mesAtual)+'</button> <span id="stAplicarCustoRef" style="font-size:12px;color:var(--muted)"></span></div>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / an&uacute;ncio</th><th style="text-align:left">Produto</th><th class="n">An&uacute;ncios</th><th class="n">&Uacute;ltimo custo</th><th class="n">M&ecirc;s de origem</th><th class="n">M&ecirc;s '+mesBr(mesAtual)+'</th><th class="n">A&ccedil;&atilde;o</th></tr></thead><tbody>';
+  for(let i=0;i<linhas.length;i++){
+    const l=linhas[i];
+    const chave=(l.tipo==='sku')?escH(l.chave):(escH(l.chave)+' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>');
+    const ult=l.ant?('R$ '+cf.format(l.ant.custo_unitario)):'<span style="color:var(--muted)">&mdash;</span>';
+    const org=l.ant?mesBr(l.ant.mes_competencia):'<span style="color:var(--muted)">&mdash;</span>';
+    const atu=l.atual?('<span style="color:var(--up)">R$ '+cf.format(l.atual.custo_unitario)+'</span>'):'<span style="color:var(--muted)">&mdash;</span>';
+    let acao='<span style="color:var(--muted);font-size:11.5px">'+(l.atual?'j&aacute; cadastrado':'sem custo anterior')+'</span>';
+    if(l.ant&&!l.atual)acao='<button onclick="aplicarCustoRef(\''+l.tipo+'\',\''+escH(l.chave)+'\','+Number(l.ant.custo_unitario)+',\''+String(l.ant.mes_competencia).slice(0,7)+'\')" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:3px 10px;border-radius:6px;cursor:pointer;font-size:11.5px">Repetir</button>';
+    h+='<tr'+((!l.ant&&!l.atual)?' style="opacity:.5"':'')+'><td class="m">'+chave+'</td>'
+      +'<td style="text-align:left">'+escH(String(l.titulo).slice(0,52))+'</td>'
+      +'<td class="n">'+l.n+'</td>'
+      +'<td class="n">'+ult+'</td>'
+      +'<td class="n">'+org+'</td>'
+      +'<td class="n">'+atu+'</td>'
+      +'<td class="n">'+acao+'</td></tr>';
+  }
+  h+='</tbody></table></div>';
+  return h;
+}
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
   const mesAtual=new Date().toISOString().slice(0,7)+'-01';
@@ -1374,6 +1440,8 @@ function htmlOcelotConfig(){
     h+='<div class="foot" style="text-align:left">Preencher o campo SKU desses anúncios no Mercado Livre faz eles caírem no cadastro por SKU automaticamente na próxima coleta.</div>';
     h+='</details>';
   }
+  h+=htmlOcelotCustoRef();
+  h+='<h3 style="margin:22px 0 4px;font-size:14px">Histórico de custos cadastrados</h3>';
   h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / anúncio</th><th style="text-align:left">Produto</th><th class="n">Anúncios</th><th class="n">Mês</th><th class="n">Custo</th><th style="text-align:left">Observação</th><th class="n"></th></tr></thead><tbody>';
   if(!custos.length)h+='<tr><td class="m" colspan="7" style="text-align:left;color:var(--muted)">Nenhum custo cadastrado ainda.</td></tr>';
   const ord=custos.slice().sort(function(a,b){return String(b.mes_competencia).localeCompare(String(a.mes_competencia))||String(a.sku||a.item_id).localeCompare(String(b.sku||b.item_id));});
@@ -1448,6 +1516,37 @@ async function confirmarCustoSku(id){
   const payload={tipo:'custo',mes_competencia:c.mes_competencia,custo_unitario:val,observacao:'conferido e confirmado por SKU'};
   if(c.sku)payload.sku=c.sku;else payload.item_id=c.item_id;
   if(await ocelotSetCusto(payload))renderOcelot();
+}
+async function aplicarCustoRef(tipo,chave,custo,mesOrig){
+  const p={tipo:'custo',mes_competencia:ocelotMesAtual(),custo_unitario:Number(custo),observacao:'repetido do mês '+mesBr(mesOrig)};
+  if(tipo==='sku')p.sku=chave;else p.item_id=chave;
+  if(await ocelotSetCusto(p))renderOcelot();
+}
+async function aplicarTodosCustoRef(){
+  const ref=ocelotRefCustos(), ks=Object.keys(ref), mesAtual=ocelotMesAtual(), pend=[];
+  for(let i=0;i<ks.length;i++){const r=ref[ks[i]];if(r.ant&&!r.atual)pend.push(r.ant);}
+  if(!pend.length)return;
+  if(!confirm('Repetir o último custo de '+pend.length+' produto(s) no mês '+mesBr(mesAtual)+'?\n\nCada um vira um cadastro do mês '+mesBr(mesAtual)+', que você pode ajustar ou apagar depois. O histórico dos meses anteriores não muda.'))return;
+  const btn=document.getElementById('btnAplicarCustoRef'), st=document.getElementById('stAplicarCustoRef');
+  if(btn){btn.disabled=true;btn.style.opacity='.6';}
+  const {data:{session}}=await sb.auth.getSession();
+  const tok=session?session.access_token:'';
+  let ok=0,err=0,feito=0;
+  async function um(c){
+    const body={tipo:'custo',mes_competencia:mesAtual,custo_unitario:Number(c.custo_unitario),observacao:'repetido do mês '+mesBr(c.mes_competencia)};
+    if(c.sku)body.sku=c.sku;else body.item_id=c.item_id;
+    try{
+      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+tok},body:JSON.stringify(body)});
+      let j={};try{j=await r.json();}catch(e){}
+      if(!r.ok||(j&&j.error))err++;else ok++;
+    }catch(e){err++;}
+    feito++;
+    if(st)st.textContent=feito+'/'+pend.length;
+  }
+  for(let i=0;i<pend.length;i+=5)await Promise.all(pend.slice(i,i+5).map(um));
+  if(st)st.textContent='';
+  alert('Custos gravados em '+mesBr(mesAtual)+': '+ok+(err?(' · falhas: '+err):''));
+  renderOcelot();
 }
 async function apagarCustoSku(id){
   if(!confirm('Apagar este custo cadastrado? Os anúncios voltam a usar a fórmula neste mês.'))return;

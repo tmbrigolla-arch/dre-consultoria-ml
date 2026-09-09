@@ -92,7 +92,58 @@
     table{table-layout:auto}
     th,td{padding:6px 8px;font-size:12px}
     th.m,td.m{width:auto;min-width:120px}
-  }</style>
+  }
+
+  /* ================= LAYOUT v2 — menu lateral ================= */
+  body{background:#f5f7fa}
+  .shell{display:flex;min-height:100vh;align-items:stretch}
+  .sidebar{width:238px;flex:0 0 238px;background:#0f172a;color:#cbd5e1;display:flex;flex-direction:column;padding:18px 14px;position:sticky;top:0;height:100vh;z-index:40}
+  .sidebar .brand{display:flex;align-items:center;gap:10px;padding:2px 6px 16px;border-bottom:1px solid #1e293b;margin-bottom:14px}
+  .sidebar .brand .logo{width:34px;height:34px;flex:0 0 34px;border-radius:10px;background:linear-gradient(135deg,#2563eb,#60a5fa);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:12px;letter-spacing:.5px}
+  .sidebar .brand b{display:block;font-size:13.5px;color:#fff;line-height:1.2}
+  .sidebar .brand span{display:block;font-size:11px;color:#7b8ba6;margin-top:2px}
+  .navlbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5b6b85;font-weight:700;padding:0 11px;margin:2px 0 8px}
+  #navConsultoria,#tabOcelot{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;border-radius:10px;padding:10px 11px;color:#cbd5e1;font-weight:600;font-size:13.5px;cursor:pointer;margin-bottom:3px;transition:background .15s,color .15s}
+  #navConsultoria:hover,#tabOcelot:hover{background:#18233c;color:#fff}
+  #navConsultoria.grpon{background:#18233c;color:#fff}
+  #tabOcelot.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.35)}
+  .ico{width:17px;height:17px;flex:0 0 17px;opacity:.95}
+  #navConsultoria .caret{margin-left:auto;font-size:10px;opacity:.65}
+  .navsub{margin:1px 0 10px 18px;padding-left:11px;border-left:1px solid #22304d}
+  #tabSemanal,#tabMensal{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
+  #tabSemanal:hover,#tabMensal:hover{background:#18233c;color:#fff}
+  #tabSemanal.on,#tabMensal.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+  .sidebar .foot2{margin-top:auto;font-size:11px;color:#5b6b85;padding:12px 11px 2px;border-top:1px solid #1e293b}
+  .mainarea{flex:1;min-width:0;display:flex;flex-direction:column}
+  header{background:#fff;color:var(--ink);border-bottom:1px solid var(--line);padding:13px 24px;position:sticky;top:0;z-index:30;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+  header .t{display:flex;align-items:center;gap:10px}
+  header .t h1{font-size:16.5px;color:var(--ink);font-weight:700}
+  header .t p{color:var(--muted)}
+  header select,header button,header .dd>summary{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  header button.reload{background:var(--accent);border-color:var(--accent);color:#fff}
+  header button.reload:hover{background:#1d4fd8}
+  header button.ghost{background:#fff}
+  header button.ghost:hover{background:#f1f5fb}
+  header .dd[open]>summary{background:var(--accent);border-color:var(--accent);color:#fff}
+  header .pill{background:#eef2ff;color:#4f6996}
+  .wrap{max-width:1340px;margin:0;width:100%;padding:18px 24px 60px}
+  #tagbar{margin:18px 24px 0}
+  #navtoggle{display:none}
+  .scrim{display:none}
+  .tabs{display:none!important}
+  .cli{border-radius:14px}
+  @media (max-width:900px){
+    .sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%);transition:transform .22s ease;box-shadow:0 0 40px rgba(0,0,0,.45)}
+    body.navopen .sidebar{transform:none}
+    body.navopen .scrim{display:block;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:35}
+    #navtoggle{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0;font-size:16px;background:#fff;border:1px solid var(--line);color:var(--ink);border-radius:9px}
+    header{padding:11px 12px}
+    header .t h1{font-size:15px}
+    .wrap{padding:14px 12px 40px}
+    #tagbar{margin:14px 12px 0}
+  }
+  @media print{.sidebar,#navtoggle,.scrim,header{display:none!important}.shell{display:block}.mainarea{display:block}.wrap{padding:0!important;max-width:100%!important}}
+</style>
 </head>
 <body>
 
@@ -112,10 +163,26 @@
 </div>
 
 <div id="appRoot" style="display:none">
+<div class="shell">
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><div class="logo">DRE</div><div><b>Mercado Livre</b><span>Acompanhamento</span></div></div>
+  <div class="navlbl">Menu</div>
+  <button id="navConsultoria" class="grpon" onclick="abreConsultoria()"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Consultoria<span class="caret" id="caretCons">&#9662;</span></button>
+  <div class="navsub" id="navsubConsultoria">
+    <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
+    <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button>
+  </div>
+  <button id="tabOcelot" onclick="trocaAba('ocelot')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>Gestão Ocelot</button>
+  <div class="foot2">Antoninho Pickups</div>
+</aside>
+<div class="mainarea">
 <header>
   <div class="t">
-    <h1>DRE · Acompanhamento Mercado Livre</h1>
+    <button id="navtoggle" onclick="toggleNav()" title="Menu" aria-label="Menu">&#9776;</button>
+    <div>
+    <h1 id="h1sec">Consultoria · Semanal</h1>
     <p id="subtitulo"></p>
+    </div>
   </div>
   <div class="actions">
     
@@ -126,13 +193,12 @@
     <button class="ghost" onclick="sair()">Sair</button>
   </div>
 </header>
-<div class="tabs">
-  <button id="tabSemanal" class="on" onclick="trocaAba('semanal')">Semanal</button>
-  <button id="tabMensal" onclick="trocaAba('mensal')">Mensal</button><button id="tabOcelot" onclick="trocaAba('ocelot')">Gestão Ocelot</button>
-</div>
 <div id="tagbar" class="tagbar"></div>
 <div id="printhdr"></div>
 <div class="wrap" id="app"><div class="empty">Carregando…</div></div>
+</div>
+</div>
+<div class="scrim" onclick="toggleNav(false)"></div>
 </div>
 
 <script>
@@ -199,7 +265,7 @@ function fmt(v,t){ if(v==null||v==="") return "—"; if(t==="txt")return v==null
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }
-let DADOS=null, aba=(localStorage.getItem('ocelot_aba')||"semanal"), periodosSel=null;
+let DADOS=null, aba=(function(){var _a=localStorage.getItem('ocelot_aba');return (_a==="mensal"||_a==="ocelot")?_a:"semanal";})(), periodosSel=null;
 function metricas(){ return aba==="mensal"?METRICAS_MENSAL:METRICAS_SEMANAL; }
 function labelPeriodo(p){ const[y,m,d]=p.split("-"); return aba==="mensal"?(MESES[+m-1]+"/"+y.slice(2)):(d+"/"+m); }
 function dataset(){ return {
@@ -284,6 +350,16 @@ async function renderMercado(){
     app.innerHTML=h;
   }catch(e){ app.innerHTML='<div class="empty">Erro ao carregar mercado.</div>'; }
 }
+function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
+function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
+function sincNav(a){
+  var cons=(a==="semanal"||a==="mensal");
+  var g=document.getElementById("navsubConsultoria");if(g)g.style.display=cons?"":"none";
+  var nc=document.getElementById("navConsultoria");if(nc)nc.className=cons?"grpon":"";
+  var c=document.getElementById("caretCons");if(c)c.innerHTML=cons?"&#9662;":"&#9656;";
+  var h=document.getElementById("h1sec");if(h)h.textContent=cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):"Gest\u00e3o Ocelot";
+  toggleNav(false);
+}
 function trocaAba(a){
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
@@ -294,7 +370,7 @@ function trocaAba(a){
     :a==="ocelot"?"Gestão Ocelot — DRE por venda, detalhada e custos (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);
 }
 let SELT=new Set();
 async function renderConcorrentes(){

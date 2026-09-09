@@ -1200,6 +1200,110 @@ function htmlOcelotDetalhada(){
   return h;
 }
 function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+let ocelotSkuAberto={};
+function toggleSkuLinhas(k){
+  ocelotSkuAberto[k]=!ocelotSkuAberto[k];
+  const rows=document.querySelectorAll('.skl_'+k);
+  for(let i=0;i<rows.length;i++)rows[i].style.display=ocelotSkuAberto[k]?'':'none';
+  const c=document.getElementById('skcar_'+k); if(c)c.innerHTML=ocelotSkuAberto[k]?'&#9662;':'&#9656;';
+}
+// v1 (09/09/2026): grava o SKU no anuncio do Mercado Livre. NAO chama a API do ML direto —
+// passa pelo ml-acao, que e a unica function autorizada a escrever: ele le o SKU atual antes,
+// guarda em acoes_ml.estado_anterior (da pra reverter), respeita o kill switch global e a
+// permissao conta x capacidade 'itens'. Se voltar 'simulada', nao foi aplicado no ML.
+async function salvarSkuAnuncio(inp,itemId){
+  const novo=String(inp.value||'').trim();
+  const antigo=inp.getAttribute('data-sku')||'';
+  if(!novo){alert('Informe o SKU.');inp.value=antigo;return;}
+  if(novo===antigo)return;
+  if(!confirm('Gravar o SKU "'+novo+'" no anúncio '+itemId+' do Mercado Livre?'+(antigo?('\n\nSKU atual: '+antigo):'\n\nHoje este anúncio está sem SKU.'))){inp.value=antigo;return;}
+  const st=document.getElementById('skst_'+itemId);
+  inp.disabled=true; if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-acao',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({conta_id:OCELOT_CONTA_ID,capacidade:'itens',acao:'item.sku',alvo:itemId,params:{sku:novo},dry_run:false})});
+    const j=await r.json();
+    if(j&&j.status==='executada'){
+      if(st){st.textContent='gravado no ML';st.style.color='#34d399';}
+      inp.setAttribute('data-sku',novo);
+      setTimeout(function(){renderOcelot();},1200);
+      return;
+    }
+    const msg=(j&&j.status==='simulada')?('simulado, NÃO aplicado — '+(j.motivo||'')):((j&&(j.motivo||j.error))||'não gravou');
+    if(st){st.textContent=msg;st.style.color='#fbbf24';}
+    inp.value=antigo; inp.disabled=false;
+  }catch(e){
+    if(st){st.textContent='erro de rede';st.style.color='#f87171';}
+    inp.value=antigo; inp.disabled=false;
+  }
+}
+function skuInputCell(a){
+  const cur=a.sku_atual||'';
+  return '<input value="'+escH(cur)+'" data-sku="'+escH(cur)+'" placeholder="sem SKU" onclick="event.stopPropagation()" onchange="salvarSkuAnuncio(this,\''+a.item_id+'\')" style="width:110px;padding:2px 6px;font-size:12px">'
+   +'<div id="skst_'+a.item_id+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
+}
+function precoTxt(p){return p==null?'—':('R$ '+cf.format(Number(p)));}
+function statusPt(s){const m={active:'ativo',paused:'pausado',closed:'encerrado',under_review:'em revisão'};return m[s]||s||'—';}
+function linhasAnuncios(k,lista,skuDoGrupo){
+  let h='';
+  for(let i=0;i<lista.length;i++){
+    const a=lista[i];
+    a.sku_atual=(skuDoGrupo!==undefined?skuDoGrupo:(a.sku||''));
+    const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,58))+'</a>'):escH(String(a.titulo||'').slice(0,58));
+    const mlb=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id;
+    h+='<tr class="skl_'+k+'" style="display:none;background:#16233d">'
+      +'<td class="m sub2" style="font-size:11.5px">'+mlb+'</td>'
+      +'<td style="text-align:left;font-size:12px">'+tit+'</td>'
+      +'<td class="n">'+precoTxt(a.preco)+'</td>'
+      +'<td class="n" style="font-size:11.5px;color:var(--muted)">'+statusPt(a.status)+'</td>'
+      +'<td class="n">'+skuInputCell(a)+'</td>'
+      +'<td class="n"></td></tr>';
+  }
+  return h;
+}
+function htmlOcelotCatalogo(){
+  const D=OCELOT_CACHE; if(!D)return '';
+  const skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
+  const mesAtual=new Date().toISOString().slice(0,7)+'-01';
+  const custoSku={}, custoMlb={};
+  for(let i=0;i<custos.length;i++){const c=custos[i];if(String(c.mes_competencia)!==mesAtual)continue;if(c.sku)custoSku[c.sku]=c.custo_unitario;else if(c.item_id)custoMlb[c.item_id]=c.custo_unitario;}
+  let h='<div class="cli">';
+  h+='<h2>Produtos (SKU) e anúncios</h2>';
+  h+='<div class="sub">Clique no SKU para abrir os anúncios daquele produto. O campo SKU é editável e <b>grava no anúncio do Mercado Livre</b> (com registro do valor anterior).'+(D.itens_periodo?(' Preço e situação da coleta de '+String(D.itens_periodo).split('-').reverse().join('/')+'.'):'')+'</div>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU</th><th style="text-align:left">Produto</th><th class="n">Anúncios</th><th class="n">Un. vendidas</th><th class="n">Preço no ML</th><th class="n">Custo do mês</th></tr></thead><tbody>';
+  for(let i=0;i<skus.length;i++){
+    const s=skus[i], k='s'+i;
+    const faixa=(s.preco_min==null)?'—':((s.preco_min===s.preco_max)?precoTxt(s.preco_min):(precoTxt(s.preco_min)+' a '+precoTxt(s.preco_max)));
+    const cst=custoSku[s.sku]!=null?('R$ '+cf.format(custoSku[s.sku])):'<span style="color:var(--muted)">—</span>';
+    h+='<tr style="cursor:pointer" onclick="toggleSkuLinhas(\''+k+'\')">'
+      +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">&#9656;</span> <b>'+escH(s.sku)+'</b></td>'
+      +'<td style="text-align:left">'+escH(String(s.titulo||'').slice(0,52))+'</td>'
+      +'<td class="n">'+s.n_mlbs+(s.ativos<s.n_mlbs?('<span style="color:var(--muted);font-size:11px"> ('+s.ativos+' ativos)</span>'):'')+'</td>'
+      +'<td class="n">'+s.unid+'</td>'
+      +'<td class="n">'+faixa+'</td>'
+      +'<td class="n">'+cst+'</td></tr>';
+    h+=linhasAnuncios(k,s.anuncios||[],s.sku);
+  }
+  h+='</tbody></table></div>';
+  if(semSku.length){
+    h+='<h3 style="margin:18px 0 4px;font-size:14px">Anúncios sem SKU ('+semSku.length+' com venda)</h3>';
+    h+='<div class="sub">Sem SKU o custo precisa ser cadastrado anúncio por anúncio. Preencha o SKU aqui e o anúncio passa a usar o cadastro por produto.</div>';
+    h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">MLB</th><th style="text-align:left">Produto</th><th class="n">Preço no ML</th><th class="n">Situação</th><th class="n">SKU</th><th class="n">Un. vendidas</th></tr></thead><tbody>';
+    for(let i=0;i<semSku.length;i++){
+      const a=semSku[i]; a.sku_atual='';
+      const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,58))+'</a>'):escH(String(a.titulo||'').slice(0,58));
+      h+='<tr><td class="m" style="font-size:11.5px">'+(a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id)+'</td>'
+        +'<td style="text-align:left;font-size:12px">'+tit+'</td>'
+        +'<td class="n">'+precoTxt(a.preco)+'</td>'
+        +'<td class="n" style="font-size:11.5px;color:var(--muted)">'+statusPt(a.status)+'</td>'
+        +'<td class="n">'+skuInputCell(a)+'</td>'
+        +'<td class="n">'+a.unid+'</td></tr>';
+    }
+    h+='</tbody></table></div>';
+  }
+  h+='</div>';
+  return h;
+}
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
   const mesAtual=new Date().toISOString().slice(0,7)+'-01';
@@ -1287,6 +1391,7 @@ function htmlOcelotConfig(){
   h+='</tbody></table></div>';
   h+='<div class="foot" style="text-align:left;margin-top:10px">'+skus.length+' SKUs no catálogo · '+custos.filter(function(c){return c.sku;}).length+' com custo cadastrado.</div>';
   h+='</div>';
+  h+=htmlOcelotCatalogo();
   return h;
 }
 async function atualizarOcelot(){

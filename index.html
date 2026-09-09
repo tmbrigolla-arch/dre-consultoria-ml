@@ -301,7 +301,7 @@
   <div class="actions">
     
     <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
-    <button class="reload" id="btnAtualizar" onclick="atualizar()">Atualizar</button>
+    <button class="reload" id="btnAtualizar" onclick="atualizarContexto()">Atualizar métricas</button>
     <button class="ghost" id="btnFecharMes" style="display:none" onclick="fecharMes()">Fechar mês</button>
     <button class="ghost" onclick="exportarPDF()">Exportar PDF</button>
     <button class="ghost" onclick="sair()">Sair</button>
@@ -472,6 +472,15 @@ function sincOcelotNav(){
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
+// v4 (09/09/2026): o botao do header era um so e sempre chamava o coletor das 9 contas, mesmo
+// estando dentro da Gestao Ocelot. Agora ele muda com a aba: em Consultoria roda o ml-coletor
+// (metricas das contas); em Gestao Ocelot roda o ml-ocelot-vendas (vendas da conta propria).
+function atualizarContexto(){ if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
+function sincBtnAtualizar(a){
+  var b=document.getElementById("btnAtualizar"); if(!b)return;
+  b.textContent=(a==="ocelot")?"Atualizar vendas":"Atualizar métricas";
+  b.title=(a==="ocelot")?"Recoleta as vendas da conta Ocelot (últimos 30 dias)":"Recoleta as métricas das contas no Mercado Livre";
+}
 function sincNav(a){
   var cons=(a==="semanal"||a==="mensal"),oce=(a==="ocelot");
   var g=document.getElementById("navsubConsultoria");if(g)g.style.display=cons?"":"none";
@@ -481,6 +490,7 @@ function sincNav(a){
   var co=document.getElementById("caretOce");if(co)co.innerHTML=oce?"&#9662;":"&#9656;";
   var h=document.getElementById("h1sec");
   if(h)h.textContent=cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):(oce?"Gest\u00e3o Ocelot":"Painel");
+  sincBtnAtualizar(a);
   if(oce)sincOcelotNav();
   toggleNav(false);
 }
@@ -972,7 +982,6 @@ function htmlOcelotVendas(){
       .map(function(k){const v=D.por_forma_pagamento[k];const pct=totalFp?(v.n_vendas/totalFp*100):0;return (fpMap[k]||k)+' '+pct.toFixed(0)+'%';}).join(' · ');
     if(partes)h+='<span style="color:#94a3b8">Pagamento: '+partes+'</span>';
   }
-  h+='<button onclick="atualizarOcelot()" id="btnAtualizarOcelot" style="background:var(--accent);color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer">Atualizar vendas</button>';
   h+='<label style="display:flex;align-items:center;gap:5px">Buscar nº pedido <input id="ocelotBuscaInput" type="text" value="'+(ocelotBusca||'')+'" oninput="ocelotBuscaChange(this)" placeholder="ex: 2000017..." style="padding:3px 8px;border-radius:6px;border:1px solid var(--line);width:160px"></label>';
   h+='<span>'+todos.length+' pedido(s)'+(ocelotBusca?' encontrados':' no período')+'</span>';
   h+='<label>Período <select onchange="ocelotMesChange(this)" style="padding:3px 6px;border-radius:6px;border:1px solid var(--line)"><option value=""'+(!ocelotMesFiltro?' selected':'')+'>Últimos 30 dias</option>'+mesesOpts+'</select></label>';
@@ -1194,7 +1203,7 @@ function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
   const mesAtual=new Date().toISOString().slice(0,7)+'-01';
-  const par=(D.parametros||[]).filter(function(p){return p.mes_competencia===mesAtual;})[0]||{imposto_pct:4.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
+  const par=(D.parametros||[]).filter(function(p){return p.mes_competencia===mesAtual;})[0]||{imposto_pct:5.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
   const skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
   const infoSku={};
   for(let i=0;i<skus.length;i++)infoSku[skus[i].sku]=skus[i];
@@ -1273,6 +1282,7 @@ function htmlOcelotConfig(){
 }
 async function atualizarOcelot(){
   const btn=document.getElementById('btnAtualizarOcelot'); if(btn){btn.disabled=true;btn.textContent='Atualizando…';}
+  const bh=document.getElementById('btnAtualizar'); if(bh){bh.disabled=true;bh.textContent='Atualizando…';}
   try{
     const {data:{session}}=await sb.auth.getSession();
     await fetch(SB_URL+'/functions/v1/ml-ocelot-vendas?dias=30',{headers:{Authorization:'Bearer '+(session?session.access_token:'')}});

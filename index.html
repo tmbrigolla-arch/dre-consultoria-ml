@@ -1212,22 +1212,43 @@ function toggleSkuLinhas(k){
 // passa pelo ml-acao, que e a unica function autorizada a escrever: ele le o SKU atual antes,
 // guarda em acoes_ml.estado_anterior (da pra reverter), respeita o kill switch global e a
 // permissao conta x capacidade 'itens'. Se voltar 'simulada', nao foi aplicado no ML.
+async function ocelotSincronizaSku(itemId){
+  // Le o SELLER_SKU REAL do anuncio no ML e conserta o nosso espelho (ocelot_itens_sku) na hora.
+  // Sem isso, quando o ML JA esta com o SKU novo o ml-acao devolve "bloqueada" e o anuncio fica
+  // preso no produto errado ate o cron diario rodar. Fonte da verdade = ML.
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-sku-sync',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({item_id:itemId})});
+    let j={};try{j=await r.json();}catch(e){}
+    if(!r.ok||!j||!j.ok)return null;
+    const it=(j.itens||[])[0];
+    return it?(it.sku||''):null;
+  }catch(e){return null;}
+}
 async function salvarSkuAnuncio(inp,itemId){
   const novo=String(inp.value||'').trim();
   const antigo=inp.getAttribute('data-sku')||'';
   if(!novo){alert('Informe o SKU.');inp.value=antigo;return;}
   if(novo===antigo)return;
-  if(!confirm('Gravar o SKU "'+novo+'" no anúncio '+itemId+' do Mercado Livre?'+(antigo?('\n\nSKU atual: '+antigo):'\n\nHoje este anúncio está sem SKU.'))){inp.value=antigo;return;}
+  if(!confirm('Gravar o SKU "'+novo+'" no anúncio '+itemId+' do Mercado Livre?'+(antigo?('\n\nSKU atual: '+antigo):'\n\nHoje este anúncio está sem SKU.')+'\n\nO anúncio passa a fazer parte do produto '+novo+' aqui no cadastro.')){inp.value=antigo;return;}
   const st=document.getElementById('skst_'+itemId);
   inp.disabled=true; if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
   try{
     const {data:{session}}=await sb.auth.getSession();
     const r=await fetch(SB_URL+'/functions/v1/ml-acao',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({conta_id:OCELOT_CONTA_ID,capacidade:'itens',acao:'item.sku',alvo:itemId,params:{sku:novo},dry_run:false})});
-    const j=await r.json();
-    if(j&&j.status==='executada'){
-      if(st){st.textContent='gravado no ML';st.style.color='#34d399';}
-      inp.setAttribute('data-sku',novo);
-      setTimeout(function(){renderOcelot();},1200);
+    let j={};try{j=await r.json();}catch(e){}
+    const motivo=String((j&&j.motivo)||'');
+    const jaTem=(j&&j.status==='bloqueada'&&motivo.indexOf('ja esta com esse SKU')!==-1);
+    if((j&&j.status==='executada')||jaTem){
+      if(st){st.textContent=jaTem?'já estava com esse SKU no ML — corrigindo o cadastro…':'gravado no ML — atualizando o cadastro…';st.style.color='var(--muted)';}
+      const real=await ocelotSincronizaSku(itemId);
+      if(real===null){
+        if(st){st.textContent=(jaTem?'já estava com esse SKU no ML, ':'gravado no ML, ')+'mas não consegui atualizar o cadastro — clique em Atualizar';st.style.color='#fbbf24';}
+        inp.disabled=false; return;
+      }
+      inp.setAttribute('data-sku',real);
+      if(st){st.textContent=(jaTem?'cadastro corrigido: ':'gravado no ML: ')+(real||'sem SKU');st.style.color='#34d399';}
+      setTimeout(function(){renderOcelot();},700);
       return;
     }
     const msg=(j&&j.status==='simulada')?('simulado, NÃO aplicado — '+(j.motivo||'')):((j&&(j.motivo||j.error))||'não gravou');

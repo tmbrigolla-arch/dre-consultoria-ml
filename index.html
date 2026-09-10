@@ -716,6 +716,7 @@ async function renderOcelot(){
     if(r.status===401){mostrarLogin();return;}
     OCELOT_CACHE=await r.json();
   }catch(e){app.innerHTML='<div class="empty">Erro ao carregar gestão Ocelot.<br>'+e+'</div>';return;}
+  await ocelotCarregaApelidos();
   renderOcelotBody();
 }
 async function renderFornecedores(){
@@ -1261,6 +1262,7 @@ function statusPt(s){const m={active:'ativo',paused:'pausado',closed:'encerrado'
 let ocelotCustoMes=(new Date().toISOString().slice(0,7));
 let ocelotSoSemCusto=false;
 let OCELOT_LINHAS={};
+let OCELOT_APELIDOS={};
 function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
 function ocelotMesSel(){return ocelotCustoMes+'-01';}
 function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
@@ -1395,7 +1397,7 @@ function htmlOcelotProdutos(){
       +'<div id="cst_'+k+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
     h+='<tr style="cursor:pointer'+((!l.ant&&!l.atual&&!l.unid)?';opacity:.6':'')+'" onclick="toggleSkuLinhas(\''+k+'\')">'
       +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">&#9656;</span> <b>'+escH(l.chave)+'</b>'+selo+'</td>'
-      +'<td style="text-align:left">'+(tit||'<span style="color:var(--muted)">&mdash;</span>')+'</td>'
+      +'<td style="text-align:left">'+celulaProduto(l,tit)+'</td>'
       +'<td class="n">'+nAn+'</td>'
       +'<td class="n">'+l.unid+'</td>'
       +'<td class="n">'+faixa+'</td>'
@@ -1407,6 +1409,43 @@ function htmlOcelotProdutos(){
   h+='</tbody></table></div>';
   h+='</div>';
   return h;
+}
+// APELIDO DO PRODUTO (09/09/2026): o nome que aparece na coluna Produto e editavel e e um nome
+// INTERNO por SKU (tabela ocelot_produtos_sku, function ml-ocelot-apelido). NAO mexe no titulo
+// do anuncio no Mercado Livre -- por isso o titulo original continua visivel, em cinza, embaixo
+// do campo. Anuncio sem SKU nao tem apelido (nao e produto do cadastro).
+function celulaProduto(l,tit){
+  if(l.tipo!=='sku')return tit||'<span style="color:var(--muted)">&mdash;</span>';
+  const ap=OCELOT_APELIDOS[l.chave]||'';
+  let h='<input id="ap_'+l.k+'" value="'+escH(ap)+'" placeholder="nome interno deste produto" onclick="event.stopPropagation()" onchange="salvarApelido(\''+l.k+'\')" title="Nome interno do produto. Não altera o título do anúncio no Mercado Livre." style="width:100%;min-width:210px;padding:3px 6px;font-size:12.5px'+(ap?';font-weight:600':'')+'">';
+  h+='<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35">'+escH(String(l.titulo||'').slice(0,58))+'<span id="apst_'+l.k+'" style="margin-left:6px"></span></div>';
+  return h;
+}
+async function ocelotCarregaApelidos(){
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-apelido',{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    if(!r.ok)return;
+    const j=await r.json();
+    if(j&&j.apelidos)OCELOT_APELIDOS=j.apelidos;
+  }catch(e){}
+}
+async function salvarApelido(k){
+  const l=OCELOT_LINHAS[k]; if(!l||l.tipo!=='sku')return;
+  const inp=document.getElementById('ap_'+k), st=document.getElementById('apst_'+k);
+  const novo=String(inp?inp.value:'').trim();
+  const antigo=OCELOT_APELIDOS[l.chave]||'';
+  if(novo===antigo)return;
+  if(st){st.textContent='salvando…';st.style.color='var(--muted)';}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-apelido',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({sku:l.chave,apelido:novo})});
+    let j={};try{j=await r.json();}catch(e){}
+    if(!r.ok||(j&&j.error)){if(st){st.textContent='não salvou';st.style.color='#f87171';}if(inp)inp.value=antigo;return;}
+    if(novo)OCELOT_APELIDOS[l.chave]=novo;else delete OCELOT_APELIDOS[l.chave];
+    if(inp)inp.style.fontWeight=novo?'600':'';
+    if(st){st.textContent='salvo';st.style.color='#34d399';setTimeout(function(){if(st.textContent==='salvo')st.textContent='';},3000);}
+  }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}}
 }
 function ocelotMsgSt(el,txt,cor){
   if(!el)return;

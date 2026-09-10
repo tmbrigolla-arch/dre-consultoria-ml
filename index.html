@@ -1212,6 +1212,61 @@ function toggleSkuLinhas(k){
 // passa pelo ml-acao, que e a unica function autorizada a escrever: ele le o SKU atual antes,
 // guarda em acoes_ml.estado_anterior (da pra reverter), respeita o kill switch global e a
 // permissao conta x capacidade 'itens'. Se voltar 'simulada', nao foi aplicado no ML.
+// MANTER A TELA AO TROCAR O SKU (10/09/2026): antes eu chamava renderOcelot(), que rebusca tudo
+// e remonta a pagina -- o Tiago perdia o scroll e a expansao do produto a cada anuncio corrigido.
+// Agora o anuncio e movido de produto no CACHE local e so o corpo e repintado, com o scroll e as
+// linhas abertas preservados (a chave da linha e estavel, e ocelotSkuAberto sobrevive).
+// A contagem de unidades vendidas do produto so se acerta no proximo carregamento completo --
+// ela e recalculada pelo backend a partir das vendas, nao da pra mover com precisao aqui.
+function renderOcelotBodyMantendoTela(){
+  const y=window.scrollY||window.pageYOffset||0;
+  renderOcelotBody();
+  window.scrollTo(0,y);
+  if(window.requestAnimationFrame)requestAnimationFrame(function(){window.scrollTo(0,y);});
+}
+function ocelotRecalcSku(s){
+  const an=s.anuncios||[];
+  s.n_mlbs=an.length;
+  s.ativos=an.filter(function(a){return a.status==='active';}).length;
+  const p=an.map(function(a){return a.preco;}).filter(function(x){return x!=null;}).map(Number);
+  s.preco_min=p.length?Math.min.apply(null,p):null;
+  s.preco_max=p.length?Math.max.apply(null,p):null;
+  s.mlbs=an.map(function(a){return a.item_id;});
+}
+function ocelotMoveAnuncioLocal(itemId,skuNovo){
+  const D=OCELOT_CACHE; if(!D)return;
+  D.skus=D.skus||[]; D.itens_sem_sku=D.itens_sem_sku||[];
+  let anuncio=null,origem=null;
+  for(let i=0;i<D.skus.length;i++){
+    const an=D.skus[i].anuncios||[];
+    for(let j=0;j<an.length;j++){
+      if(an[j].item_id===itemId){anuncio=an[j];an.splice(j,1);origem=D.skus[i];break;}
+    }
+    if(anuncio)break;
+  }
+  if(!anuncio){
+    for(let j=0;j<D.itens_sem_sku.length;j++){
+      const x=D.itens_sem_sku[j];
+      if(x.item_id===itemId){anuncio={item_id:x.item_id,titulo:x.titulo,preco:x.preco,status:x.status,permalink:x.permalink};D.itens_sem_sku.splice(j,1);break;}
+    }
+  }
+  if(!anuncio)return;
+  if(origem)ocelotRecalcSku(origem);
+  if(!skuNovo){
+    D.itens_sem_sku.push({item_id:anuncio.item_id,titulo:anuncio.titulo,preco:anuncio.preco,status:anuncio.status,permalink:anuncio.permalink,unid:0});
+    return;
+  }
+  let destino=null;
+  for(let i=0;i<D.skus.length;i++)if(D.skus[i].sku===skuNovo){destino=D.skus[i];break;}
+  if(!destino){
+    destino={sku:skuNovo,titulo:anuncio.titulo||skuNovo,anuncios:[],unid:0,n_mlbs:0,ativos:0,preco_min:null,preco_max:null,mlbs:[]};
+    D.skus.push(destino);
+  }
+  destino.anuncios=destino.anuncios||[];
+  destino.anuncios.push(anuncio);
+  destino.anuncios.sort(function(a,b){return Number(b.preco||0)-Number(a.preco||0);});
+  ocelotRecalcSku(destino);
+}
 async function ocelotSincronizaSku(itemId){
   // Le o SELLER_SKU REAL do anuncio no ML e conserta o nosso espelho (ocelot_itens_sku) na hora.
   // Sem isso, quando o ML JA esta com o SKU novo o ml-acao devolve "bloqueada" e o anuncio fica
@@ -1248,7 +1303,7 @@ async function salvarSkuAnuncio(inp,itemId){
       }
       inp.setAttribute('data-sku',real);
       if(st){st.textContent=(jaTem?'cadastro corrigido: ':'gravado no ML: ')+(real||'sem SKU');st.style.color='#34d399';}
-      setTimeout(function(){renderOcelot();},700);
+      setTimeout(function(){ocelotMoveAnuncioLocal(itemId,real);renderOcelotBodyMantendoTela();},900);
       return;
     }
     const msg=(j&&j.status==='simulada')?('simulado, NÃO aplicado — '+(j.motivo||'')):((j&&(j.motivo||j.error))||'não gravou');
@@ -1333,7 +1388,14 @@ function ocelotLinhasProdutos(){
     if(a.tipo!==b.tipo)return a.tipo==='sku'?-1:1;
     return (b.unid||0)-(a.unid||0)||String(a.chave).localeCompare(String(b.chave));
   });
-  for(let i=0;i<linhas.length;i++)linhas[i].k='p'+i;
+  // chave ESTAVEL por produto (nao pode ser o indice: se um anuncio troca de SKU a lista muda de
+  // ordem/tamanho e a expansao aberta iria parar na linha errada).
+  const usados={};
+  for(let i=0;i<linhas.length;i++){
+    const base=(linhas[i].tipo==='sku'?'s_':'m_')+String(linhas[i].chave).replace(/[^A-Za-z0-9]/g,'_');
+    let k=base,n=2; while(usados[k]){k=base+'__'+(n++);}
+    usados[k]=1; linhas[i].k=k;
+  }
   return linhas;
 }
 function htmlUltimoCusto(l){
@@ -1417,14 +1479,14 @@ function htmlOcelotProdutos(){
     const inp='<input id="ci_'+k+'" type="number" step="0.01" value="'+(l.atual?Number(l.atual.custo_unitario).toFixed(2):'')+'" placeholder="&mdash;" onclick="event.stopPropagation()" onchange="salvarCustoLinha(\''+k+'\')" style="width:92px;text-align:right'+(l.atual?';border-color:#34d399':'')+'">'
       +'<div id="cst_'+k+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
     h+='<tr style="cursor:pointer'+((!l.ant&&!l.atual&&!l.unid)?';opacity:.6':'')+'" onclick="toggleSkuLinhas(\''+k+'\')">'
-      +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">&#9656;</span> <b>'+escH(l.chave)+'</b>'+selo+'</td>'
+      +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">'+(ocelotSkuAberto[k]?'&#9662;':'&#9656;')+'</span> <b>'+escH(l.chave)+'</b>'+selo+'</td>'
       +'<td style="text-align:left">'+celulaProduto(l,tit)+'</td>'
       +'<td class="n">'+nAn+'</td>'
       +'<td class="n">'+l.unid+'</td>'
       +'<td class="n">'+faixa+'</td>'
       +'<td class="n">'+inp+'</td>'
       +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td></tr>';
-    h+='<tr class="skl_'+k+'" style="display:none"><td colspan="7" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
+    h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="7" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
   if(!mostradas)h+='<tr><td class="m" colspan="7" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';
   h+='</tbody></table></div>';

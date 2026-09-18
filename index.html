@@ -1339,6 +1339,43 @@ let ocelotCustoMes=(new Date().toISOString().slice(0,7));
 let ocelotSoSemCusto=false;
 let OCELOT_LINHAS={};
 let OCELOT_APELIDOS={};
+// ORDENACAO (18/09/2026): clicar no cabecalho ordena por aquela coluna. 1o clique = maior->menor
+// (numeros) ou A->Z (texto), 2o inverte, 3o volta a ordem padrao. Vazios sempre no fim.
+// A ordem so muda ao clicar no cabecalho/recarregar -- salvar custo continua sem pular linha.
+let ocelotOrdem={col:null,dir:1};
+function ocelotOrdenar(col){
+  if(ocelotOrdem.col!==col)ocelotOrdem={col:col,dir:(col==='sku'||col==='produto')?1:-1};
+  else if(ocelotOrdem.dir===((col==='sku'||col==='produto')?1:-1))ocelotOrdem.dir=-ocelotOrdem.dir;
+  else ocelotOrdem={col:null,dir:1};
+  renderOcelotBodyMantendoTela();
+}
+function ocelotValOrdem(l,col){
+  switch(col){
+    case 'sku': return String(l.chave||'');
+    case 'produto': return String((l.tipo==='sku'&&OCELOT_APELIDOS[l.chave])||l.titulo||'').trim()||null;
+    case 'anuncios': return Number(l.n||0);
+    case 'unid': return Number(l.unid||0);
+    case 'preco': return l.pmin==null?null:Number(l.pmin);
+    case 'custo': return l.atual?Number(l.atual.custo_unitario):null;
+    case 'ultimo': return l.ant?Number(l.ant.custo_unitario):null;
+  }
+  return null;
+}
+function ocelotAplicaOrdem(linhas){
+  const col=ocelotOrdem.col, dir=ocelotOrdem.dir; if(!col)return linhas;
+  return linhas.slice().sort(function(a,b){
+    const va=ocelotValOrdem(a,col), vb=ocelotValOrdem(b,col);
+    if(va==null&&vb==null)return 0; if(va==null)return 1; if(vb==null)return -1;
+    let c=(typeof va==='number')?(va-vb):va.localeCompare(vb,'pt-BR',{numeric:true,sensitivity:'base'});
+    if(!c)c=(b.unid||0)-(a.unid||0)||String(a.chave).localeCompare(String(b.chave),'pt-BR',{numeric:true});
+    else c=c*dir;
+    return c;
+  });
+}
+function ocelotTh(col,rotulo,cls,estilo){
+  const on=ocelotOrdem.col===col, seta=on?(ocelotOrdem.dir>0?' &#9650;':' &#9660;'):' <span style="opacity:.3">&#8693;</span>';
+  return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotOrdenar(\''+col+'\')" title="Clique para ordenar" style="cursor:pointer;user-select:none'+(estilo?';'+estilo:'')+(on?';color:#93c5fd':'')+'">'+rotulo+seta+'</th>';
+}
 function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
 function ocelotMesSel(){return ocelotCustoMes+'-01';}
 function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
@@ -1450,7 +1487,7 @@ function htmlExpansaoLinha(l){
 }
 function htmlOcelotProdutos(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
-  const mes=ocelotMesSel(), linhas=ocelotLinhasProdutos();
+  const mes=ocelotMesSel(), linhas=ocelotAplicaOrdem(ocelotLinhasProdutos());
   OCELOT_LINHAS={};
   let comCusto=0,repetir=0,semNada=0;
   for(let i=0;i<linhas.length;i++){
@@ -1466,7 +1503,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr><th class="m">SKU / an&uacute;ncio</th><th style="text-align:left">Produto</th><th class="n">An&uacute;ncios</th><th class="n">Un. vendidas</th><th class="n">Pre&ccedil;o no ML</th><th class="n">Custo '+mesBr(mes)+'</th><th class="n">&Uacute;ltimo custo antes</th></tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'</tr></thead><tbody>';
   let mostradas=0;
   for(let i=0;i<linhas.length;i++){
     const l=linhas[i], k=l.k;

@@ -252,6 +252,64 @@
     #app [style*="color:#1f2733"],#app [style*="color:#333"],#app [style*="color:#666"],#app [style*="color:#888"],#app [style*="color:#555"],#app [style*="color:#64748b"],#app [style*="color:#475569"],#app [style*="color:#1F4E79"]{color:#111!important}
   }
 </style>
+<style>
+  /* ---- Administracao: usuarios e permissoes (20/09/2026) ---- estilizado por ID no menu (trocaAba/sincNav trocam className) */
+  #navAdmin{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;border-radius:10px;padding:10px 11px;color:#cbd5e1;font-weight:600;font-size:13.5px;cursor:pointer;margin-bottom:3px;transition:background .15s,color .15s}
+  #navAdmin:hover,#navAdmin.grpon{background:#18233c;color:#fff}
+  #navAdmin .caret{margin-left:auto;font-size:10px;opacity:.65}
+  #admUsuarios,#admPermissoes{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
+  #admUsuarios:hover,#admPermissoes:hover{background:#18233c;color:#fff}
+  #admUsuarios.on,#admPermissoes.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+  #lblAdmin{margin-top:12px}
+  #usrInfo{color:#cbd5e1;font-size:12px;font-weight:600;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #btnMinhaSenha{background:transparent;border:none;color:#7b8ba6;font-size:11.5px;padding:0;margin:0 0 8px;cursor:pointer;text-decoration:underline}
+  #btnMinhaSenha:hover{color:#fff}
+  .adm-badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;background:#1e3a8a;color:#bfdbfe;border-radius:5px;padding:1px 6px;vertical-align:middle}
+  .adm .sub{margin-bottom:12px}
+  .adm-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px 16px}
+  .adm-form label,.adm-modal label{display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--muted)}
+  .adm-form input,.adm-form select,.adm-modal input{font:inherit;font-size:13.5px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--ink);min-width:0}
+  .adm-row{display:flex;gap:6px}.adm-row input{flex:1}
+  .adm-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .adm-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:600;font-size:13.5px;cursor:pointer}
+  .adm-btn:disabled{opacity:.6;cursor:default}
+  .adm-btn2{background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 10px;font-weight:600;font-size:12px;cursor:pointer}
+  .adm-btn2:hover{border-color:var(--accent)}
+  .adm-danger{color:var(--down);border-color:#5b2020}
+  .adm-msg{font-size:12.5px;color:var(--muted)} .adm-err{color:var(--down)} .adm-okm{color:var(--up)}
+  .adm-pw{font-family:ui-monospace,Consolas,monospace;background:var(--panel2);padding:1px 6px;border-radius:4px;color:var(--ink)}
+  .adm-tw{overflow-x:auto}
+  .adm-t{width:100%;border-collapse:collapse;font-size:13px;table-layout:auto}
+  .adm-t th,.adm-t td{text-align:left;vertical-align:middle;padding:7px 10px}
+  .adm-t .adm-c{text-align:center}
+  .adm-mx th{font-size:11px;white-space:normal;min-width:62px;text-align:center}
+  .adm-mx th:first-child{text-align:left;min-width:150px}
+  .adm-click{cursor:pointer}
+  .adm-sel td,.adm-sel:hover td{background:#1b2f55!important}
+  .adm-off td{opacity:.55}
+  .adm-nw{white-space:nowrap}
+  .adm-in{font:inherit;font-size:13px;padding:5px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ink);width:140px}
+  .adm-in:hover,.adm-in:focus{border-color:var(--line);background:var(--panel2)}
+  .adm-ok{color:var(--up);font-weight:700} .adm-no{color:var(--down);font-weight:700} .adm-dot{color:var(--muted)}
+  .adm-l{text-align:left}
+  .adm-big{margin:4px 0 14px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+  .adm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .adm-box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel2)}
+  .adm-box h3{margin:0 0 8px;font-size:13.5px;color:var(--ink)}
+  .adm-sub{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--muted);font-weight:700;margin:10px 0 4px}
+  .adm-ck{display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:4px 0;cursor:pointer;color:var(--ink)}
+  .adm-ck input{margin-top:2px;accent-color:var(--accent)}
+  .adm-hint{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+  .adm-hint-i{font-size:11.5px;color:var(--muted)}
+  .adm-dis{opacity:.4;pointer-events:none}
+  .adm-ro{background:#3a2f10;color:#fbbf24;border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:10px}
+  #mSenha{display:none;position:fixed;inset:0;background:rgba(2,6,23,.7);z-index:100;align-items:center;justify-content:center;padding:16px}
+  .adm-modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
+  .adm-modal h3{margin:0;color:var(--ink)}
+  #toastMsg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;border:1px solid #374151;border-radius:10px;padding:10px 16px;font-size:13px;z-index:120;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px)}
+  #toastMsg.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media print{#toastMsg,#mSenha{display:none!important}}
+</style>
 </head>
 <body>
 
@@ -266,7 +324,7 @@
     <input id="senha2" type="password" autocomplete="new-password" placeholder="Repita a senha" style="display:none;margin-top:8px">
     <button class="btn" id="btnLogin" onclick="acaoLogin()">Entrar</button>
     <div class="err" id="loginErr"></div>
-    <button class="link" id="toggleModo" onclick="toggleModo()">Primeiro acesso — criar senha master</button>
+    <button class="link" id="toggleModo" style="display:none" onclick="toggleModo()">Primeiro acesso — criar senha master</button>
   </div>
 </div>
 
@@ -287,7 +345,13 @@
     <button id="ocnDetalhada" onclick="ocelotSubTab('detalhada')">DRE detalhada</button>
     <button id="ocnConfig" onclick="ocelotSubTab('config')">Cadastro</button>
   </div>
-  <div class="foot2">Antoninho Pickups</div>
+  <div class="navlbl" id="lblAdmin" style="display:none">Administração</div>
+  <button id="navAdmin" style="display:none" onclick="trocaAba('usuarios')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Usuários e acesso<span class="caret" id="caretAdm">&#9656;</span></button>
+  <div class="navsub" id="navsubAdmin" style="display:none">
+    <button id="admUsuarios" onclick="trocaAba('usuarios')">Usuários</button>
+    <button id="admPermissoes" onclick="trocaAba('permissoes')">Permissões</button>
+  </div>
+  <div class="foot2"><div id="usrInfo"></div><button id="btnMinhaSenha" style="display:none" onclick="minhaSenha()">Trocar minha senha</button><div>Antoninho Pickups</div></div>
 </aside>
 <div class="mainarea">
 <header>
@@ -303,7 +367,7 @@
     <details class="dd" id="ddPeriodos"><summary>Períodos</summary><div class="menu" id="menuPeriodos"></div></details>
     <button class="reload" id="btnAtualizar" onclick="atualizarContexto()">Atualizar métricas</button>
     <button class="ghost" id="btnFecharMes" style="display:none" onclick="fecharMes()">Fechar mês</button>
-    <button class="ghost" onclick="exportarPDF()">Exportar PDF</button>
+    <button class="ghost" id="btnPDF" onclick="exportarPDF()">Exportar PDF</button>
     <button class="ghost" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -349,14 +413,20 @@ async function acaoLogin(){
       if(!r.ok){err.textContent=j.error||"Não foi possível criar o acesso.";return;}
     }
     const {error}=await sb.auth.signInWithPassword({email,password:senha});
-    if(error){err.textContent="E-mail ou senha inválidos.";return;}
+    if(error){err.textContent=/banned/i.test(error.message||"")?"Usuário desativado — fale com o administrador.":"E-mail ou senha inválidos.";return;}
     mostrarApp();
   }catch(e){err.textContent="Erro: "+e;}
   finally{btn.disabled=false;}
 }
-async function sair(){ await sb.auth.signOut(); mostrarLogin(); }
+async function sair(){ await sb.auth.signOut(); EU=null; ADM=null; admSel=null; mostrarLogin(); }
 function mostrarLogin(){ document.getElementById("appRoot").style.display="none"; document.getElementById("login").style.display="flex"; }
-function mostrarApp(){ document.getElementById("login").style.display="none"; document.getElementById("appRoot").style.display="block"; load(); }
+async function mostrarApp(){ document.getElementById("login").style.display="none"; document.getElementById("appRoot").style.display="block";
+  document.getElementById("app").innerHTML='<div class="empty">Carregando…</div>';
+  await carregaEu(); aplicaPerms();
+  if(!EU.ativo){ semAcesso("Seu usuário está desativado ou ainda não foi liberado. Fale com o administrador."); return; }
+  if(!primeiraAba()){ semAcesso("Nenhum menu foi liberado para o seu usuário ainda. Fale com o administrador."); return; }
+  if(!podeAba(aba)) aba=primeiraAba();
+  load(); }
 
 /* ---------- PAINEL ---------- */
 const PADRAO=5;
@@ -379,7 +449,7 @@ function fmt(v,t){ if(v==null||v==="") return "—"; if(t==="txt")return v==null
   if(t==="money") return "R$ "+cf.format(n);
   if(t==="pct") return cf.format(n*100)+"%";
   return nf.format(n); }
-let DADOS=null, aba=(function(){var _a=localStorage.getItem('ocelot_aba');return (_a==="mensal"||_a==="ocelot")?_a:"semanal";})(), periodosSel=null;
+let DADOS=null, aba=(function(){var _a=localStorage.getItem('ocelot_aba');return (_a==="mensal"||_a==="ocelot"||_a==="usuarios"||_a==="permissoes")?_a:"semanal";})(), periodosSel=null;
 function metricas(){ return aba==="mensal"?METRICAS_MENSAL:METRICAS_SEMANAL; }
 function labelPeriodo(p){ const[y,m,d]=p.split("-"); return aba==="mensal"?(MESES[+m-1]+"/"+y.slice(2)):(d+"/"+m); }
 function dataset(){ return {
@@ -488,23 +558,31 @@ function sincNav(a){
   var c=document.getElementById("caretCons");if(c)c.innerHTML=cons?"&#9662;":"&#9656;";
   var go=document.getElementById("navsubOcelot");if(go)go.style.display=oce?"":"none";
   var co=document.getElementById("caretOce");if(co)co.innerHTML=oce?"&#9662;":"&#9656;";
+  var adm=(a==="usuarios"||a==="permissoes");
+  var ga=document.getElementById("navsubAdmin");if(ga)ga.style.display=adm?"":"none";
+  var na=document.getElementById("navAdmin");if(na)na.className=adm?"grpon":"";
+  var ca=document.getElementById("caretAdm");if(ca)ca.innerHTML=adm?"&#9662;":"&#9656;";
+  var au=document.getElementById("admUsuarios");if(au)au.className=a==="usuarios"?"on":"";
+  var ap=document.getElementById("admPermissoes");if(ap)ap.className=a==="permissoes"?"on":"";
   var h=document.getElementById("h1sec");
-  if(h)h.textContent=cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):(oce?"Gest\u00e3o Ocelot":"Painel");
+  if(h)h.textContent=adm?("Administra\u00e7\u00e3o \u00b7 "+(a==="usuarios"?"Usu\u00e1rios":"Permiss\u00f5es")):cons?("Consultoria \u00b7 "+(a==="mensal"?"Mensal":"Semanal")):(oce?"Gest\u00e3o Ocelot":"Painel");
   sincBtnAtualizar(a);
   if(oce)sincOcelotNav();
   toggleNav(false);
 }
 function trocaAba(a){
+  if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","dre","detalhada","config"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
-  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
-  document.getElementById("btnFecharMes").style.display=a==="mensal"?"":"none";
-  document.getElementById("subtitulo").textContent=a==="mensal"
+  document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
+  document.getElementById("btnFecharMes").style.display=(a==="mensal"&&pode("fechar_mes"))?"":"none";
+  document.getElementById("subtitulo").textContent=(a==="usuarios"||a==="permissoes")?"Quem acessa o painel e o que cada um pode ver e fazer":a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
     :a==="ocelot"?"Gestão Ocelot — DRE por venda, detalhada e custos (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -820,6 +898,7 @@ function htmlOcelotDre(){
   return h;
 }
 function ocelotSubTab(s){
+  if(EU&&!pode(OCN_PERM[s]))return;
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
   if(s==='dre'){if(OCELOT_DRE_CACHE){renderOcelotBody();}else{renderOcelotDre();}return;}
   if(s==='fornecedores'){renderFornecedores();return;}
@@ -842,7 +921,7 @@ function renderOcelotBody(){
   else if(ocelotSub==='detalhada')body.innerHTML=htmlOcelotDetalhada();
   else if(ocelotSub==='fornecedores')body.innerHTML=htmlOcelotFornecedores();
   else if(ocelotSub==='entregas')body.innerHTML=htmlOcelotEntregas();
-  else body.innerHTML=htmlOcelotConfig();
+  else body.innerHTML=(pode('editar_cadastro')?'':'<div class="adm-ro">Somente leitura: seu usuário não tem permissão para editar o cadastro.</div>')+htmlOcelotConfig();
 }
 let ocelotFiltroCats={cancelada:false,devolucao:false,cmvZero:false};
 let ocelotMesFiltro=null;
@@ -2559,6 +2638,276 @@ async function fecharMes(){
   await load(); aba="mensal"; trocaAba("mensal");
   btn.disabled=false; btn.textContent=t0;
   alert("Mes "+mes+" fechado: "+okc+" conta(s) OK"+(fail.length?("\nSem dados/erro: "+fail.join(", ")):""));
+}
+
+/* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------
+   Backend: tabela app_usuarios + function app-usuarios (so admin gerencia).
+   A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
+const USR_API=SB_URL+"/functions/v1/app-usuarios";
+let EU=null, ADM=null, admSel=null;
+const OCN_PERM={dre:"ocelot_dre",vendas:"ocelot_vendas",detalhada:"ocelot_detalhada",config:"ocelot_cadastro"};
+const OCN_IDS={dre:"ocnDre",vendas:"ocnVendas",detalhada:"ocnDetalhada",config:"ocnConfig"};
+const ACOES_INFO=[
+  ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
+  ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
+  ["exportar_pdf","Exportar PDF",""],
+  ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
+  ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU — escreve direto no ML"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE mensal"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_detalhada","Ocelot DRE detalh."],["ocelot_cadastro","Ocelot Cadastro"]];
+const PRESETS={
+  "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
+  "p:ocelot":{menus:["ocelot_dre","ocelot_vendas","ocelot_detalhada","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[]}};
+
+function pode(k){
+  if(!EU||!EU.ativo)return false; if(EU.admin)return true;
+  const p=EU.perms||{}, m=p.menus||[], a=p.acoes||[];
+  if(k==="ocelot")return m.some(function(x){return x.indexOf("ocelot_")===0;});
+  if(k==="consultoria")return m.includes("semanal")||m.includes("mensal");
+  return !!k&&(m.includes(k)||a.includes(k));
+}
+function podeAba(a){
+  if(a==="semanal"||a==="mensal")return pode(a);
+  if(a==="ocelot")return pode("ocelot");
+  return !!(EU&&EU.ativo&&EU.admin);
+}
+function primeiraAba(){ var L=["semanal","mensal","ocelot","usuarios"]; for(var i=0;i<L.length;i++) if(podeAba(L[i])) return L[i]; return null; }
+async function tokenAtual(){ const {data:{session}}=await sb.auth.getSession(); return (session&&session.access_token)||""; }
+async function usrApi(body){
+  const r=await fetch(USR_API,{method:"POST",cache:"no-store",headers:{"Content-Type":"application/json",Authorization:"Bearer "+await tokenAtual()},body:JSON.stringify(body)});
+  let j={}; try{j=await r.json();}catch(e){}
+  if(r.status===401){ mostrarLogin(); throw new Error("sessão expirada — entre de novo"); }
+  if(!r.ok) throw new Error(j.error||("erro "+r.status));
+  return j;
+}
+async function carregaEu(){
+  try{ EU=await usrApi({acao:"me"}); }catch(e){ EU={ativo:false,admin:false,perms:{menus:[],acoes:[],contas:[]}}; }
+  return EU;
+}
+function vis(id,v){ var e=document.getElementById(id); if(e) e.style.display=v?"":"none"; }
+function aplicaPerms(){
+  var adm=(aba==="usuarios"||aba==="permissoes");
+  vis("navConsultoria",pode("consultoria")); vis("tabSemanal",pode("semanal")); vis("tabMensal",pode("mensal"));
+  if(!pode("consultoria")) vis("navsubConsultoria",false);
+  vis("tabOcelot",pode("ocelot")); if(!pode("ocelot")) vis("navsubOcelot",false);
+  for(var k in OCN_IDS) vis(OCN_IDS[k],pode(OCN_PERM[k]));
+  var isAdm=!!(EU&&EU.ativo&&EU.admin);
+  vis("lblAdmin",isAdm); vis("navAdmin",isAdm); if(!isAdm) vis("navsubAdmin",false);
+  vis("btnAtualizar",pode("atualizar")&&!adm); vis("btnPDF",pode("exportar_pdf")&&!adm);
+  vis("btnMinhaSenha",!!(EU&&EU.ativo));
+  var u=document.getElementById("usrInfo");
+  if(u) u.innerHTML=EU?(escH(EU.nome||EU.email||"")+(EU.admin?' <span class="adm-badge">admin</span>':'')):"";
+}
+function semAcesso(msg){
+  var app=document.getElementById("app");
+  app.innerHTML='<div class="empty"><b>Sem acesso</b><br>'+escH(msg)+'</div>';
+  var h=document.getElementById("h1sec"); if(h) h.textContent="Painel";
+  vis("btnAtualizar",false); vis("btnPDF",false); vis("btnFecharMes",false); vis("ddPeriodos",false); vis("tagbar",false);
+}
+function toast(msg){
+  var t=document.getElementById("toastMsg");
+  if(!t){ t=document.createElement("div"); t.id="toastMsg"; document.body.appendChild(t); }
+  t.textContent=msg; t.className="show"; clearTimeout(t._h); t._h=setTimeout(function(){t.className="";},4200);
+}
+// qualquer 403 "sem permissao" vindo das functions vira aviso na tela (em vez de falhar calado)
+(function(){
+  var _f=window.fetch;
+  window.fetch=async function(){
+    var r=await _f.apply(this,arguments);
+    try{
+      var a0=arguments[0], url=String((a0&&a0.url)||a0);
+      if(r.status===403&&url.indexOf(SB_URL)===0&&url.indexOf("app-usuarios")<0) toast("Sem permissão para esta ação — fale com o administrador.");
+    }catch(e){}
+    return r;
+  };
+})();
+function geraSenha(){
+  var A="abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789", b=new Uint32Array(10), s="";
+  crypto.getRandomValues(b); for(var i=0;i<b.length;i++) s+=A[b[i]%A.length]; return s;
+}
+function fmtDt(s){ if(!s) return "nunca"; return new Date(s).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+function resumoPerms(u){
+  if(u.admin) return "Acesso total";
+  var p=u.perms||{}, m=(p.menus||[]).length, a=(p.acoes||[]).length;
+  var c=p.contas==="*"?"todas as contas":((p.contas||[]).length+" conta(s)");
+  if(!m) return '<span class="adm-no">nenhum menu</span>';
+  return m+" menu(s) · "+a+" ação(ões) · "+c;
+}
+async function admCarrega(){ ADM=await usrApi({acao:"lista"}); return ADM; }
+
+/* ---- aba USUARIOS ---- */
+async function renderUsuarios(msg){
+  var app=document.getElementById("app");
+  if(!ADM) app.innerHTML='<div class="empty">Carregando usuários…</div>';
+  try{ await admCarrega(); }catch(e){ app.innerHTML='<div class="empty">Erro ao carregar usuários: '+escH(e.message)+'</div>'; return; }
+  if(aba!=="usuarios") return;
+  app.innerHTML=htmlUsuarios();
+  if(msg){ var m=document.getElementById("nuMsg"); if(m){ m.innerHTML=msg; } }
+}
+function htmlUsuarios(){
+  var h='<div class="cli adm"><h2>Novo usuário</h2><div class="sub">Ele entra com o e-mail e a senha abaixo. Depois ajuste o que ele pode ver em <b>Permissões</b>.</div>';
+  h+='<div class="adm-form">'
+    +'<label>Nome<input id="nuNome" placeholder="Ex.: João — estoque" autocomplete="off"></label>'
+    +'<label>E-mail<input id="nuEmail" type="email" placeholder="nome@empresa.com" autocomplete="off"></label>'
+    +'<label>Senha inicial<span class="adm-row"><input id="nuSenha" type="text" autocomplete="new-password" placeholder="mín. 8 caracteres"><button type="button" class="adm-btn2" onclick="document.getElementById(\'nuSenha\').value=geraSenha()">Gerar</button></span></label>'
+    +'<label>Permissões iniciais<select id="nuBase"><option value="">Nenhuma (defino depois)</option><option value="p:leitura">Só leitura — Consultoria (todas as contas)</option><option value="p:ocelot">Operador Ocelot (DRE + cadastro)</option>'
+    +ADM.usuarios.filter(function(u){return !u.admin;}).map(function(u){return '<option value="u:'+u.user_id+'">Copiar de '+escH(u.nome||u.email)+'</option>';}).join('')
+    +'</select></label></div>'
+    +'<div class="adm-acts"><button class="adm-btn" id="nuBtn" onclick="criarUsuario()">Criar usuário</button><span id="nuMsg" class="adm-msg"></span></div></div>';
+  h+='<div class="cli adm"><h2>Usuários ('+ADM.usuarios.length+')</h2><div class="adm-tw"><table class="adm-t"><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Último acesso</th><th>Permissões</th><th></th></tr></thead><tbody>';
+  ADM.usuarios.forEach(function(u){
+    var eu=EU&&u.email===EU.email, id=u.user_id;
+    h+='<tr class="'+(u.ativo?'':'adm-off')+'">'
+      +'<td><input class="adm-in" value="'+escH(u.nome||'')+'" placeholder="(sem nome)" onchange="salvarNome(\''+id+'\',this.value)" title="Editar e sair do campo para salvar"></td>'
+      +'<td>'+escH(u.email)+(eu?' <span class="adm-badge">você</span>':'')+'</td>'
+      +'<td>'+(u.admin?'<span class="adm-badge">Admin</span>':'Usuário')+'</td>'
+      +'<td>'+(u.ativo?'<span class="adm-ok">Ativo</span>':'<span class="adm-no">Inativo</span>')+'</td>'
+      +'<td>'+fmtDt(u.ultimo_acesso)+'</td>'
+      +'<td>'+resumoPerms(u)+'</td>'
+      +'<td class="adm-nw"><button class="adm-btn2" onclick="abrePermissoes(\''+id+'\')">Permissões</button> '
+      +'<button class="adm-btn2" onclick="redefinirSenha(\''+id+'\')">Nova senha</button>'
+      +(eu?'':' <button class="adm-btn2'+(u.ativo?' adm-danger':'')+'" onclick="alternaAtivo(\''+id+'\','+(!u.ativo)+')">'+(u.ativo?'Desativar':'Reativar')+'</button>')
+      +'</td></tr>';
+  });
+  h+='</tbody></table></div><div class="foot adm-l">Desativar bloqueia o login na hora e mantém o histórico. Não há exclusão, para nada sumir da auditoria.</div></div>';
+  if(ADM.log&&ADM.log.length){
+    var AC={criou:"Criou",alterou:"Alterou",redefiniu_senha:"Redefiniu a senha",trocou_propria_senha:"Trocou a própria senha"};
+    h+='<div class="cli adm"><h2>Últimas alterações</h2><div class="adm-tw"><table class="adm-t"><thead><tr><th>Quando</th><th>Quem</th><th>O quê</th><th>Usuário</th></tr></thead><tbody>'
+      +ADM.log.map(function(l){return '<tr><td>'+fmtDt(l.em)+'</td><td>'+escH(l.por_email||'')+'</td><td>'+(AC[l.acao]||escH(l.acao))+'</td><td>'+escH(l.alvo_email||'')+'</td></tr>';}).join('')
+      +'</tbody></table></div></div>';
+  }
+  return h;
+}
+async function criarUsuario(){
+  var nome=document.getElementById("nuNome").value.trim(), email=document.getElementById("nuEmail").value.trim().toLowerCase();
+  var senha=document.getElementById("nuSenha").value, base=document.getElementById("nuBase").value, msg=document.getElementById("nuMsg");
+  msg.className="adm-msg";
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ msg.textContent="Informe um e-mail válido."; msg.className="adm-msg adm-err"; return; }
+  if(senha.length<8){ msg.textContent="A senha precisa ter ao menos 8 caracteres (use Gerar)."; msg.className="adm-msg adm-err"; return; }
+  var perms={menus:[],acoes:[],contas:[]};
+  if(PRESETS[base]) perms=JSON.parse(JSON.stringify(PRESETS[base]));
+  else if(base.indexOf("u:")===0){ var src=ADM.usuarios.find(function(u){return u.user_id===base.slice(2);}); if(src) perms=JSON.parse(JSON.stringify(src.perms||perms)); }
+  var btn=document.getElementById("nuBtn"); btn.disabled=true; msg.textContent="Criando…";
+  try{
+    var r=await usrApi({acao:"criar",nome:nome,email:email,senha:senha,perms:perms});
+    admSel=r.user_id;
+    await renderUsuarios('<span class="adm-okm">Usuário <b>'+escH(email)+'</b> criado. Senha inicial: <b class="adm-pw">'+escH(senha)+'</b> — passe para ele por um canal seguro.'+(perms.menus.length?'':' Ele ainda não vê nenhum menu: <a href="#" onclick="abrePermissoes(\''+r.user_id+'\');return false">definir permissões</a>.')+'</span>');
+  }catch(e){ msg.textContent=e.message; msg.className="adm-msg adm-err"; btn.disabled=false; }
+}
+async function salvarNome(id,nome){
+  try{ await usrApi({acao:"salvar",user_id:id,nome:nome}); toast("Nome salvo."); var u=ADM.usuarios.find(function(x){return x.user_id===id;}); if(u) u.nome=nome.trim()||null; if(EU&&u&&u.email===EU.email){EU.nome=u.nome;aplicaPerms();} }
+  catch(e){ alert("Não salvou: "+e.message); }
+}
+async function redefinirSenha(id){
+  var u=ADM.usuarios.find(function(x){return x.user_id===id;}); if(!u) return;
+  var s=prompt("Nova senha para "+u.email+" (mín. 8 caracteres).\nJá veio uma sugestão gerada — pode trocar:", geraSenha());
+  if(s===null) return;
+  if(s.length<8){ alert("A senha precisa ter ao menos 8 caracteres."); return; }
+  try{ await usrApi({acao:"senha",user_id:id,senha:s}); alert("Senha de "+u.email+" alterada para:\n\n"+s+"\n\nPasse para ele por um canal seguro."); renderUsuarios(); }
+  catch(e){ alert("Não alterou: "+e.message); }
+}
+async function alternaAtivo(id,ativar){
+  var u=ADM.usuarios.find(function(x){return x.user_id===id;}); if(!u) return;
+  if(!confirm((ativar?"Reativar ":"Desativar ")+u.email+"?"+(ativar?"":"\nO login dele é bloqueado na hora."))) return;
+  try{ await usrApi({acao:"salvar",user_id:id,ativo:ativar}); toast(ativar?"Usuário reativado.":"Usuário desativado."); renderUsuarios(); }
+  catch(e){ alert("Não alterou: "+e.message); }
+}
+function abrePermissoes(id){ admSel=id; trocaAba("permissoes"); }
+
+/* ---- aba PERMISSOES ---- */
+async function renderPermissoes(msg){
+  var app=document.getElementById("app");
+  if(!ADM) app.innerHTML='<div class="empty">Carregando permissões…</div>';
+  try{ await admCarrega(); }catch(e){ app.innerHTML='<div class="empty">Erro ao carregar: '+escH(e.message)+'</div>'; return; }
+  if(aba!=="permissoes") return;
+  if(!ADM.usuarios.some(function(u){return u.user_id===admSel;})){
+    var nAdm=ADM.usuarios.find(function(u){return !u.admin;}); admSel=(nAdm||ADM.usuarios[0]||{}).user_id||null;
+  }
+  app.innerHTML=htmlPermissoes();
+  if(msg){ var m=document.getElementById("pMsg"); if(m) m.innerHTML=msg; }
+}
+function selPerm(id){ admSel=id; document.getElementById("app").innerHTML=htmlPermissoes(); var e=document.getElementById("permEd"); if(e&&e.scrollIntoView) e.scrollIntoView({behavior:"smooth",block:"start"}); }
+function temPerm(u,k){
+  if(u.admin) return true; var p=u.perms||{};
+  return (p.menus||[]).includes(k)||(p.acoes||[]).includes(k);
+}
+function htmlPermissoes(){
+  var h='<div class="cli adm"><h2>Quem pode o quê</h2><div class="sub">Clique no usuário para editar.</div><div class="adm-tw"><table class="adm-t adm-mx"><thead><tr><th>Usuário</th>'
+    +MENUS_INFO.map(function(m){return '<th>'+m[1]+'</th>';}).join('')
+    +ACOES_INFO.map(function(a){return '<th>'+a[1].replace(" / vendas","").replace("Alterar anúncios no Mercado Livre","Alterar no ML").replace("Editar cadastro Ocelot","Editar cadastro")+'</th>';}).join('')
+    +'<th>Contas</th></tr></thead><tbody>';
+  ADM.usuarios.forEach(function(u){
+    var p=u.perms||{};
+    h+='<tr class="adm-click'+(u.user_id===admSel?' adm-sel':'')+(u.ativo?'':' adm-off')+'" onclick="selPerm(\''+u.user_id+'\')"><td>'+escH(u.nome||u.email)+(u.admin?' <span class="adm-badge">admin</span>':'')+'</td>'
+      +MENUS_INFO.concat(ACOES_INFO).map(function(x){return '<td class="adm-c">'+(temPerm(u,x[0])?'<span class="adm-ok">✓</span>':'<span class="adm-dot">·</span>')+'</td>';}).join('')
+      +'<td class="adm-c">'+(u.admin||p.contas==="*"?"todas":(p.contas||[]).length)+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  var u=ADM.usuarios.find(function(x){return x.user_id===admSel;});
+  if(!u) return h;
+  var p=u.perms||{menus:[],acoes:[],contas:[]}, self=EU&&u.email===EU.email, todas=p.contas==="*";
+  function ck(t,k,label,hint){
+    var on=(t==="m"?(p.menus||[]):(p.acoes||[])).includes(k);
+    return '<label class="adm-ck"><input type="checkbox" data-'+t+'="'+k+'"'+(on?' checked':'')+'> <span>'+label+(hint?'<span class="adm-hint">'+hint+'</span>':'')+'</span></label>';
+  }
+  h+='<div class="cli adm" id="permEd"><h2>Permissões de '+escH(u.nome||u.email)+'</h2><div class="sub">'+escH(u.email)+(u.ativo?'':' · <b class="adm-no">inativo</b>')+'</div>';
+  h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
+  h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
+  h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE mensal")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_detalhada","DRE detalhada")+ck("m","ocelot_cadastro","Cadastro")+'</div>';
+  h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
+  h+='<div class="adm-box"><h3>Contas na Consultoria</h3>'
+    +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'
+    +'<label class="adm-ck"><input type="radio" name="pContasModo" value="sel"'+(todas?'':' checked')+' onchange="permContasModo()"> <span>Só as marcadas</span></label>'
+    +'<div id="pContasLista" class="adm-contas'+(todas?' adm-dis':'')+'">';
+  var porCli={}; (ADM.contas||[]).forEach(function(c){ (porCli[c.cliente||"—"]=porCli[c.cliente||"—"]||[]).push(c); });
+  var sel=Array.isArray(p.contas)?p.contas:[];
+  Object.keys(porCli).sort().forEach(function(cli){
+    h+='<div class="adm-sub">'+escH(cli)+'</div>';
+    porCli[cli].forEach(function(c){ h+='<label class="adm-ck"><input type="checkbox" data-c="'+c.id+'"'+(sel.includes(c.id)?' checked':'')+'> <span>'+escH(c.apelido)+(c.status!=="ativa"?' <span class="adm-hint-i">('+escH(String(c.status).replace(/_/g,' '))+')</span>':'')+'</span></label>'; });
+  });
+  h+='</div></div></div>';
+  h+='<div class="adm-acts"><button class="adm-btn" onclick="salvarPermissoes()">Salvar permissões</button> <button class="adm-btn2" onclick="selPerm(admSel)">Descartar mudanças</button><span id="pMsg" class="adm-msg"></span></div>';
+  h+='<div class="foot adm-l">A trava vale no servidor: menu ou conta não liberados não têm os dados entregues, mesmo que alguém tente acessar direto. As mudanças valem quando o usuário recarregar a página.</div></div>';
+  return h;
+}
+function permAdminToggle(){ var g=document.getElementById("pGrid"); if(g) g.className="adm-grid"+(document.getElementById("pAdmin").checked?" adm-dis":""); }
+function permContasModo(){ var r=document.querySelector('input[name="pContasModo"]:checked'); var l=document.getElementById("pContasLista"); if(l) l.className="adm-contas"+(r&&r.value==="*"?" adm-dis":""); }
+async function salvarPermissoes(){
+  var ed=document.getElementById("permEd"), msg=document.getElementById("pMsg");
+  var menus=[].map.call(ed.querySelectorAll("input[data-m]:checked"),function(e){return e.dataset.m;});
+  var acoes=[].map.call(ed.querySelectorAll("input[data-a]:checked"),function(e){return e.dataset.a;});
+  var modo=(ed.querySelector('input[name="pContasModo"]:checked')||{}).value;
+  var contas=modo==="*"?"*":[].map.call(ed.querySelectorAll("input[data-c]:checked"),function(e){return e.dataset.c;});
+  var adminCk=document.getElementById("pAdmin"), isAdmin=adminCk.checked;
+  var avisos=[];
+  if(!isAdmin){
+    if(!menus.length) avisos.push("nenhum menu marcado — ele não vai ver nada");
+    if((menus.includes("semanal")||menus.includes("mensal"))&&contas!=="*"&&!contas.length) avisos.push("Consultoria liberada mas nenhuma conta marcada — as tabelas vão aparecer vazias");
+    if(acoes.includes("editar_cadastro")&&!menus.includes("ocelot_cadastro")) avisos.push("\"Editar cadastro\" sem o menu Ocelot Cadastro não tem efeito");
+    if(acoes.includes("alterar_ml")&&!menus.includes("ocelot_cadastro")) avisos.push("\"Alterar no ML\" sem o menu Ocelot Cadastro não tem efeito");
+    if(acoes.includes("fechar_mes")&&!menus.includes("mensal")) avisos.push("\"Fechar mês\" sem o menu Mensal não tem efeito");
+  }
+  if(avisos.length&&!confirm("Atenção:\n- "+avisos.join("\n- ")+"\n\nSalvar mesmo assim?")) return;
+  var body={acao:"salvar",user_id:admSel,perms:{menus:menus,acoes:acoes,contas:contas}};
+  if(!adminCk.disabled) body.admin=isAdmin;
+  msg.className="adm-msg"; msg.textContent="Salvando…";
+  try{ await usrApi(body); await renderPermissoes('<span class="adm-okm">Permissões salvas.</span>'); }
+  catch(e){ msg.textContent=e.message; msg.className="adm-msg adm-err"; }
+}
+
+/* ---- trocar a propria senha (qualquer usuario) ---- */
+function minhaSenha(){
+  var m=document.getElementById("mSenha");
+  if(!m){ m=document.createElement("div"); m.id="mSenha"; document.body.appendChild(m); }
+  m.innerHTML='<div class="adm-modal"><h3>Trocar minha senha</h3><label>Nova senha<input id="ms1" type="password" autocomplete="new-password"></label><label>Repita<input id="ms2" type="password" autocomplete="new-password"></label><div id="msErr" class="adm-msg adm-err"></div><div class="adm-acts"><button class="adm-btn" onclick="salvaMinhaSenha()">Salvar</button> <button class="adm-btn2" onclick="document.getElementById(\'mSenha\').style.display=\'none\'">Cancelar</button></div></div>';
+  m.style.display="flex"; setTimeout(function(){var i=document.getElementById("ms1"); if(i) i.focus();},30);
+}
+async function salvaMinhaSenha(){
+  var a=document.getElementById("ms1").value, b=document.getElementById("ms2").value, er=document.getElementById("msErr");
+  if(a.length<8){ er.textContent="Mínimo 8 caracteres."; return; }
+  if(a!==b){ er.textContent="As senhas não conferem."; return; }
+  try{ await usrApi({acao:"minha_senha",senha:a}); document.getElementById("mSenha").style.display="none"; toast("Senha alterada."); }
+  catch(e){ er.textContent=e.message; }
 }
 
 /* ---------- INIT ---------- */

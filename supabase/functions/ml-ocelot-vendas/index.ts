@@ -24,10 +24,15 @@ async function g(u:string,h:any){try{const r=await fetch(u,{headers:h});if(!r.ok
 // Como a busca do ML e por date_created, a janela de busca volta FOLGA_DIAS a mais para pegar
 // pedidos criados antes e aprovados dentro do periodo. Sem date_closed (nao aprovado), usa date_created.
 const FOLGA_DIAS=15;
+// v11 (05/10/2026): grava pagamento_status_detail (status_detail do pagamento no Mercado Pago).
+// Em mediacao, "bpp_covered" = o ML cobriu (vendedor fica com o dinheiro, fornecedor recebe CMV normal);
+// "bpp_refunded" = o reembolso saiu do vendedor (prejuizo cobrado do fornecedor).
 function pagamentoPrincipal(payments:any[]){
-  if(!payments||!payments.length)return {forma_pagamento:null,parcelas:null};
+  if(!payments||!payments.length)return {forma_pagamento:null,parcelas:null,status_detail:null};
   const aprovado=payments.find((p:any)=>p.status==="approved")||payments[0];
-  return {forma_pagamento:aprovado.payment_type??null,parcelas:aprovado.installments??null};
+  const cobertura=payments.find((p:any)=>p.status_detail==="bpp_covered");
+  return {forma_pagamento:aprovado.payment_type??null,parcelas:aprovado.installments??null,
+          status_detail:(cobertura||aprovado).status_detail??null};
 }
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,x-collector-secret,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"}});
@@ -97,7 +102,7 @@ Deno.serve(async(req)=>{
       let freteTotal:number|null=null;
       if(o.shipping?.id)freteTotal=await freteVendedor(o.shipping.id);
       const devolvidoTotal=(o.payments||[]).reduce((s:number,p:any)=>s+Number(p.transaction_amount_refunded||0),0);
-      const {forma_pagamento,parcelas}=pagamentoPrincipal(o.payments||[]);
+      const {forma_pagamento,parcelas,status_detail}=pagamentoPrincipal(o.payments||[]);
       const buyerId=o.buyer?.id??null;
       const buyerNickname=o.buyer?.nickname??null;
       const shippingId=o.shipping?.id??null;
@@ -114,7 +119,7 @@ Deno.serve(async(req)=>{
           conta_id:OCELOT_CONTA,order_id:o.id,pack_id:o.pack_id||null,item_id:itemId,titulo:it.item?.title||null,
           quantidade:qtd,preco_unitario:it.unit_price,valor_venda:valorVenda,taxa_ml:taxaMl,frete_vendedor:freteItem,
           valor_devolvido:devolvidoItem,valor_liquido:valorLiquido,status:o.status,data_venda:dataVenda,data_venda_ts:dataRef,
-          forma_pagamento,parcelas,buyer_id:buyerId,buyer_nickname:buyerNickname,shipping_id:shippingId,captured_at:new Date().toISOString()
+          forma_pagamento,parcelas,pagamento_status_detail:status_detail,buyer_id:buyerId,buyer_nickname:buyerNickname,shipping_id:shippingId,captured_at:new Date().toISOString()
         },{onConflict:"conta_id,order_id,item_id"});
         if(error)erros++;else gravados++;
       }

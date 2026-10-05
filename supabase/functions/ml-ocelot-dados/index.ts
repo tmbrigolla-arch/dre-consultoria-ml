@@ -19,6 +19,12 @@ const CMV_PISO=40, CMV_TETO=90;
 // v22 (05/10/2026): devolucao com custo traz cmv_original (CMV da venda antes da devolucao), usado no
 // quadro de repasse: a venda conta no mes dela pelo CMV normal; no mes seguinte o fornecedor devolve
 // cmv_original + o prejuizo de tarifa/frete (pedido do Tiago: devolucoes chegam depois do pagamento).
+// v23 (05/10/2026): (1) pedido cancelado com pagamento "bpp_covered" (o ML cobriu a mediacao, o vendedor
+// ficou com o dinheiro) vira VENDA NORMAL: CMV normal pro fornecedor. (2) devolucao com custo traz
+// cmv_pago_registrado = CMV gravado quando o repasse daquele mes foi registrado (ocelot_pagamento_itens);
+// o estorno usa esse valor (tem que ser o mesmo que foi pago). (3) params de/ate (periodo livre) e
+// so_devolucoes=1 (devolve so as devolucoes com custo -- usado pra montar os estornos pendentes).
+// (4) resposta traz repasses (ocelot_pagamentos_fornecedor) e estornos_aplicados (ocelot_estorno_detalhe).
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5;
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
@@ -51,8 +57,12 @@ Deno.serve(async(req)=>{
     if (!_pode) return json({ error: "sem permissao" }, 403); }
   const url=new URL(req.url);
   const mesParam=url.searchParams.get("mes");
+  const deParam=url.searchParams.get("de"), ateParam=url.searchParams.get("ate");
+  const soDevolucoes=url.searchParams.get("so_devolucoes")==="1";
   let desde:string, ateExclusive:string|null=null, dias:number;
-  if(mesParam){
+  if(deParam&&ateParam){
+    desde=deParam;ateExclusive=ateParam;dias=0;
+  }else if(mesParam){
     desde=mesParam;
     const dt=new Date(mesParam+"T00:00:00Z");
     ateExclusive=new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth()+1,1)).toISOString().slice(0,10);
@@ -138,6 +148,13 @@ Deno.serve(async(req)=>{
   const paramMap:Record<string,any>={};
   for(const p of (parametros||[]))paramMap[p.mes_competencia]=p;
   const vendas=vendasTodas||[];
+  // v23: mediacao coberta pelo ML (bpp_covered) = venda normal
+  for(const v of vendas){
+    if(v.status==="cancelled"&&v.pagamento_status_detail==="bpp_covered"){
+      v.status="paid";v.ml_cobriu=true;v.valor_devolvido=0;
+      v.valor_liquido=Number(v.valor_venda||0)-Number(v.taxa_ml||0)-Number(v.frete_vendedor||0);
+    }
+  }
   // v21: pacotes com pelo menos um item ativo (o frete do pacote fica nos itens ativos)
   const packAtivo:Record<string,boolean>={};
   for(const v of vendas)if(v.status!=="cancelled")packAtivo[String(v.pack_id||v.order_id)]=true;
@@ -158,6 +175,14 @@ Deno.serve(async(req)=>{
         if(!custoCancelado[k])custoCancelado[k]={tx:0,fr:0};
         if(cat==="taxa_ml")custoCancelado[k].tx+=Number(d.valor||0);else custoCancelado[k].fr+=Number(d.valor||0);
       }
+    }
+  }
+  // v23: CMV que ficou registrado como pago (snapshot do repasse) para os pedidos cancelados
+  const cmvPagoMap:Record<string,number>={};
+  if(idsCanc.length){
+    for(let i=0;i<idsCanc.length;i+=150){
+      const {data:pg}=await supabase.from("ocelot_pagamento_itens").select("order_id,item_id,cmv_pago").eq("conta_id",OCELOT_CONTA).in("order_id",idsCanc.slice(i,i+150)).range(0,9999);
+      for(const r of (pg||[]))cmvPagoMap[String(r.order_id)+"|"+r.item_id]=Number(r.cmv_pago);
     }
   }
   const vendaPorPedido:Record<string,number>={};
@@ -239,7 +264,9 @@ Deno.serve(async(req)=>{
         const original=calcItem({...v,status:"paid",valor_devolvido:0,
           valor_liquido:valorVenda-Number(v.taxa_ml||0)-Number(v.frete_vendedor||0)});
         const cmv_original=Math.max(0,Number(original.cmv_total)||0);
-        return {...v,sku:skuItem,cmv_chave:null,mes_competencia:mes,devolucao_com_custo:true,cmv_original,
+        const kp=String(v.order_id)+"|"+v.item_id;
+        const cmv_pago_registrado=(kp in cmvPagoMap)?cmvPagoMap[kp]:null;
+        return {...v,sku:skuItem,cmv_chave:null,mes_competencia:mes,devolucao_com_custo:true,cmv_original,cmv_pago_registrado,
           taxa_ml:tx,frete_vendedor:fr,valor_devolvido:valorVenda,valor_liquido:liq,
           cmv_origem:"devolucao",cmv_unitario:liq/qd,cmv_total:liq,resultado:0,ads_pct_usado:null,
           imposto_valor:0,ads_valor:0,custofixo_valor:0,responsavel_cmv};
@@ -355,6 +382,12 @@ Deno.serve(async(req)=>{
   }
   waterfall.faturamento_liquido=waterfall.faturamento_bruto-waterfall.cancelamentos-waterfall.devolucoes;
   waterfall.receita_liquida=waterfall.faturamento_liquido-waterfall.impostos;
+  const {data:repasses}=await supabase.from("ocelot_pagamentos_fornecedor").select("*").eq("conta_id",OCELOT_CONTA);
+  const {data:estornosAplicados}=await supabase.from("ocelot_estorno_detalhe").select("fornecedor_id,mes_origem,mes_absorcao,order_id,item_id,valor_pago_antes,valor_atual,diferenca").eq("conta_id",OCELOT_CONTA).range(0,9999);
+  if(soDevolucoes){
+    const peds=(pedidos as any[]).map((p:any)=>({...p,itens:p.itens.filter((it:any)=>it.devolucao_com_custo)})).filter((p:any)=>p.itens.length);
+    return json({pedidos:peds,de:desde,ate:ateExclusive,repasses:repasses||[],estornos_aplicados:estornosAplicados||[]});
+  }
   const {data:snap}=await supabase.from("snapshots").select("ad_spend,periodo_fim").eq("conta_id",OCELOT_CONTA).order("periodo_fim",{ascending:false}).limit(1).maybeSingle();
-  return json({pedidos,resumo,waterfall,por_forma_pagamento:porFormaPagamento,por_responsavel:porResponsavel,cancelados_count:new Set(cancelados.map((v:any)=>String(v.order_id))).size,devolucoes_custo_count:new Set(devolucoesCusto.map((v:any)=>String(v.order_id))).size,custos:custos||[],parametros:parametros||[],skus,itens_sem_sku:itensSemSku,itens_periodo:ultimoPeriodo,fixo_pct_por_mes:fixoPctMap,tacos_pct_por_mes:tacosPctMap,tacos_fonte_por_mes:tacosFonteMap,repasse_pct_por_mes:repassePctMap,ads_referencia:snap||null,dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});
+  return json({pedidos,resumo,waterfall,por_forma_pagamento:porFormaPagamento,por_responsavel:porResponsavel,cancelados_count:new Set(cancelados.map((v:any)=>String(v.order_id))).size,devolucoes_custo_count:new Set(devolucoesCusto.map((v:any)=>String(v.order_id))).size,custos:custos||[],parametros:parametros||[],skus,itens_sem_sku:itensSemSku,itens_periodo:ultimoPeriodo,fixo_pct_por_mes:fixoPctMap,tacos_pct_por_mes:tacosPctMap,tacos_fonte_por_mes:tacosFonteMap,repasse_pct_por_mes:repassePctMap,ads_referencia:snap||null,repasses:repasses||[],estornos_aplicados:estornosAplicados||[],dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});
 });

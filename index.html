@@ -828,59 +828,137 @@ function dreMesLabel(m){const M=['jan','fev','mar','abr','mai','jun','jul','ago'
 //  - parametros do mes: custo fixo (Elisa) e % de imposto.
 function ocelotMesAnterior(m){const d=new Date(m+'T00:00:00Z');return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10);}
 function ocelotMesSeguinte(m){const d=new Date(m+'T00:00:00Z');return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)).toISOString().slice(0,10);}
-// Pedidos do mes anterior: so para o estorno das devolucoes no quadro de repasse.
-async function carregaOcelotPrev(mes){
+// Devolucoes com custo de meses anteriores (desde OCN_ESTORNO_DESDE) -- base dos estornos do repasse.
+// Vendas anteriores a setembro/2026 foram acertadas na planilha e nao geram estorno aqui.
+const OCN_ESTORNO_DESDE='2026-09-01';
+const OCN_FORN_ID={miguel:'9e88add9-8405-46db-8bd4-e128ee9ce65a',alan:'e7e5a84c-9294-4d80-a251-d3f36dc83d46'};
+function ocelotPendChave(mes){return OCN_ESTORNO_DESDE+'|'+mes;}
+async function carregaOcelotPend(mes){
+  const chave=ocelotPendChave(mes);
+  if(mes<=OCN_ESTORNO_DESDE){OCELOT_PREV_CACHE={chave:chave,pedidos:[]};renderOcelotBody();return;}
   try{
     const {data:{session}}=await sb.auth.getSession();
-    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?mes='+mes,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?so_devolucoes=1&de='+OCN_ESTORNO_DESDE+'&ate='+mes,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
     if(r.status===401){mostrarLogin();return;}
     OCELOT_PREV_CACHE=await r.json();
-  }catch(e){OCELOT_PREV_CACHE={mes_filtro:mes,pedidos:[],erro:String(e)};}
-  if(!OCELOT_PREV_CACHE||OCELOT_PREV_CACHE.mes_filtro!==mes)OCELOT_PREV_CACHE=Object.assign({pedidos:[]},OCELOT_PREV_CACHE||{},{mes_filtro:mes});
+  }catch(e){OCELOT_PREV_CACHE={pedidos:[],erro:String(e)};}
+  OCELOT_PREV_CACHE=Object.assign({pedidos:[]},OCELOT_PREV_CACHE||{},{chave:chave});
   renderOcelotBody();
 }
-// REPASSE AOS FORNECEDORES (05/10/2026), no formato da planilha (PRODUTOS / ESTORNO MES ANTERIOR / SALDO).
-// Venda devolvida depois de paga: no mes da venda ela conta pelo CMV normal (cmv_original, foi paga como
-// venda); no mes seguinte o fornecedor devolve esse CMV + o prejuizo de tarifa/frete que o ML nao estornou.
-// A DRE do mes (acima) segue a planilha: a devolucao ja entra no CMV como prejuizo -- e visao economica;
-// este quadro e a visao de caixa do pagamento.
-function htmlOcelotRepasse(D,Dant,mes){
+// REPASSE AOS FORNECEDORES (05/10/2026), no formato da planilha (PRODUTOS / ESTORNO / SALDO A PAGAR).
+// Regras do Tiago:
+//  - Devolucao em que o ML cobrou algo: o fornecedor devolve no repasse seguinte o CMV que recebeu pela venda
+//    (o MESMO valor pago -- gravado ao registrar o pagamento) + o que o ML cobrou (tarifa/frete nao estornados).
+//  - Mediacao que o ML cobriu (vendedor ficou com o dinheiro): venda normal, CMV normal (vem pronto do backend).
+// "Registrar pagamento" grava o CMV de cada venda do mes e os estornos descontados (nao desconta duas vezes).
+function htmlOcelotRepasse(D,Dpend,mes){
   const FORN=[['miguel','Miguel (concreto)'],['alan','Alan (madeira)']];
   function itens(X){const out=[];((X&&X.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){out.push(it);});});return out;}
-  const atual=itens(D), ant=itens(Dant);
-  const tot={};FORN.forEach(function(f){tot[f[0]]={prod:0,est:0,devMes:[],devAnt:[]};});
+  const repasses=(D&&D.repasses)||[], aplicados=(D&&D.estornos_aplicados)||[];
+  const atual=itens(D), pend=itens(Dpend);
+  const R={};
+  FORN.forEach(function(f){
+    const fid=OCN_FORN_ID[f[0]];
+    const reg=repasses.find(function(r){return r.fornecedor_id===fid&&r.mes_competencia===mes&&r.pago;})||null;
+    R[f[0]]={fid:fid,reg:reg,prod:0,itensPag:[],devMes:[],est:[],estTot:0,tarde:[]};
+  });
   atual.forEach(function(it){
-    const t=tot[it.responsavel_cmv];if(!t)return;
-    if(it.devolucao_com_custo){t.prod+=Number(it.cmv_original||0);t.devMes.push(it);}
-    else if(it.status!=='cancelled')t.prod+=Number(it.cmv_total||0);
+    const t=R[it.responsavel_cmv];if(!t)return;
+    if(it.devolucao_com_custo){
+      const c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0);
+      t.prod+=c;t.devMes.push(it);
+      t.itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:c});
+    }else if(it.status!=='cancelled'){
+      t.prod+=Number(it.cmv_total||0);
+      t.itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:Number(it.cmv_total||0)});
+    }
   });
-  ant.forEach(function(it){
-    const t=tot[it.responsavel_cmv];if(!t||!it.devolucao_com_custo)return;
-    t.est+=Number(it.cmv_original||0)-Number(it.valor_liquido||0);t.devAnt.push(it);
+  pend.forEach(function(it){
+    const t=R[it.responsavel_cmv];if(!t||!it.devolucao_com_custo||it.mes_competencia>=mes)return;
+    const ap=aplicados.find(function(a){return a.fornecedor_id===t.fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;});
+    if(ap&&ap.mes_absorcao!==mes)return; // ja descontado em outro repasse
+    const cmvPago=it.cmv_pago_registrado!=null?Number(it.cmv_pago_registrado):Number(it.cmv_original||0);
+    const pj=-Number(it.valor_liquido||0);
+    const e={it:it,cmv_pago:cmvPago,prejuizo:pj,total:cmvPago+pj,estimado:it.cmv_pago_registrado==null};
+    if(t.reg&&!ap){t.tarde.push(e);return;} // devolucao que apareceu depois do registro: vai pro proximo repasse
+    t.est.push(e);t.estTot+=e.total;
   });
-  const mAnt=dreMesLabel(ocelotMesAnterior(mes)), mSeg=dreMesLabel(ocelotMesSeguinte(mes));
+  const mSeg=dreMesLabel(ocelotMesSeguinte(mes));
+  const podeReg=pode('editar_cadastro');
   const td='padding:7px 12px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap';
   const tl='padding:7px 12px;border-bottom:1px solid var(--line);text-align:left';
   let h='<div style="margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden">';
   h+='<div style="padding:10px 12px;font-weight:700;border-bottom:2px solid var(--line)">Repasse aos fornecedores — '+dreMesLabel(mes)+'</div>';
   h+='<table style="width:100%;border-collapse:collapse;font-size:13.5px"><tr><th style="'+tl+'"></th>'+FORN.map(function(f){return '<th style="'+td+'">'+f[1]+'</th>';}).join('')+'</tr>';
-  h+='<tr><td style="'+tl+'">Produtos (CMV das vendas do mês)</td>'+FORN.map(function(f){return '<td style="'+td+'">'+dreBRL(tot[f[0]].prod)+'</td>';}).join('')+'</tr>';
-  if(!Dant)h+='<tr><td style="'+tl+';color:var(--muted)">(−) Estorno de devoluções de '+mAnt+'</td><td colspan="2" style="'+td+';color:var(--muted)">carregando…</td></tr>';
-  else h+='<tr><td style="'+tl+'">(−) Estorno de devoluções de '+mAnt+'<div style="font-size:11.5px;color:var(--muted)">CMV pago pela venda + prejuízo de tarifa/frete</div></td>'+FORN.map(function(f){return '<td style="'+td+';color:'+(tot[f[0]].est?'var(--down)':'inherit')+'">'+dreBRL(-tot[f[0]].est)+'</td>';}).join('')+'</tr>';
-  h+='<tr><td style="'+tl+';font-weight:700;background:rgba(37,99,235,.10)">= Saldo a pagar</td>'+FORN.map(function(f){return '<td style="'+td+';font-weight:700;background:rgba(37,99,235,.10)">'+dreBRL(tot[f[0]].prod-tot[f[0]].est)+'</td>';}).join('')+'</tr></table>';
-  function lista(titulo,arr,sinal){
-    if(!arr.length)return '';
-    let x='<div style="padding:10px 12px;font-size:12.5px"><div style="font-weight:700;margin-bottom:4px">'+titulo+'</div>';
-    arr.forEach(function(it){
-      const o=Number(it.cmv_original||0),pj=-Number(it.valor_liquido||0);
-      x+='<div style="display:flex;gap:10px;justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span>'+escH(it.responsavel_cmv==='alan'?'Alan':'Miguel')+' · '+new Date(it.data_venda+'T12:00:00Z').toLocaleDateString('pt-BR')+' · <a href="https://www.mercadolivre.com.br/vendas/'+it.order_id+'/detalhe" target="_blank" rel="noopener" style="color:inherit">'+it.order_id+'</a> · '+escH(String(it.titulo||'').slice(0,40))+'</span><span style="white-space:nowrap;font-variant-numeric:tabular-nums">CMV '+dreBRL(o)+' + prejuízo '+dreBRL(pj)+' = <b>'+dreBRL(sinal*(o+pj))+'</b></span></div>';
-    });
-    return x+'</div>';
-  }
-  h+=lista('Devoluções deste mês — descontar no pagamento de '+mSeg,tot.miguel.devMes.concat(tot.alan.devMes),-1);
-  if(Dant)h+=lista('Devoluções de '+mAnt+' descontadas acima',tot.miguel.devAnt.concat(tot.alan.devAnt),-1);
-  h+='<div style="padding:8px 12px 10px;font-size:11.5px;color:var(--muted)">Venda devolvida depois do pagamento conta no mês dela pelo CMV normal (foi paga como venda) e é descontada no mês seguinte: CMV pago + prejuízo de tarifa/frete que o ML não estornou. Por isso "Produtos" difere do CMV da DRE acima, que já lança a devolução como prejuízo no próprio mês (visão econômica, igual à planilha). Adiantamentos não entram aqui.</div>';
+  function cel(f,v,extra){const t=R[f[0]];return '<td style="'+td+(extra||'')+'">'+v+'</td>';}
+  h+='<tr><td style="'+tl+'">Produtos (CMV das vendas do mês)</td>'+FORN.map(function(f){const t=R[f[0]];
+    const v=t.reg?Number(t.reg.valor_pago||0):t.prod;
+    return cel(f,dreBRL(v)+(t.reg&&Math.abs(v-t.prod)>=0.01?'<div style="font-size:11px;color:var(--muted)">hoje: '+dreBRL(t.prod)+'</div>':''));}).join('')+'</tr>';
+  if(!Dpend)h+='<tr><td style="'+tl+';color:var(--muted)">(−) Estorno de devoluções</td><td colspan="2" style="'+td+';color:var(--muted)">carregando…</td></tr>';
+  else h+='<tr><td style="'+tl+'">(−) Estorno de devoluções de meses anteriores<div style="font-size:11.5px;color:var(--muted)">CMV pago pela venda + o que o ML cobrou</div></td>'+FORN.map(function(f){const t=R[f[0]];
+    const v=t.reg?Number(t.reg.estorno_aplicado||0):t.estTot;return cel(f,dreBRL(-v),v?';color:var(--down)':'');}).join('')+'</tr>';
+  h+='<tr><td style="'+tl+';font-weight:700;background:rgba(37,99,235,.10)">= Saldo a pagar</td>'+FORN.map(function(f){const t=R[f[0]];
+    const v=t.reg?Number(t.reg.valor_transferido||0):(t.prod-t.estTot);return cel(f,dreBRL(v),';font-weight:700;background:rgba(37,99,235,.10)');}).join('')+'</tr>';
+  h+='<tr><td style="'+tl+'"></td>'+FORN.map(function(f){const t=R[f[0]];
+    if(t.reg)return cel(f,'<span style="font-size:12px;color:var(--up)">registrado em '+new Date(t.reg.data_pagamento).toLocaleDateString('pt-BR')+'</span>'+(podeReg?' <button onclick="ocelotDesfazerRepasse(\''+f[0]+'\',\''+mes+'\')" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font-size:12px">desfazer</button>':''));
+    if(!podeReg||!Dpend)return cel(f,'');
+    return cel(f,'<button onclick="ocelotRegistrarRepasse(\''+f[0]+'\',\''+mes+'\')" style="padding:4px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px">Registrar pagamento</button>');}).join('')+'</tr></table>';
+  function linhaItem(nome,it,txt){return '<div style="display:flex;gap:10px;justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span>'+nome+' · '+new Date(it.data_venda+'T12:00:00Z').toLocaleDateString('pt-BR')+' · <a href="https://www.mercadolivre.com.br/vendas/'+it.order_id+'/detalhe" target="_blank" rel="noopener" style="color:inherit">'+it.order_id+'</a> · '+escH(String(it.titulo||'').slice(0,40))+'</span><span style="white-space:nowrap;font-variant-numeric:tabular-nums">'+txt+'</span></div>';}
+  let est='',dev='',tarde='';
+  FORN.forEach(function(f){const t=R[f[0]],nome=f[0]==='alan'?'Alan':'Miguel';
+    t.est.forEach(function(e){est+=linhaItem(nome,e.it,'CMV pago '+dreBRL(e.cmv_pago)+(e.estimado?' <span title="mês da venda sem pagamento registrado no sistema — CMV calculado" style="color:#b45309">(estimado)</span>':'')+' + ML cobrou '+dreBRL(e.prejuizo)+' = <b>'+dreBRL(-e.total)+'</b>');});
+    t.tarde.forEach(function(e){tarde+=linhaItem(nome,e.it,'<b>'+dreBRL(-e.total)+'</b>');});
+    t.devMes.forEach(function(it){const c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0),pj=-Number(it.valor_liquido||0);
+      dev+=linhaItem(nome,it,'CMV '+dreBRL(c)+' + ML cobrou '+dreBRL(pj)+' = <b>'+dreBRL(-(c+pj))+'</b>');});
+  });
+  const blk=function(t,x){return x?'<div style="padding:10px 12px;font-size:12.5px"><div style="font-weight:700;margin-bottom:4px">'+t+'</div>'+x+'</div>':'';};
+  h+=blk('Estornos descontados neste repasse',est);
+  h+=blk('Devolvidas depois do registro deste mês — entram no próximo repasse',tarde);
+  h+=blk('Vendas deste mês já devolvidas — pagas normalmente agora, descontadas no repasse de '+mSeg,dev);
+  h+='<div style="padding:8px 12px 10px;font-size:11.5px;color:var(--muted)">Devolução em que o ML cobrou algo: o fornecedor devolve no repasse seguinte o mesmo CMV que recebeu pela venda + o que o ML cobrou. Mediação que o ML cobriu (você ficou com o dinheiro) conta como venda normal. "Registrar pagamento" grava o CMV pago de cada venda — é esse valor que volta no estorno se ela for devolvida depois. Estornos valem para vendas a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (antes disso o acerto foi na planilha). "Produtos" difere do CMV da DRE acima porque a DRE lança a devolução como prejuízo no próprio mês (visão econômica). Adiantamentos não entram aqui.</div>';
   return h+'</div>';
+}
+function ocelotRepasseCalc(forn,mes){
+  // recalcula o mesmo que o quadro mostra, para gravar
+  const D=OCELOT_CACHE,Dp=OCELOT_PREV_CACHE;
+  const fid=OCN_FORN_ID[forn];const aplicados=(D&&D.estornos_aplicados)||[];
+  const itensPag=[],estornos=[];let prod=0,estTot=0;
+  ((D&&D.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){
+    if(it.responsavel_cmv!==forn)return;
+    let c=null;
+    if(it.devolucao_com_custo)c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0);
+    else if(it.status!=='cancelled')c=Number(it.cmv_total||0);
+    if(c==null)return;prod+=c;
+    itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:Math.round(c*100)/100});
+  });});
+  ((Dp&&Dp.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){
+    if(it.responsavel_cmv!==forn||!it.devolucao_com_custo||it.mes_competencia>=mes)return;
+    const ap=aplicados.find(function(a){return a.fornecedor_id===fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;});
+    if(ap&&ap.mes_absorcao!==mes)return;
+    const cp=it.cmv_pago_registrado!=null?Number(it.cmv_pago_registrado):Number(it.cmv_original||0);
+    const pj=-Number(it.valor_liquido||0);
+    estornos.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,data_venda:it.data_venda,mes_origem:it.mes_competencia,
+      cmv_pago:Math.round(cp*100)/100,prejuizo:Math.round(pj*100)/100,total:Math.round((cp+pj)*100)/100});
+    estTot+=cp+pj;
+  });});
+  return {itens:itensPag,estornos:estornos,valor_produtos:Math.round(prod*100)/100,valor_estorno:Math.round(estTot*100)/100};
+}
+async function ocelotRepassePost(body){
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-fornecedor-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
+  let j={};try{j=await r.json();}catch(e){}
+  if(!r.ok||j.error){alert('Erro: '+(j.error||r.status));return false;}
+  return true;
+}
+async function ocelotRegistrarRepasse(forn,mes){
+  const c=ocelotRepasseCalc(forn,mes);
+  const nome=forn==='alan'?'Alan':'Miguel';
+  if(!confirm('Registrar pagamento de '+nome+' — '+dreMesLabel(mes)+'?\n\nProdutos: '+dreBRL(c.valor_produtos)+' ('+c.itens.length+' vendas)\nEstorno de devoluções: '+dreBRL(-c.valor_estorno)+' ('+c.estornos.length+')\nSaldo a pagar: '+dreBRL(c.valor_produtos-c.valor_estorno)+'\n\nO CMV de cada venda fica gravado: se ela for devolvida depois, é esse valor que volta no estorno.'))return;
+  if(await ocelotRepassePost(Object.assign({tipo:'registrar_repasse',fornecedor:forn,mes_competencia:mes},c))){OCELOT_PREV_CACHE=null;renderOcelot();}
+}
+async function ocelotDesfazerRepasse(forn,mes){
+  if(!confirm('Desfazer o registro de pagamento de '+(forn==='alan'?'Alan':'Miguel')+' — '+dreMesLabel(mes)+'? Os CMVs gravados e os estornos descontados nesse mês serão apagados.'))return;
+  if(await ocelotRepassePost({tipo:'desfazer_repasse',fornecedor:forn,mes_competencia:mes})){OCELOT_PREV_CACHE=null;renderOcelot();}
 }
 function ocelotSintMes(v){if(!v)return;ocelotMesFiltro=v;ocelotPagina=1;renderOcelot();}
 function htmlOcelotSintetica(){
@@ -995,7 +1073,7 @@ function htmlOcelotSintetica(){
   h+=L('= Total dos custos da conta',-custosConta,'total');
   h+=L('= RESULTADO LÍQUIDO',res,'final');
   h+='</table>';
-  h+=htmlOcelotRepasse(D,OCELOT_PREV_CACHE&&OCELOT_PREV_CACHE.mes_filtro===ocelotMesAnterior(mes)?OCELOT_PREV_CACHE:null,mes);
+  h+=htmlOcelotRepasse(D,OCELOT_PREV_CACHE&&OCELOT_PREV_CACHE.chave===ocelotPendChave(mes)?OCELOT_PREV_CACHE:null,mes);
 
   // --- indicadores automaticos ---
   const custoML=s.taxa+s.frete+totAjustes;
@@ -1046,8 +1124,7 @@ function renderOcelotBody(){
     if(!ocelotMesFiltro){ocelotMesFiltro=(OCELOT_CACHE&&(OCELOT_CACHE.meses_disponiveis||[])[0])||ocelotMesAtual();renderOcelot();return;}
     if(!OCELOT_CACHE||OCELOT_CACHE.mes_filtro!==ocelotMesFiltro){renderOcelot();return;}
     if(!OCELOT_DRE_CACHE){renderOcelotDre();return;}
-    const _ant=ocelotMesAnterior(ocelotMesFiltro);
-    if(!OCELOT_PREV_CACHE||OCELOT_PREV_CACHE.mes_filtro!==_ant){carregaOcelotPrev(_ant);return;}
+    if(!OCELOT_PREV_CACHE||OCELOT_PREV_CACHE.chave!==ocelotPendChave(ocelotMesFiltro)){carregaOcelotPend(ocelotMesFiltro);return;}
   }
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
@@ -1252,7 +1329,8 @@ function htmlOcelotVendas(){
   }
   // v3 (09/09/2026): o selo saiu de dentro da celula do titulo (onde era cortado pelo ellipsis da
   // linha unica) e virou coluna propria "Origem CMV", com rotulo curto.
-  function origemPill(origem,status){
+  function origemPill(origem,status,it){
+    if(it&&it.ml_cobriu)return '<span class="pill" style="background:#16a34a;color:#fff" title="Mediação coberta pelo ML: você ficou com o dinheiro, venda normal com CMV normal">ML cobriu</span>';
     if(origem==='devolucao')return '<span class="pill" style="background:#b45309;color:#fff" title="Devolução/mediação depois do envio: o ML não estornou tarifa/frete, prejuízo vai pro fornecedor">devolução c/ custo</span>';
     var m={cancelled:['cancelado','#dc2626'],partially_refunded:['dev. parcial','#f59e0b']};
     if(m[status])return '<span class="pill" style="background:'+m[status][1]+';color:#fff">'+m[status][0]+'</span>';
@@ -1294,7 +1372,7 @@ function htmlOcelotVendas(){
     const tituloTxt=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
     const titulo=linkVenda(cortaTitulo(tituloTxt,44),p.order_id);
     const mlbColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':linkAnuncio(p.itens[0].item_id,p.itens[0].permalink);
-    const origem=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':origemPill(p.itens[0].cmv_origem,p.status);
+    const origem=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':origemPill(p.itens[0].cmv_origem,p.status,p.itens[0]);
     const qtdColuna=multi?p.itens.reduce(function(s,x){return s+Number(x.quantidade||0);},0):p.itens[0].quantidade;
     const cmvColuna=multi?P(p.cmv_total):cmvCell(p.itens[0]);
     const respColuna=multi?(p.itens.some(function(x){return x.status==='partially_refunded';})?'<span style="color:#94a3b8;font-size:11px">expanda p/ item</span>':'<span style="color:#94a3b8;font-size:11px">—</span>'):respSelectorCell(p.itens[0]);
@@ -1304,7 +1382,7 @@ function htmlOcelotVendas(){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
         const temBk=it.imposto_valor!=null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2" title="'+escH(it.titulo||it.item_id)+'">— '+linkVenda(cortaTitulo(it.titulo||it.item_id,40),it.order_id)+' (x'+it.quantidade+')</td><td class="ped sub2">'+linkVenda(it.order_id,it.order_id)+'</td><td class="mlb sub2">'+linkAnuncio(it.item_id,it.permalink)+'</td><td class="pg sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+cmvCell(it)+'</td><td class="org">'+origemPill(it.cmv_origem,it.status)+'</td><td>'+respSelectorCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2" title="'+escH(it.titulo||it.item_id)+'">— '+linkVenda(cortaTitulo(it.titulo||it.item_id,40),it.order_id)+' (x'+it.quantidade+')</td><td class="ped sub2">'+linkVenda(it.order_id,it.order_id)+'</td><td class="mlb sub2">'+linkAnuncio(it.item_id,it.permalink)+'</td><td class="pg sub2">—</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+cmvCell(it)+'</td><td class="org">'+origemPill(it.cmv_origem,it.status,it)+'</td><td>'+respSelectorCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }

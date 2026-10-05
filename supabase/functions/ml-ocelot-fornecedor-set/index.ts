@@ -79,11 +79,28 @@ Deno.serve(async(req)=>{
     }
     const {error:upErr}=await supabase.from("ocelot_pagamentos_fornecedor").upsert({
       conta_id:OCELOT_CONTA,fornecedor_id:fornecedorId,mes_competencia:mes,pago:true,valor_pago:valorProdutos,
-      estorno_aplicado:valorEstorno,valor_transferido:valorProdutos-valorEstorno,estorno_absorvido_por:null,
+      estorno_aplicado:valorEstorno,valor_transferido:valorProdutos-valorEstorno-Number(body.valor_adiantamentos||0),estorno_absorvido_por:null,
       data_pagamento:new Date().toISOString(),atualizado_em:new Date().toISOString()
     },{onConflict:"conta_id,fornecedor_id,mes_competencia"});
     if(upErr)return json({error:upErr.message},400);
     return json({ok:true,itens:linhas.length,estornos:estornos.length});
+  }
+
+  // v9 (05/10/2026): adiantamentos ao fornecedor (descontados no fechamento do mes)
+  if(body.tipo==="add_adiantamento"){
+    const FORN:Record<string,string>={miguel:MIGUEL_ID,alan:ALAN_ID};
+    const fornecedorId=FORN[String(body.fornecedor||"")];
+    if(!fornecedorId||!body.mes_competencia||!(Number(body.valor)>0))return json({error:"fornecedor, mes_competencia e valor obrigatorios"},400);
+    const {error}=await supabase.from("ocelot_adiantamentos").insert({conta_id:OCELOT_CONTA,fornecedor_id:fornecedorId,mes_competencia:body.mes_competencia,
+      valor:Number(body.valor),data:body.data||null,observacao:body.observacao||null});
+    if(error)return json({error:error.message},400);
+    return json({ok:true});
+  }
+  if(body.tipo==="del_adiantamento"){
+    if(!body.id)return json({error:"id obrigatorio"},400);
+    const {error}=await supabase.from("ocelot_adiantamentos").delete().eq("conta_id",OCELOT_CONTA).eq("id",body.id);
+    if(error)return json({error:error.message},400);
+    return json({ok:true});
   }
 
   if(body.tipo==="desfazer_repasse"){

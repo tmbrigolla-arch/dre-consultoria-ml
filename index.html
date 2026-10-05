@@ -192,9 +192,9 @@
   /* sub-itens da Ocelot no menu lateral */
   #tabOcelot .caret{margin-left:auto;font-size:10px;opacity:.65}
   #tabOcelot.on{background:#18233c;color:#fff;box-shadow:none}
-  #ocnSintetica,#ocnVendas,#ocnConfig{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
-  #ocnSintetica:hover,#ocnVendas:hover,#ocnConfig:hover{background:#18233c;color:#fff}
-  #ocnSintetica.on,#ocnVendas.on,#ocnConfig.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+  #ocnSintetica,#ocnVendas,#ocnRepasse,#ocnConfig{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
+  #ocnSintetica:hover,#ocnVendas:hover,#ocnRepasse:hover,#ocnConfig:hover{background:#18233c;color:#fff}
+  #ocnSintetica.on,#ocnVendas.on,#ocnRepasse.on,#ocnConfig.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
   /* estilos inline gerados pelo JS */
   #app [style*="background:#fff"]{background:var(--panel2)!important;color:var(--ink)!important;border-color:var(--line)!important}
   #app [style*="color:#1f2733"]{color:var(--ink)!important}
@@ -308,7 +308,7 @@
   .adm-modal h3{margin:0;color:var(--ink)}
   #toastMsg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;border:1px solid #374151;border-radius:10px;padding:10px 16px;font-size:13px;z-index:120;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px)}
   #toastMsg.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  @media print{#toastMsg,#mSenha{display:none!important}}
+  @media print{#toastMsg,#mSenha,.noprint{display:none!important}}
 </style>
 </head>
 <body>
@@ -342,6 +342,7 @@
   <div class="navsub" id="navsubOcelot" style="display:none">
     <button id="ocnSintetica" onclick="ocelotSubTab('sintetica')">DRE sintética</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
+    <button id="ocnRepasse" onclick="ocelotSubTab('repasse')">Repasse a fornecedores</button>
     <button id="ocnConfig" onclick="ocelotSubTab('config')">Cadastro</button>
   </div>
   <div class="navlbl" id="lblAdmin" style="display:none">Administração</div>
@@ -535,9 +536,9 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
+function ocelotSubLabel(){var L={sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
 function sincOcelotNav(){
-  var ids={sintetica:"ocnSintetica",vendas:"ocnVendas",config:"ocnConfig"};
+  var ids={sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
@@ -571,7 +572,7 @@ function sincNav(a){
 }
 function trocaAba(a){
   if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
-  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","config"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
@@ -672,7 +673,7 @@ async function salvarCusto(btn){
 }
 
 let ocelotSub=(function(){var s=localStorage.getItem('ocelot_sub');return (s==='entregas'||s==='fornecedores')?'config':(s==='dre'||s==='detalhada')?'sintetica':(s||'vendas');})();let OCELOT_CACHE=null;
-let OCELOT_ENTREGAS_CACHE=null;let OCELOT_DRE_CACHE=null;let OCELOT_PREV_CACHE=null;const OCELOT_CONTA_ID='30fa53d4-60c0-40f6-9832-63b4cb313797';let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
+let OCELOT_ENTREGAS_CACHE=null;let OCELOT_DRE_CACHE=null;let OCELOT_ALT_CACHE=null;const OCELOT_CONTA_ID='30fa53d4-60c0-40f6-9832-63b4cb313797';let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
 let ocelotEntregasStatusFiltro=(localStorage.getItem('ocelot_ent_status')||null);
 const ENT_STATUS_LABEL={pending:'Aguardando (fabricação/pagamento)',ready_to_ship:'Pronto para envio',shipped:'A caminho',delivered:'Entregue',not_delivered:'Tentativa de entrega falhou',cancelled:'Cancelado'};
 const ENT_STATUS_COR={pending:'#f59e0b',ready_to_ship:'#0891b2',shipped:'#1F4E79',delivered:'#16a34a',not_delivered:'#dc2626',cancelled:'#94a3b8'};
@@ -828,137 +829,198 @@ function dreMesLabel(m){const M=['jan','fev','mar','abr','mai','jun','jul','ago'
 //  - parametros do mes: custo fixo (Elisa) e % de imposto.
 function ocelotMesAnterior(m){const d=new Date(m+'T00:00:00Z');return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()-1,1)).toISOString().slice(0,10);}
 function ocelotMesSeguinte(m){const d=new Date(m+'T00:00:00Z');return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1)).toISOString().slice(0,10);}
-// Devolucoes com custo de meses anteriores (desde OCN_ESTORNO_DESDE) -- base dos estornos do repasse.
-// Vendas anteriores a setembro/2026 foram acertadas na planilha e nao geram estorno aqui.
+// ---------- REPASSE A FORNECEDORES (05/10/2026) ----------
+// Fechamento mensal por fornecedor no formato do PDF que o Tiago manda (Resumo / Vendas anteriores
+// ajustadas / Vendas do mes). Regras:
+//  - Repasse de cada venda do mes = CMV atual (com o que ja se sabe no fechamento: devolucao do proprio
+//    mes entra negativa, cancelamento sem custo fica fora). Mes ja registrado mostra o CMV gravado.
+//  - Venda de mes anterior JA PAGA que mudou depois (cancelada/devolvida, coberta pelo ML, devolucao
+//    parcial): ajuste = repasse pago (gravado no fechamento) - repasse atual. Ex.: devolvida em que o ML
+//    cobrou frete -> desconta o repasse pago + o frete; ML cobriu -> repasse sobe pro CMV normal (acrescimo).
+//  - Adiantamentos lancados por mes descontam do saldo.
+//  - "Registrar fechamento" grava o repasse de cada venda e os ajustes aplicados (nao aplica duas vezes).
+// Setembro/2026 foi importado dos PDFs de fechamento (Miguel/Alan). Ajustes valem para vendas pagas a
+// partir de OCN_ESTORNO_DESDE (antes disso o acerto foi na planilha).
 const OCN_ESTORNO_DESDE='2026-09-01';
 const OCN_FORN_ID={miguel:'9e88add9-8405-46db-8bd4-e128ee9ce65a',alan:'e7e5a84c-9294-4d80-a251-d3f36dc83d46'};
-function ocelotPendChave(mes){return OCN_ESTORNO_DESDE+'|'+mes;}
-async function carregaOcelotPend(mes){
-  const chave=ocelotPendChave(mes);
-  if(mes<=OCN_ESTORNO_DESDE){OCELOT_PREV_CACHE={chave:chave,pedidos:[]};renderOcelotBody();return;}
+const OCN_FORN_NOME={miguel:'Miguel',alan:'Alan'};
+let ocelotRepForn=(function(){try{var f=localStorage.getItem('ocelot_rep_forn');return f==='alan'?'alan':'miguel';}catch(e){return 'miguel';}})();
+function ocelotRepFornSel(f){ocelotRepForn=f;try{localStorage.setItem('ocelot_rep_forn',f);}catch(e){}renderOcelotBody();}
+function ocelotAltChave(mes){return OCN_ESTORNO_DESDE+'|'+mes;}
+async function carregaOcelotAlt(mes){
+  const chave=ocelotAltChave(mes);
+  if(mes<=OCN_ESTORNO_DESDE){OCELOT_ALT_CACHE={chave:chave,itens:[]};renderOcelotBody();return;}
   try{
     const {data:{session}}=await sb.auth.getSession();
-    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?so_devolucoes=1&de='+OCN_ESTORNO_DESDE+'&ate='+mes,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-dados?so_alterados=1&de='+OCN_ESTORNO_DESDE+'&ate='+mes,{cache:'no-store',headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
     if(r.status===401){mostrarLogin();return;}
-    OCELOT_PREV_CACHE=await r.json();
-  }catch(e){OCELOT_PREV_CACHE={pedidos:[],erro:String(e)};}
-  OCELOT_PREV_CACHE=Object.assign({pedidos:[]},OCELOT_PREV_CACHE||{},{chave:chave});
+    OCELOT_ALT_CACHE=await r.json();
+  }catch(e){OCELOT_ALT_CACHE={itens:[],erro:String(e)};}
+  OCELOT_ALT_CACHE=Object.assign({itens:[]},OCELOT_ALT_CACHE||{},{chave:chave});
   renderOcelotBody();
 }
-// REPASSE AOS FORNECEDORES (05/10/2026), no formato da planilha (PRODUTOS / ESTORNO / SALDO A PAGAR).
-// Regras do Tiago:
-//  - Devolucao em que o ML cobrou algo: o fornecedor devolve no repasse seguinte o CMV que recebeu pela venda
-//    (o MESMO valor pago -- gravado ao registrar o pagamento) + o que o ML cobrou (tarifa/frete nao estornados).
-//  - Mediacao que o ML cobriu (vendedor ficou com o dinheiro): venda normal, CMV normal (vem pronto do backend).
-// "Registrar pagamento" grava o CMV de cada venda do mes e os estornos descontados (nao desconta duas vezes).
-function htmlOcelotRepasse(D,Dpend,mes){
-  const FORN=[['miguel','Miguel (concreto)'],['alan','Alan (madeira)']];
-  function itens(X){const out=[];((X&&X.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){out.push(it);});});return out;}
-  const repasses=(D&&D.repasses)||[], aplicados=(D&&D.estornos_aplicados)||[];
-  const atual=itens(D), pend=itens(Dpend);
-  const R={};
-  FORN.forEach(function(f){
-    const fid=OCN_FORN_ID[f[0]];
-    const reg=repasses.find(function(r){return r.fornecedor_id===fid&&r.mes_competencia===mes&&r.pago;})||null;
-    R[f[0]]={fid:fid,reg:reg,prod:0,itensPag:[],devMes:[],est:[],estTot:0,tarde:[]};
+function ocelotMesExtenso(m){const d=new Date(m+'T00:00:00Z');return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).replace(' de ','/');}
+function ocelotRepasseDados(forn,mes){
+  const D=OCELOT_CACHE||{},A=OCELOT_ALT_CACHE||{};
+  const fid=OCN_FORN_ID[forn];
+  const reg=(D.repasses||[]).find(function(r){return r.fornecedor_id===fid&&r.mes_competencia===mes&&r.pago;})||null;
+  const adiant=(D.adiantamentos||[]).filter(function(a){return a.fornecedor_id===fid&&a.mes_competencia===mes;});
+  const aplicados=D.estornos_aplicados||[];
+  // vendas do mes, agrupadas por n.º da venda (pacote = uma linha, como no relatorio do ML)
+  const grupos={};
+  // mes registrado: mostra o que foi pago a ESTE fornecedor (fornecedor gravado no fechamento); venda do
+  // fornecedor que ficou fora do fechamento aparece apagada e entra no fechamento seguinte.
+  (D.pedidos||[]).forEach(function(p){(p.itens||[]).forEach(function(it){
+    const ativo=!(it.status==='cancelled'&&!it.devolucao_com_custo);
+    let fora=false;
+    if(reg){
+      if(it.cmv_pago_fornecedor_id){if(it.cmv_pago_fornecedor_id!==fid)return;}
+      else{if(it.responsavel_cmv!==forn||!ativo)return;fora=true;}
+    }else{if(it.responsavel_cmv!==forn||!ativo)return;}
+    const num=String(it.pack_id||it.order_id)+(fora?'*':'');
+    const g=grupos[num]=grupos[num]||{num:String(it.pack_id||it.order_id),order_id:it.order_id,data:it.data_venda,itens:[],un:0,venda:0,liq:0,rep:0,neg:false,fora:fora};
+    const rep=(reg&&it.cmv_pago_registrado!=null)?Number(it.cmv_pago_registrado):Number(it.cmv_total||0);
+    g.itens.push({it:it,rep:rep});g.un+=Number(it.quantidade||0);g.venda+=Number(it.valor_venda||0);g.liq+=Number(it.valor_liquido||0);g.rep+=rep;
+    if(it.data_venda<g.data)g.data=it.data_venda;
+    if(it.devolucao_com_custo)g.neg=true;
+  });});
+  const todos=Object.keys(grupos).map(function(k){return grupos[k];});
+  const foraFech=todos.filter(function(g){return g.fora;});
+  const vendas=todos.filter(function(g){return !g.fora;}).sort(function(a,b){return a.data<b.data?-1:a.data>b.data?1:(b.rep-a.rep);});
+  // ajustes de vendas anteriores
+  let ajustes=[];
+  if(reg){
+    ajustes=aplicados.filter(function(a){return a.fornecedor_id===fid&&a.mes_absorcao===mes;}).map(function(a){
+      const t=String(a.titulo||'');const k=t.indexOf(' | ');
+      return {data:a.data_venda,num:String(a.order_id),order_id:a.order_id,produto:k>=0?t.slice(0,k):t,situacao:k>=0?t.slice(k+3):'',valor:Number(a.diferenca||0)};
+    });
+  }else{
+    (A.itens||[]).forEach(function(it){
+      if(it.mes_competencia>=mes)return;
+      if(it.nao_incluida?(it.responsavel_cmv!==forn):(it.cmv_pago_fornecedor_id!==fid))return;
+      if(aplicados.some(function(a){return a.fornecedor_id===fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;}))return;
+      const pago=Number(it.cmv_pago_registrado||0),atual=Number(it.cmv_total||0),dif=Math.round((pago-atual)*100)/100;
+      if(Math.abs(dif)<0.01)return;
+      let sit;
+      if(it.nao_incluida)sit='Venda de '+dreMesLabel(it.mes_competencia)+' que ficou fora do fechamento registrado — repasse de '+dreBRL(atual)+' a pagar agora';
+      else if(it.ml_cobriu)sit='Mediação coberta pelo Mercado Livre — repasse ajustado de '+dreBRL(pago)+' para '+dreBRL(atual);
+      else if(it.devolucao_com_custo)sit='Devolvida, com '+dreBRL(-Number(it.valor_liquido||0))+' de frete/tarifa cobrados pelo Mercado Livre — repasse pago '+dreBRL(pago);
+      else if(it.status==='cancelled')sit='Devolução finalizada com reembolso para o comprador';
+      else sit='Devolução parcial — repasse ajustado de '+dreBRL(pago)+' para '+dreBRL(atual);
+      ajustes.push({data:it.data_venda,num:String(it.pack_id||it.order_id),order_id:it.order_id,item_id:it.item_id,produto:it.titulo,situacao:sit,valor:dif,
+        mes_origem:it.mes_competencia,cmv_pago:pago,atual:atual});
+    });
+    ajustes.sort(function(a,b){return a.data<b.data?-1:1;});
+  }
+  const totRep=vendas.reduce(function(s,g){return s+g.rep;},0);
+  const totAj=ajustes.reduce(function(s,a){return s+a.valor;},0);
+  const totAd=adiant.reduce(function(s,a){return s+Number(a.valor||0);},0);
+  return {fid:fid,reg:reg,adiant:adiant,vendas:vendas,foraFech:foraFech,ajustes:ajustes,
+    totRep:reg?Number(reg.valor_pago||0):totRep,totRepCalc:totRep,totAj:reg?Number(reg.estorno_aplicado||0):totAj,totAd:totAd,
+    saldo:reg?Number(reg.valor_transferido||0):(totRep-totAj-totAd),
+    un:vendas.reduce(function(s,g){return s+g.un;},0)};
+}
+function htmlOcelotRepasseAba(){
+  const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
+  const mes=ocelotMesFiltro, forn=ocelotRepForn, nome=OCN_FORN_NOME[forn];
+  const R=ocelotRepasseDados(forn,mes);
+  const podeEd=pode('editar_cadastro');
+  const mesNome=ocelotMesExtenso(mes);
+  const fimMes=new Date(new Date(ocelotMesSeguinte(mes)+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10);
+  const dBR=function(d){return d?new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';};
+  const cardSt='border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:14px;overflow:hidden';
+  const th='padding:7px 10px;border-bottom:2px solid var(--line);text-align:left;font-size:12px;color:var(--muted);font-weight:600;white-space:normal;overflow:visible;text-overflow:clip;width:auto';
+  const td='padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;white-space:normal;overflow:visible;text-overflow:clip;width:auto;max-width:none';
+  const tdn=td+';text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;width:1%';
+  const link=function(num,oid){return '<a href="https://www.mercadolivre.com.br/vendas/'+oid+'/detalhe" target="_blank" rel="noopener" style="color:inherit">'+num+'</a>';};
+  let h='<div id="repasseDoc" style="max-width:1000px">';
+  // filtros
+  h+='<div class="noprint" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:14px">';
+  h+='<label style="font-size:12.5px;color:var(--muted)">Mês <select onchange="ocelotSintMes(this.value)" style="padding:7px 12px;border-radius:8px;border:1px solid var(--line);font-weight:600;font-size:13px;margin-left:6px">';
+  (D.meses_disponiveis||[]).forEach(function(m){h+='<option value="'+m+'"'+(m===mes?' selected':'')+'>'+dreMesLabel(m)+'</option>';});
+  h+='</select></label>';
+  h+='<span style="font-size:12.5px;color:var(--muted)">Fornecedor</span><div style="display:flex;gap:6px">';
+  ['miguel','alan'].forEach(function(f){h+='<button onclick="ocelotRepFornSel(\''+f+'\')" style="padding:6px 14px;border-radius:8px;border:1px solid '+(f===forn?'var(--accent)':'var(--line)')+';background:'+(f===forn?'var(--accent)':'transparent')+';color:'+(f===forn?'#fff':'inherit')+';font-weight:600;cursor:pointer">'+OCN_FORN_NOME[f]+'</button>';});
+  h+='</div><span style="flex:1"></span><button onclick="window.print()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Imprimir / PDF</button></div>';
+  // cabecalho
+  h+='<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--muted);letter-spacing:.5px">OCELOT · MERCADO LIVRE</div>';
+  h+='<div style="font-size:20px;font-weight:800;margin:2px 0">Fechamento de '+mesNome+' — '+nome+'</div>';
+  h+='<div style="font-size:12.5px;color:var(--muted)">Vendas do período '+dBR(mes)+' a '+dBR(fimMes)+'/'+mes.slice(0,4)+' e descontos do mês, incluindo vendas de meses anteriores que foram devolvidas ou ajustadas depois do fechamento anterior. '+(R.reg?('Registrado em '+new Date(R.reg.data_pagamento).toLocaleDateString('pt-BR')+'.'):'<b style="color:#b45309">Fechamento ainda não registrado — valores podem mudar.</b>')+'</div></div>';
+  // 1. resumo
+  h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">1. Resumo do fechamento de '+mesNome.split('/')[0]+'</div><table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:14px">';
+  h+='<tr><td style="'+td+'">Repasse das vendas de '+mesNome.split('/')[0]+' ('+R.vendas.length+' vendas, '+R.un+' unidades)'+(R.reg&&Math.abs(R.totRep-R.totRepCalc)>=1?'<div class="noprint" style="font-size:11.5px;color:var(--muted)">recalculado hoje: '+dreBRL(R.totRepCalc)+'</div>':'')+'</td><td style="'+tdn+'">'+dreBRL(R.totRep)+'</td></tr>';
+  h+='<tr><td style="'+td+'">'+(R.totAj<0?'(+) Ajuste de vendas anteriores a pagar':'(−) Estorno/ajuste de vendas anteriores')+' — ver item 2</td><td style="'+tdn+';color:'+(R.totAj>0?'var(--down)':(R.totAj<0?'var(--up)':'inherit'))+'">'+dreBRL(-R.totAj)+'</td></tr>';
+  h+='<tr><td style="'+td+'">(−) Adiantamentos';
+  R.adiant.forEach(function(a){h+='<div style="font-size:12px;color:var(--muted)">'+(a.data?dBR(a.data)+' · ':'')+escH(a.observacao||'adiantamento')+' · '+dreBRL(a.valor)+(podeEd&&!R.reg?' <a class="noprint" href="javascript:void(0)" onclick="ocelotAdiantDel(\''+a.id+'\')" style="color:var(--down)">remover</a>':'')+'</div>';});
+  if(podeEd&&!R.reg)h+='<div class="noprint" style="margin-top:4px"><a href="javascript:void(0)" onclick="ocelotAdiantAdd(\''+forn+'\',\''+mes+'\')" style="font-size:12px">+ lançar adiantamento</a></div>';
+  h+='</td><td style="'+tdn+';color:'+(R.totAd?'var(--down)':'inherit')+'">'+dreBRL(-R.totAd)+'</td></tr>';
+  h+='<tr><td style="'+td+';font-weight:800;font-size:15px">SALDO A PAGAR — '+mesNome.split('/')[0].toUpperCase()+'</td><td style="'+tdn+';font-weight:800;font-size:15px">'+dreBRL(R.saldo)+'</td></tr></table>';
+  if(podeEd){
+    h+='<div class="noprint" style="padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
+    if(R.reg)h+='<span style="color:var(--up);font-size:13px">Fechamento registrado em '+new Date(R.reg.data_pagamento).toLocaleDateString('pt-BR')+'.</span><button onclick="ocelotDesfazerFechamento(\''+forn+'\',\''+mes+'\')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font-size:12px">desfazer registro</button>';
+    else h+='<button onclick="ocelotRegistrarFechamento(\''+forn+'\',\''+mes+'\')" style="padding:6px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Registrar fechamento de '+nome+'</button><span style="font-size:12px;color:var(--muted)">Grava o repasse de cada venda — se ela for devolvida depois, é esse valor que volta no ajuste.</span>';
+    h+='</div>';
+  }
+  h+='</div>';
+  // 2. ajustes
+  h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">2. Vendas anteriores devolvidas ou ajustadas — descontadas neste fechamento</div>';
+  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Vendas que entraram (e foram pagas) num fechamento anterior e mudaram depois. O desconto é o repasse já pago menos o repasse que valeria hoje: devolução desconta o que foi pago (e o frete que o Mercado Livre cobrou); mediação coberta pelo Mercado Livre volta a valer o repasse normal (valor negativo = a pagar).</div>';
+  if(!R.ajustes.length)h+='<div style="padding:8px 12px 12px;color:var(--muted);font-size:13px">Nenhuma venda anterior ajustada.</div>';
+  else{
+    h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+'">Situação no Mercado Livre</th><th style="'+th+';text-align:right">Desconto</th></tr>';
+    R.ajustes.forEach(function(a){h+='<tr><td style="'+td+'">'+dBR(a.data)+'</td><td style="'+td+'">'+link(a.num,a.order_id)+'</td><td style="'+td+'">'+escH(a.produto||'')+'</td><td style="'+td+';font-size:12px">'+escH(a.situacao||'')+'</td><td style="'+tdn+';color:'+(a.valor<0?'var(--up)':'inherit')+'">'+dreBRL(a.valor)+'</td></tr>';});
+    h+='<tr><td colspan="4" style="'+td+';text-align:right;font-weight:700">TOTAL DESCONTADO</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totAj)+'</td></tr></table>';
+  }
+  h+='</div>';
+  // 3. vendas do mes
+  h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">3. Vendas de '+mesNome.split('/')[0]+' — detalhamento</div>';
+  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Venda = valor dos produtos pago pelo comprador. Líquido ML = valor recebido após tarifas e frete do Mercado Livre. Repasse = valor devido ao fornecedor. Linhas com repasse negativo são vendas do mês reembolsadas ao comprador, com custo de frete/tarifa cobrado pelo Mercado Livre.</div>';
+  h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th></tr>';
+  let tv=0,tl=0;
+  R.vendas.forEach(function(g){
+    tv+=g.venda;tl+=g.liq;
+    const prod=g.itens.length>1?('Pacote de '+g.itens.length+' produtos (compra conjunta)<div style="font-size:11.5px;color:var(--muted)">'+g.itens.map(function(x){return escH(String(x.it.titulo||'').slice(0,50))+' · '+dreBRL(x.rep);}).join('<br>')+'</div>'):escH(g.itens[0].it.titulo||'');
+    const cor=g.rep<0?'color:var(--down)':'';
+    h+='<tr><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
   });
-  atual.forEach(function(it){
-    const t=R[it.responsavel_cmv];if(!t)return;
-    if(it.devolucao_com_custo){
-      const c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0);
-      t.prod+=c;t.devMes.push(it);
-      t.itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:c});
-    }else if(it.status!=='cancelled'){
-      t.prod+=Number(it.cmv_total||0);
-      t.itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:Number(it.cmv_total||0)});
-    }
+  R.foraFech.forEach(function(g){
+    h+='<tr style="opacity:.55"><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
   });
-  pend.forEach(function(it){
-    const t=R[it.responsavel_cmv];if(!t||!it.devolucao_com_custo||it.mes_competencia>=mes)return;
-    const ap=aplicados.find(function(a){return a.fornecedor_id===t.fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;});
-    if(ap&&ap.mes_absorcao!==mes)return; // ja descontado em outro repasse
-    const cmvPago=it.cmv_pago_registrado!=null?Number(it.cmv_pago_registrado):Number(it.cmv_original||0);
-    const pj=-Number(it.valor_liquido||0);
-    const e={it:it,cmv_pago:cmvPago,prejuizo:pj,total:cmvPago+pj,estimado:it.cmv_pago_registrado==null};
-    if(t.reg&&!ap){t.tarde.push(e);return;} // devolucao que apareceu depois do registro: vai pro proximo repasse
-    t.est.push(e);t.estTot+=e.total;
-  });
-  const mSeg=dreMesLabel(ocelotMesSeguinte(mes));
-  const podeReg=pode('editar_cadastro');
-  const td='padding:7px 12px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap';
-  const tl='padding:7px 12px;border-bottom:1px solid var(--line);text-align:left';
-  let h='<div style="margin-top:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden">';
-  h+='<div style="padding:10px 12px;font-weight:700;border-bottom:2px solid var(--line)">Repasse aos fornecedores — '+dreMesLabel(mes)+'</div>';
-  h+='<table style="width:100%;border-collapse:collapse;font-size:13.5px"><tr><th style="'+tl+'"></th>'+FORN.map(function(f){return '<th style="'+td+'">'+f[1]+'</th>';}).join('')+'</tr>';
-  function cel(f,v,extra){const t=R[f[0]];return '<td style="'+td+(extra||'')+'">'+v+'</td>';}
-  h+='<tr><td style="'+tl+'">Produtos (CMV das vendas do mês)</td>'+FORN.map(function(f){const t=R[f[0]];
-    const v=t.reg?Number(t.reg.valor_pago||0):t.prod;
-    return cel(f,dreBRL(v)+(t.reg&&Math.abs(v-t.prod)>=0.01?'<div style="font-size:11px;color:var(--muted)">hoje: '+dreBRL(t.prod)+'</div>':''));}).join('')+'</tr>';
-  if(!Dpend)h+='<tr><td style="'+tl+';color:var(--muted)">(−) Estorno de devoluções</td><td colspan="2" style="'+td+';color:var(--muted)">carregando…</td></tr>';
-  else h+='<tr><td style="'+tl+'">(−) Estorno de devoluções de meses anteriores<div style="font-size:11.5px;color:var(--muted)">CMV pago pela venda + o que o ML cobrou</div></td>'+FORN.map(function(f){const t=R[f[0]];
-    const v=t.reg?Number(t.reg.estorno_aplicado||0):t.estTot;return cel(f,dreBRL(-v),v?';color:var(--down)':'');}).join('')+'</tr>';
-  h+='<tr><td style="'+tl+';font-weight:700;background:rgba(37,99,235,.10)">= Saldo a pagar</td>'+FORN.map(function(f){const t=R[f[0]];
-    const v=t.reg?Number(t.reg.valor_transferido||0):(t.prod-t.estTot);return cel(f,dreBRL(v),';font-weight:700;background:rgba(37,99,235,.10)');}).join('')+'</tr>';
-  h+='<tr><td style="'+tl+'"></td>'+FORN.map(function(f){const t=R[f[0]];
-    if(t.reg)return cel(f,'<span style="font-size:12px;color:var(--up)">registrado em '+new Date(t.reg.data_pagamento).toLocaleDateString('pt-BR')+'</span>'+(podeReg?' <button onclick="ocelotDesfazerRepasse(\''+f[0]+'\',\''+mes+'\')" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font-size:12px">desfazer</button>':''));
-    if(!podeReg||!Dpend)return cel(f,'');
-    return cel(f,'<button onclick="ocelotRegistrarRepasse(\''+f[0]+'\',\''+mes+'\')" style="padding:4px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px">Registrar pagamento</button>');}).join('')+'</tr></table>';
-  function linhaItem(nome,it,txt){return '<div style="display:flex;gap:10px;justify-content:space-between;border-top:1px dashed var(--line);padding:4px 0"><span>'+nome+' · '+new Date(it.data_venda+'T12:00:00Z').toLocaleDateString('pt-BR')+' · <a href="https://www.mercadolivre.com.br/vendas/'+it.order_id+'/detalhe" target="_blank" rel="noopener" style="color:inherit">'+it.order_id+'</a> · '+escH(String(it.titulo||'').slice(0,40))+'</span><span style="white-space:nowrap;font-variant-numeric:tabular-nums">'+txt+'</span></div>';}
-  let est='',dev='',tarde='';
-  FORN.forEach(function(f){const t=R[f[0]],nome=f[0]==='alan'?'Alan':'Miguel';
-    t.est.forEach(function(e){est+=linhaItem(nome,e.it,'CMV pago '+dreBRL(e.cmv_pago)+(e.estimado?' <span title="mês da venda sem pagamento registrado no sistema — CMV calculado" style="color:#b45309">(estimado)</span>':'')+' + ML cobrou '+dreBRL(e.prejuizo)+' = <b>'+dreBRL(-e.total)+'</b>');});
-    t.tarde.forEach(function(e){tarde+=linhaItem(nome,e.it,'<b>'+dreBRL(-e.total)+'</b>');});
-    t.devMes.forEach(function(it){const c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0),pj=-Number(it.valor_liquido||0);
-      dev+=linhaItem(nome,it,'CMV '+dreBRL(c)+' + ML cobrou '+dreBRL(pj)+' = <b>'+dreBRL(-(c+pj))+'</b>');});
-  });
-  const blk=function(t,x){return x?'<div style="padding:10px 12px;font-size:12.5px"><div style="font-weight:700;margin-bottom:4px">'+t+'</div>'+x+'</div>':'';};
-  h+=blk('Estornos descontados neste repasse',est);
-  h+=blk('Devolvidas depois do registro deste mês — entram no próximo repasse',tarde);
-  h+=blk('Vendas deste mês já devolvidas — pagas normalmente agora, descontadas no repasse de '+mSeg,dev);
-  h+='<div style="padding:8px 12px 10px;font-size:11.5px;color:var(--muted)">Devolução em que o ML cobrou algo: o fornecedor devolve no repasse seguinte o mesmo CMV que recebeu pela venda + o que o ML cobrou. Mediação que o ML cobriu (você ficou com o dinheiro) conta como venda normal. "Registrar pagamento" grava o CMV pago de cada venda — é esse valor que volta no estorno se ela for devolvida depois. Estornos valem para vendas a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (antes disso o acerto foi na planilha). "Produtos" difere do CMV da DRE acima porque a DRE lança a devolução como prejuízo no próprio mês (visão econômica). Adiantamentos não entram aqui.</div>';
+  h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
+  h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+String((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5).replace('.',',')+'% da venda (piso de R$ 40 por cuba). Mês registrado mostra o repasse gravado no fechamento; os ajustes de vendas pagas valem a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (set/2026 foi importado dos PDFs de fechamento).</div>';
   return h+'</div>';
 }
-function ocelotRepasseCalc(forn,mes){
-  // recalcula o mesmo que o quadro mostra, para gravar
-  const D=OCELOT_CACHE,Dp=OCELOT_PREV_CACHE;
-  const fid=OCN_FORN_ID[forn];const aplicados=(D&&D.estornos_aplicados)||[];
-  const itensPag=[],estornos=[];let prod=0,estTot=0;
-  ((D&&D.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){
-    if(it.responsavel_cmv!==forn)return;
-    let c=null;
-    if(it.devolucao_com_custo)c=Number(it.cmv_pago_registrado!=null?it.cmv_pago_registrado:it.cmv_original||0);
-    else if(it.status!=='cancelled')c=Number(it.cmv_total||0);
-    if(c==null)return;prod+=c;
-    itensPag.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,quantidade:it.quantidade,data_venda:it.data_venda,cmv:Math.round(c*100)/100});
-  });});
-  ((Dp&&Dp.pedidos)||[]).forEach(function(p){(p.itens||[]).forEach(function(it){
-    if(it.responsavel_cmv!==forn||!it.devolucao_com_custo||it.mes_competencia>=mes)return;
-    const ap=aplicados.find(function(a){return a.fornecedor_id===fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;});
-    if(ap&&ap.mes_absorcao!==mes)return;
-    const cp=it.cmv_pago_registrado!=null?Number(it.cmv_pago_registrado):Number(it.cmv_original||0);
-    const pj=-Number(it.valor_liquido||0);
-    estornos.push({order_id:it.order_id,item_id:it.item_id,titulo:it.titulo,data_venda:it.data_venda,mes_origem:it.mes_competencia,
-      cmv_pago:Math.round(cp*100)/100,prejuizo:Math.round(pj*100)/100,total:Math.round((cp+pj)*100)/100});
-    estTot+=cp+pj;
-  });});
-  return {itens:itensPag,estornos:estornos,valor_produtos:Math.round(prod*100)/100,valor_estorno:Math.round(estTot*100)/100};
-}
-async function ocelotRepassePost(body){
+async function ocelotFornSet(body){
   const {data:{session}}=await sb.auth.getSession();
   const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-fornecedor-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
   let j={};try{j=await r.json();}catch(e){}
   if(!r.ok||j.error){alert('Erro: '+(j.error||r.status));return false;}
   return true;
 }
-async function ocelotRegistrarRepasse(forn,mes){
-  const c=ocelotRepasseCalc(forn,mes);
-  const nome=forn==='alan'?'Alan':'Miguel';
-  if(!confirm('Registrar pagamento de '+nome+' — '+dreMesLabel(mes)+'?\n\nProdutos: '+dreBRL(c.valor_produtos)+' ('+c.itens.length+' vendas)\nEstorno de devoluções: '+dreBRL(-c.valor_estorno)+' ('+c.estornos.length+')\nSaldo a pagar: '+dreBRL(c.valor_produtos-c.valor_estorno)+'\n\nO CMV de cada venda fica gravado: se ela for devolvida depois, é esse valor que volta no estorno.'))return;
-  if(await ocelotRepassePost(Object.assign({tipo:'registrar_repasse',fornecedor:forn,mes_competencia:mes},c))){OCELOT_PREV_CACHE=null;renderOcelot();}
+function ocelotRepasseRecarrega(){OCELOT_ALT_CACHE=null;renderOcelot();}
+async function ocelotRegistrarFechamento(forn,mes){
+  const R=ocelotRepasseDados(forn,mes);
+  const itens=[];R.vendas.forEach(function(g){g.itens.forEach(function(x){itens.push({order_id:x.it.order_id,item_id:x.it.item_id,titulo:x.it.titulo,quantidade:x.it.quantidade,data_venda:x.it.data_venda,cmv:Math.round(x.rep*100)/100});});});
+  const estornos=R.ajustes.map(function(a){return {order_id:a.order_id,item_id:a.item_id,data_venda:a.data,mes_origem:a.mes_origem,titulo:String(a.produto||'').slice(0,200)+' | '+a.situacao,cmv_pago:a.cmv_pago,prejuizo:-a.atual,total:a.valor};});
+  if(!confirm('Registrar o fechamento de '+OCN_FORN_NOME[forn]+' — '+dreMesLabel(mes)+'?\n\nRepasse das vendas: '+dreBRL(R.totRepCalc)+' ('+R.vendas.length+' vendas)\nEstorno/ajustes: '+dreBRL(-R.totAj)+'\nAdiantamentos: '+dreBRL(-R.totAd)+'\nSaldo a pagar: '+dreBRL(R.totRepCalc-R.totAj-R.totAd)))return;
+  if(await ocelotFornSet({tipo:'registrar_repasse',fornecedor:forn,mes_competencia:mes,itens:itens,estornos:estornos,
+      valor_produtos:Math.round(R.totRepCalc*100)/100,valor_estorno:Math.round(R.totAj*100)/100,valor_adiantamentos:Math.round(R.totAd*100)/100}))ocelotRepasseRecarrega();
 }
-async function ocelotDesfazerRepasse(forn,mes){
-  if(!confirm('Desfazer o registro de pagamento de '+(forn==='alan'?'Alan':'Miguel')+' — '+dreMesLabel(mes)+'? Os CMVs gravados e os estornos descontados nesse mês serão apagados.'))return;
-  if(await ocelotRepassePost({tipo:'desfazer_repasse',fornecedor:forn,mes_competencia:mes})){OCELOT_PREV_CACHE=null;renderOcelot();}
+async function ocelotDesfazerFechamento(forn,mes){
+  if(!confirm('Desfazer o registro do fechamento de '+OCN_FORN_NOME[forn]+' — '+dreMesLabel(mes)+'? O repasse gravado de cada venda e os ajustes aplicados neste mês serão apagados.'))return;
+  if(await ocelotFornSet({tipo:'desfazer_repasse',fornecedor:forn,mes_competencia:mes}))ocelotRepasseRecarrega();
+}
+async function ocelotAdiantAdd(forn,mes){
+  const v=prompt('Valor do adiantamento para '+OCN_FORN_NOME[forn]+' ('+dreMesLabel(mes)+'), em R$:');
+  if(v==null)return;
+  const valor=Number(String(v).replace(/\./g,'').replace(',','.'));
+  if(!(valor>0)){alert('Valor inválido.');return;}
+  const obs=prompt('Observação (opcional):','')||null;
+  if(await ocelotFornSet({tipo:'add_adiantamento',fornecedor:forn,mes_competencia:mes,valor:valor,observacao:obs,data:new Date().toISOString().slice(0,10)}))ocelotRepasseRecarrega();
+}
+async function ocelotAdiantDel(id){
+  if(!confirm('Remover este adiantamento?'))return;
+  if(await ocelotFornSet({tipo:'del_adiantamento',id:id}))ocelotRepasseRecarrega();
 }
 function ocelotSintMes(v){if(!v)return;ocelotMesFiltro=v;ocelotPagina=1;renderOcelot();}
 function htmlOcelotSintetica(){
@@ -1073,7 +1135,6 @@ function htmlOcelotSintetica(){
   h+=L('= Total dos custos da conta',-custosConta,'total');
   h+=L('= RESULTADO LÍQUIDO',res,'final');
   h+='</table>';
-  h+=htmlOcelotRepasse(D,OCELOT_PREV_CACHE&&OCELOT_PREV_CACHE.chave===ocelotPendChave(mes)?OCELOT_PREV_CACHE:null,mes);
 
   // --- indicadores automaticos ---
   const custoML=s.taxa+s.frete+totAjustes;
@@ -1105,7 +1166,7 @@ function htmlOcelotSintetica(){
     h+='</div>';
   }
   h+='</div>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha manual na DRE por venda.</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">O pagamento aos fornecedores (repasse, estornos de devolução e adiantamentos) fica na aba <b>Repasse a fornecedores</b>. Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha manual na DRE por venda.</div>';
   h+='</div>';
   return h;
 }
@@ -1124,7 +1185,11 @@ function renderOcelotBody(){
     if(!ocelotMesFiltro){ocelotMesFiltro=(OCELOT_CACHE&&(OCELOT_CACHE.meses_disponiveis||[])[0])||ocelotMesAtual();renderOcelot();return;}
     if(!OCELOT_CACHE||OCELOT_CACHE.mes_filtro!==ocelotMesFiltro){renderOcelot();return;}
     if(!OCELOT_DRE_CACHE){renderOcelotDre();return;}
-    if(!OCELOT_PREV_CACHE||OCELOT_PREV_CACHE.chave!==ocelotPendChave(ocelotMesFiltro)){carregaOcelotPend(ocelotMesFiltro);return;}
+  }
+  if(ocelotSub==='repasse'){
+    if(!ocelotMesFiltro){const _ms=(OCELOT_CACHE&&OCELOT_CACHE.meses_disponiveis)||[];const _ant=ocelotMesAnterior(ocelotMesAtual());ocelotMesFiltro=_ms.indexOf(_ant)>=0?_ant:(_ms[0]||_ant);renderOcelot();return;}
+    if(!OCELOT_CACHE||OCELOT_CACHE.mes_filtro!==ocelotMesFiltro){renderOcelot();return;}
+    if(!OCELOT_ALT_CACHE||OCELOT_ALT_CACHE.chave!==ocelotAltChave(ocelotMesFiltro)){carregaOcelotAlt(ocelotMesFiltro);return;}
   }
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
@@ -1136,6 +1201,7 @@ function renderOcelotBody(){
   const body=document.getElementById('ocelotBody');
   if(ocelotSub==='sintetica')body.innerHTML=htmlOcelotSintetica();
   else if(ocelotSub==='vendas')body.innerHTML=htmlOcelotVendas();
+  else if(ocelotSub==='repasse')body.innerHTML=htmlOcelotRepasseAba();
   else if(ocelotSub==='fornecedores')body.innerHTML=htmlOcelotFornecedores();
   else if(ocelotSub==='entregas')body.innerHTML=htmlOcelotEntregas();
   else body.innerHTML=(pode('editar_cadastro')?'':'<div class="adm-ro">Somente leitura: seu usuário não tem permissão para editar o cadastro.</div>')+htmlOcelotConfig();
@@ -1969,7 +2035,7 @@ async function atualizarOcelot(){
     const {data:{session}}=await sb.auth.getSession();
     await fetch(SB_URL+'/functions/v1/ml-ocelot-vendas?dias=30',{headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
   }catch(e){}
-  OCELOT_DRE_CACHE=null;OCELOT_PREV_CACHE=null;
+  OCELOT_DRE_CACHE=null;OCELOT_ALT_CACHE=null;
   renderOcelot();
 }
 async function salvarParametrosOcelot(mes){
@@ -2795,18 +2861,18 @@ async function fecharMes(){
    A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
 const USR_API=SB_URL+"/functions/v1/app-usuarios";
 let EU=null, ADM=null, admSel=null;
-const OCN_PERM={sintetica:"ocelot_dre",vendas:"ocelot_vendas",config:"ocelot_cadastro"};
-const OCN_IDS={sintetica:"ocnSintetica",vendas:"ocnVendas",config:"ocnConfig"};
+const OCN_PERM={sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
+const OCN_IDS={sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
 const ACOES_INFO=[
   ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
   ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
   ["exportar_pdf","Exportar PDF",""],
   ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
   ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU — escreve direto no ML"]];
-const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_cadastro","Ocelot Cadastro"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"]];
 const PRESETS={
   "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
-  "p:ocelot":{menus:["ocelot_dre","ocelot_vendas","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[]}};
+  "p:ocelot":{menus:["ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[]}};
 
 function pode(k){
   if(!EU||!EU.ativo)return false; if(EU.admin)return true;
@@ -3004,7 +3070,7 @@ function htmlPermissoes(){
   h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
   h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
   h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
-    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_cadastro","Cadastro")+'</div>';
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+'</div>';
   h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
   h+='<div class="adm-box"><h3>Contas na Consultoria</h3>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'

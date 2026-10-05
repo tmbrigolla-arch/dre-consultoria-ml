@@ -25,6 +25,10 @@ const CMV_PISO=40, CMV_TETO=90;
 // o estorno usa esse valor (tem que ser o mesmo que foi pago). (3) params de/ate (periodo livre) e
 // so_devolucoes=1 (devolve so as devolucoes com custo -- usado pra montar os estornos pendentes).
 // (4) resposta traz repasses (ocelot_pagamentos_fornecedor) e estornos_aplicados (ocelot_estorno_detalhe).
+// v24 (05/10/2026): aba Repasse a fornecedores. cmv_pago_registrado vem em TODO item que tem CMV gravado
+// num fechamento (nao so cancelados); modo so_alterados=1 devolve as vendas de um periodo que ja foram pagas
+// e mudaram de situacao depois (cancelada/devolvida, coberta pelo ML, devolucao parcial) -- base dos ajustes
+// do fechamento seguinte; resposta traz adiantamentos (ocelot_adiantamentos).
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5;
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
@@ -59,6 +63,7 @@ Deno.serve(async(req)=>{
   const mesParam=url.searchParams.get("mes");
   const deParam=url.searchParams.get("de"), ateParam=url.searchParams.get("ate");
   const soDevolucoes=url.searchParams.get("so_devolucoes")==="1";
+  const soAlterados=url.searchParams.get("so_alterados")==="1";
   let desde:string, ateExclusive:string|null=null, dias:number;
   if(deParam&&ateParam){
     desde=deParam;ateExclusive=ateParam;dias=0;
@@ -177,13 +182,13 @@ Deno.serve(async(req)=>{
       }
     }
   }
-  // v23: CMV que ficou registrado como pago (snapshot do repasse) para os pedidos cancelados
+  // v23/v24: CMV que ficou registrado como pago (snapshot do fechamento), por venda
   const cmvPagoMap:Record<string,number>={};
-  if(idsCanc.length){
-    for(let i=0;i<idsCanc.length;i+=150){
-      const {data:pg}=await supabase.from("ocelot_pagamento_itens").select("order_id,item_id,cmv_pago").eq("conta_id",OCELOT_CONTA).in("order_id",idsCanc.slice(i,i+150)).range(0,9999);
-      for(const r of (pg||[]))cmvPagoMap[String(r.order_id)+"|"+r.item_id]=Number(r.cmv_pago);
-    }
+  const fornPagoMap:Record<string,string>={};
+  for(let off=0;off<50000;off+=1000){ // PostgREST entrega no maximo 1000 linhas por chamada
+    const {data:pg}=await supabase.from("ocelot_pagamento_itens").select("order_id,item_id,cmv_pago,fornecedor_id").eq("conta_id",OCELOT_CONTA).gte("data_venda",desde).lt("data_venda",ateExclusive||"2999-01-01").order("id").range(off,off+999);
+    for(const r of (pg||[])){cmvPagoMap[String(r.order_id)+"|"+r.item_id]=Number(r.cmv_pago);fornPagoMap[String(r.order_id)+"|"+r.item_id]=r.fornecedor_id;}
+    if(!pg||pg.length<1000)break;
   }
   const vendaPorPedido:Record<string,number>={};
   for(const v of vendas)vendaPorPedido[String(v.order_id)]=(vendaPorPedido[String(v.order_id)]||0)+Number(v.valor_venda||0);
@@ -319,7 +324,8 @@ Deno.serve(async(req)=>{
     resultado=valorLiquido-cmv_total-imposto_valor-ads_valor-custofixo_valor;
     return {...v,sku:skuItem,cmv_chave,mes_competencia:mes,cmv_origem,cmv_unitario,cmv_total,resultado,ads_pct_usado,imposto_valor,ads_valor,custofixo_valor,responsavel_cmv};
   }
-  const vendasCalc=vendas.map(calcItem).map((v:any)=>({...v,permalink:permalinkMap[v.item_id]||null}));
+  const vendasCalc=vendas.map(calcItem).map((v:any)=>{const kp=String(v.order_id)+"|"+v.item_id;
+    return {...v,permalink:permalinkMap[v.item_id]||null,cmv_pago_registrado:(kp in cmvPagoMap)?cmvPagoMap[kp]:null,cmv_pago_fornecedor_id:fornPagoMap[kp]||null};});
   // v21: "cancelado" agora so e o cancelamento SEM custo (oculto); devolucao com custo conta na DRE
   const cancelados=vendasCalc.filter((v:any)=>v.status==="cancelled"&&!v.devolucao_com_custo);
   const devolucoesCusto=vendasCalc.filter((v:any)=>v.devolucao_com_custo);
@@ -383,11 +389,27 @@ Deno.serve(async(req)=>{
   waterfall.faturamento_liquido=waterfall.faturamento_bruto-waterfall.cancelamentos-waterfall.devolucoes;
   waterfall.receita_liquida=waterfall.faturamento_liquido-waterfall.impostos;
   const {data:repasses}=await supabase.from("ocelot_pagamentos_fornecedor").select("*").eq("conta_id",OCELOT_CONTA);
-  const {data:estornosAplicados}=await supabase.from("ocelot_estorno_detalhe").select("fornecedor_id,mes_origem,mes_absorcao,order_id,item_id,valor_pago_antes,valor_atual,diferenca").eq("conta_id",OCELOT_CONTA).range(0,9999);
+  const {data:estornosAplicados}=await supabase.from("ocelot_estorno_detalhe").select("fornecedor_id,mes_origem,mes_absorcao,order_id,item_id,titulo,data_venda,valor_pago_antes,valor_atual,diferenca").eq("conta_id",OCELOT_CONTA).range(0,9999);
+  const {data:adiantamentos}=await supabase.from("ocelot_adiantamentos").select("id,fornecedor_id,mes_competencia,valor,data,observacao").eq("conta_id",OCELOT_CONTA).range(0,9999);
+  if(soAlterados){
+    // (a) venda paga num fechamento que mudou depois; (b) venda que ficou FORA de um fechamento registrado
+    const FID:Record<string,string>={miguel:MIGUEL_ID,alan:ALAN_ID};
+    const mesReg=new Set((repasses||[]).filter((r:any)=>r.pago).map((r:any)=>r.fornecedor_id+"|"+r.mes_competencia));
+    for(const v of vendasCalc){
+      if(v.cmv_pago_registrado==null&&FID[v.responsavel_cmv]&&mesReg.has(FID[v.responsavel_cmv]+"|"+v.mes_competencia)
+         &&(v.status!=="cancelled"||v.devolucao_com_custo)&&Math.abs(Number(v.cmv_total||0))>=0.01)v.nao_incluida=true;
+    }
+    const itens=vendasCalc.filter((v:any)=>v.nao_incluida||(v.cmv_pago_registrado!=null&&(v.status==="cancelled"||v.ml_cobriu||v.status==="partially_refunded")))
+      .map((v:any)=>({order_id:v.order_id,pack_id:v.pack_id,item_id:v.item_id,titulo:v.titulo,data_venda:v.data_venda,mes_competencia:v.mes_competencia,
+        quantidade:v.quantidade,valor_venda:v.valor_venda,valor_liquido:v.valor_liquido,status:v.status,ml_cobriu:!!v.ml_cobriu,
+        devolucao_com_custo:!!v.devolucao_com_custo,cmv_total:v.cmv_total,cmv_pago_registrado:v.cmv_pago_registrado,
+        cmv_pago_fornecedor_id:v.cmv_pago_fornecedor_id,nao_incluida:!!v.nao_incluida,responsavel_cmv:v.responsavel_cmv}));
+    return json({itens,de:desde,ate:ateExclusive,repasses:repasses||[],estornos_aplicados:estornosAplicados||[],adiantamentos:adiantamentos||[]});
+  }
   if(soDevolucoes){
     const peds=(pedidos as any[]).map((p:any)=>({...p,itens:p.itens.filter((it:any)=>it.devolucao_com_custo)})).filter((p:any)=>p.itens.length);
     return json({pedidos:peds,de:desde,ate:ateExclusive,repasses:repasses||[],estornos_aplicados:estornosAplicados||[]});
   }
   const {data:snap}=await supabase.from("snapshots").select("ad_spend,periodo_fim").eq("conta_id",OCELOT_CONTA).order("periodo_fim",{ascending:false}).limit(1).maybeSingle();
-  return json({pedidos,resumo,waterfall,por_forma_pagamento:porFormaPagamento,por_responsavel:porResponsavel,cancelados_count:new Set(cancelados.map((v:any)=>String(v.order_id))).size,devolucoes_custo_count:new Set(devolucoesCusto.map((v:any)=>String(v.order_id))).size,custos:custos||[],parametros:parametros||[],skus,itens_sem_sku:itensSemSku,itens_periodo:ultimoPeriodo,fixo_pct_por_mes:fixoPctMap,tacos_pct_por_mes:tacosPctMap,tacos_fonte_por_mes:tacosFonteMap,repasse_pct_por_mes:repassePctMap,ads_referencia:snap||null,repasses:repasses||[],estornos_aplicados:estornosAplicados||[],dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});
+  return json({pedidos,resumo,waterfall,por_forma_pagamento:porFormaPagamento,por_responsavel:porResponsavel,cancelados_count:new Set(cancelados.map((v:any)=>String(v.order_id))).size,devolucoes_custo_count:new Set(devolucoesCusto.map((v:any)=>String(v.order_id))).size,custos:custos||[],parametros:parametros||[],skus,itens_sem_sku:itensSemSku,itens_periodo:ultimoPeriodo,fixo_pct_por_mes:fixoPctMap,tacos_pct_por_mes:tacosPctMap,tacos_fonte_por_mes:tacosFonteMap,repasse_pct_por_mes:repassePctMap,ads_referencia:snap||null,repasses:repasses||[],adiantamentos:adiantamentos||[],estornos_aplicados:estornosAplicados||[],dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});
 });

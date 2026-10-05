@@ -952,10 +952,12 @@ function htmlOcelotSintetica(){
   h+='</div>';
   if(temFatura){
     const cn=F.conciliacao;
-    const dTaxa=Number(cn.taxa_ml_fatura)-Number(cn.taxa_ml_sistema);
+    // valores do lado 'pedidos' vem da mesma base das linhas acima (frete de pacote rateado entre os itens);
+    // os de cn.*_sistema vem do SQL antigo, que soma o frete do pacote uma vez por item.
+    const dTaxa=Number(cn.taxa_ml_fatura)-s.taxa;
     h+='<div style="'+boxSt+'"><div style="font-weight:700;margin-bottom:6px">Conferência com a fatura do ML</div>';
-    h+='Tarifa de venda — pedidos: '+dreBRL(cn.taxa_ml_sistema)+' · fatura: '+dreBRL(cn.taxa_ml_fatura)+' <span style="color:'+(Math.abs(dTaxa)>50?'var(--down)':'var(--muted)')+'">(dif. '+dreBRL(dTaxa)+')</span><br>';
-    h+='Frete — pedidos (líquido): '+dreBRL(cn.frete_sistema)+' · fatura (bruto): '+dreBRL(cn.frete_fatura_bruto)+'<br>';
+    h+='Tarifa de venda — pedidos: '+dreBRL(s.taxa)+' · fatura: '+dreBRL(cn.taxa_ml_fatura)+' <span style="color:'+(Math.abs(dTaxa)>50?'var(--down)':'var(--muted)')+'">(dif. '+dreBRL(dTaxa)+')</span><br>';
+    h+='Frete — pedidos (líquido): '+dreBRL(s.frete)+' · fatura (bruto): '+dreBRL(cn.frete_fatura_bruto)+'<br>';
     h+='<span style="color:var(--muted);font-size:12px">A fatura cobra o frete cheio; a parte paga pelo comprador volta no repasse — por isso o frete da fatura é maior. A fatura é por data de cobrança e os pedidos por data de venda: diferenças pequenas entre os meses são normais.</span>';
     if((F.qualidade&&F.qualidade.tarifas_nao_mapeadas||[]).length){
       h+='<div style="margin-top:6px;color:#b45309"><b>Tarifas sem classificação:</b> '+F.qualidade.tarifas_nao_mapeadas.map(function(x){return escH(x.codigo)+' ('+dreBRL(x.total)+' — '+escH(x.exemplo)+')';}).join(', ')+'. Entram em "Ajustes" até serem classificadas.</div>';

@@ -16,6 +16,9 @@ const CMV_PISO=40, CMV_TETO=90;
 // Item cancelado dentro de pacote que tem outro item ativo nao assume frete: o frete e do pacote e
 // ja esta nos itens ativos (o ML lanca o frete bruto do pacote no pedido cancelado).
 // Tambem: o rateio do frete do pacote passou a considerar so os itens nao cancelados.
+// v22 (05/10/2026): devolucao com custo traz cmv_original (CMV da venda antes da devolucao), usado no
+// quadro de repasse: a venda conta no mes dela pelo CMV normal; no mes seguinte o fornecedor devolve
+// cmv_original + o prejuizo de tarifa/frete (pedido do Tiago: devolucoes chegam depois do pagamento).
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5;
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
@@ -207,7 +210,7 @@ Deno.serve(async(req)=>{
     return mes>=REPASSE_DESDE?REPASSE_PADRAO:null;
   }
   for(const mes of mesesPresentes)repassePctMap[mes]=repasseDoMes(mes);
-  function calcItem(v:any){
+  function calcItem(v:any):any{
     const mes=mesDe(v.data_venda);
     const p=paramMap[mes]||{imposto_pct:5.5,gestao_pct:5.5,ads_pct:5};
     const valorVenda=Number(v.valor_venda);
@@ -231,7 +234,12 @@ Deno.serve(async(req)=>{
         // devolucao/mediacao com custo: entra na DRE; CMV = liquido (prejuizo vai pro fornecedor)
         const liq=-custo;
         const qd=Number(v.quantidade)||1;
-        return {...v,sku:skuItem,cmv_chave:null,mes_competencia:mes,devolucao_com_custo:true,
+        // v22: CMV que o fornecedor recebeu (ou receberia) por essa venda antes da devolucao -- mesma regra
+        // de uma venda normal sobre os valores originais. Estorno no mes seguinte = cmv_original + prejuizo.
+        const original=calcItem({...v,status:"paid",valor_devolvido:0,
+          valor_liquido:valorVenda-Number(v.taxa_ml||0)-Number(v.frete_vendedor||0)});
+        const cmv_original=Math.max(0,Number(original.cmv_total)||0);
+        return {...v,sku:skuItem,cmv_chave:null,mes_competencia:mes,devolucao_com_custo:true,cmv_original,
           taxa_ml:tx,frete_vendedor:fr,valor_devolvido:valorVenda,valor_liquido:liq,
           cmv_origem:"devolucao",cmv_unitario:liq/qd,cmv_total:liq,resultado:0,ads_pct_usado:null,
           imposto_valor:0,ads_valor:0,custofixo_valor:0,responsavel_cmv};

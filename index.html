@@ -1087,7 +1087,7 @@ function htmlOcelotSintetica(){
   const F=(OCELOT_DRE_CACHE&&OCELOT_DRE_CACHE.dres||[]).find(function(x){return x&&x.mes===mes;})||null;
   const par=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||null;
   const impPct=par?Number(par.imposto_pct):5.5;
-  const s={vendas:0,devol:0,taxa:0,frete:0,liq:0,imposto:0,adsTacos:0,nCanc:0,vCanc:0,nDev:0,custoDev:0,nItens:0,nManual:0,
+  const s={vendas:0,devol:0,devPos:0,reemb:0,taxa:0,frete:0,liq:0,imposto:0,adsTacos:0,nCanc:0,vCanc:0,nDev:0,custoDev:0,nItens:0,nManual:0,
     cmv:{miguel:0,alan:0,ocelot:0,sem:0},venda:{miguel:0,alan:0,ocelot:0,sem:0},qtd:{miguel:0,alan:0,ocelot:0,sem:0}};
   let nPed=0;
   // Cancelamento sem custo (fatura do ML zerou) fica fora e oculto. Devolucao/mediacao depois do envio
@@ -1101,6 +1101,7 @@ function htmlOcelotSintetica(){
     ativos.forEach(function(it){
       if(it.devolucao_com_custo){s.nDev++;s.custoDev+=Number(it.valor_liquido||0);}
       s.vendas+=Number(it.valor_venda||0);s.devol+=Number(it.valor_devolvido||0);
+      if(it.devolucao_com_custo)s.devPos+=Number(it.valor_devolvido||0);else s.reemb+=Number(it.valor_devolvido||0);
       s.taxa+=Number(it.taxa_ml||0);s.frete+=Number(it.frete_vendedor||0);s.liq+=Number(it.valor_liquido||0);
       s.imposto+=Number(it.imposto_valor||0);s.adsTacos+=Number(it.ads_valor||0);
       s.nItens++;if(it.cmv_origem==='manual')s.nManual++;
@@ -1121,8 +1122,11 @@ function htmlOcelotSintetica(){
   const adsReal=temFatura?Number(F.custos.ads_real||0):s.adsTacos;
   const custoFixo=temFatura?Number(F.custos.custo_fixo||0):(par?Number(par.custo_fixo_mensal||0):800);
   // --- totais ---
-  const base=s.vendas;
+  // 07/10/2026: cascata faturamento bruto (igual ao "Vendas brutas" do ML) -> faturamento liquido
+  // (igual ao Fat. bruto do Dashboard de Vendas). % passam a ser sobre o faturamento liquido.
+  const bruto=s.vendas+s.vCanc;
   const fatEfetivo=s.vendas-s.devol;
+  const base=fatEfetivo;
   const liqML=fatEfetivo-s.taxa-s.frete-totAjustes;
   const cmvTot=s.cmv.miguel+s.cmv.alan+s.cmv.ocelot+s.cmv.sem;
   const mc=liqML-cmvTot;
@@ -1161,21 +1165,24 @@ function htmlOcelotSintetica(){
   if(!temFatura)h+='<div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--down);font-size:12.5px"><b>Fatura do ML não encontrada para '+mesLbl+'.</b> Ads usa o TACoS estimado e as tarifas extras / Minha Página ficam zeradas até a fatura sincronizar.</div>';
 
   h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">';
-  h+=card('Receita por produtos',dreBRL(s.vendas),nPed+' pedidos · ticket '+dreBRL(nPed?s.vendas/nPed:0));
-  h+=card('Margem de contribuição',dreBRL(mc),fmtPct(pctN(mc))+' da receita');
-  h+=card('Resultado líquido',dreBRL(res),fmtPct(pctN(res))+' da receita',res<0?'color:var(--down)':'color:var(--up)');
+  h+=card('Faturamento líquido',dreBRL(fatEfetivo),'bruto '+dreBRL(bruto)+' · '+nPed+' pedidos · ticket '+dreBRL(nPed?fatEfetivo/nPed:0));
+  h+=card('Margem de contribuição',dreBRL(mc),fmtPct(pctN(mc))+' do fat. líquido');
+  h+=card('Resultado líquido',dreBRL(res),fmtPct(pctN(res))+' do fat. líquido',res<0?'color:var(--down)':'color:var(--up)');
   h+=card('Repasse fornecedores',dreBRL(s.cmv.miguel+s.cmv.alan),'Miguel '+dreBRL(s.cmv.miguel)+' · Alan '+dreBRL(s.cmv.alan));
   h+='</div>';
 
   h+='<table style="width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px">';
-  h+='<tr><th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--line)">DRE — Ocelot / Mercado Livre — '+mesLbl+'</th><th style="text-align:right;padding:10px 12px;border-bottom:2px solid var(--line);width:150px">R$</th><th style="text-align:right;padding:10px 12px;border-bottom:2px solid var(--line);width:90px">% receita</th></tr>';
+  h+='<tr><th style="text-align:left;padding:10px 12px;border-bottom:2px solid var(--line)">DRE — Ocelot / Mercado Livre — '+mesLbl+'</th><th style="text-align:right;padding:10px 12px;border-bottom:2px solid var(--line);width:150px">R$</th><th style="text-align:right;padding:10px 12px;border-bottom:2px solid var(--line);width:90px">% fat. líquido</th></tr>';
   h+=secao('RECEITA E OPERAÇÃO NO MERCADO LIVRE');
-  h+=L('Receita por produtos',s.vendas,'','pedidos','vendas válidas do mês'+(s.nCanc?(' · '+s.nCanc+' cancelada(s) sem custo ('+dreBRL(s.vCanc)+') ficam fora'):''));
+  h+=L('Faturamento bruto',bruto,'','pedidos','todas as vendas aprovadas no mês, inclusive as canceladas e devolvidas depois — igual ao "Vendas brutas" do Mercado Livre');
+  h+=L('(−) Canceladas sem custo',-s.vCanc,'','pedidos',s.nCanc+' item(ns) cancelado(s) com tudo estornado pelo ML');
+  h+=L('(−) Devoluções depois do envio',-s.devPos,'','pedidos',s.nDev+' devolução(ões)/mediação(ões) — o prejuízo de '+dreBRL(-s.custoDev)+' em tarifa/frete vai pro CMV do fornecedor');
+  if(Math.abs(s.reemb)>=0.01)h+=L('(−) Reembolsos parciais',-s.reemb,'','pedidos','parte do valor devolvida ao comprador; a venda continua válida');
+  h+=L('= Faturamento líquido',fatEfetivo,'total','','base dos percentuais · igual ao "Fat. bruto" do Dashboard de Vendas'+(Math.abs(s.reemb)>=0.01?' (lá o reembolso parcial sai só na margem)':''));
   h+=L('(+) Receita por acréscimo no preço',parcel,'','fatura ML','juros do parcelamento pagos pelo comprador');
   h+=L('(−) Taxa de parcelamento',-parcel,'','fatura ML','repasse do mesmo juros ao ML — efeito zero');
   h+=L('(−) Tarifa de venda ML',-s.taxa,'','pedidos');
   h+=L('(−) Frete pago pelo vendedor',-s.frete,'','pedidos','líquido: já descontada a parte paga pelo comprador');
-  h+=L('(−) Cancelamentos e reembolsos',-s.devol,'','pedidos',s.nDev?(s.nDev+' devolução(ões)/mediação(ões) depois do envio — a venda fica na receita e o reembolso sai aqui; o prejuízo de '+dreBRL(-s.custoDev)+' em tarifa/frete vai pro CMV do fornecedor'):'reembolsos parciais');
   h+=L('(+/−) Ajustes e tarifas extras do ML',-totAjustes,'',temFatura?'fatura ML':'estimado','cobranças da fatura que não estão no pedido');
   ajustes.forEach(function(a){h+=L(escH(a.rot)+' ('+a.n+')',-a.valor,'sub');});
   h+=L('= Total líquido recebido (ML)',liqML,'total');
@@ -1203,9 +1210,9 @@ function htmlOcelotSintetica(){
   h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:16px">';
   h+='<div style="'+boxSt+'"><div style="font-weight:700;margin-bottom:6px">Indicadores do mês</div>';
   h+='Custo total do ML (tarifa + frete + extras): <b>'+dreBRL(custoML)+'</b> · '+fmtPct(pctN(custoML))+'<br>';
-  h+='TACoS real (ads ÷ receita): <b>'+fmtPct(pctN(adsReal))+'</b><br>';
+  h+='TACoS real (ads ÷ fat. líquido): <b>'+fmtPct(pctN(adsReal))+'</b><br>';
   h+='CMV total: <b>'+dreBRL(cmvTot)+'</b> · '+fmtPct(pctN(cmvTot))+'<br>';
-  h+='Ponto de equilíbrio (receita p/ cobrir custo fixo + Minha Página): <b>'+(pe==null?'— (margem negativa)':dreBRL(pe))+'</b>'+(pe!=null?(' · '+(s.vendas>=pe?'<span style="color:var(--up)">atingido</span>':'<span style="color:var(--down)">faltam '+dreBRL(pe-s.vendas)+'</span>')):'')+'<br>';
+  h+='Ponto de equilíbrio (receita p/ cobrir custo fixo + Minha Página): <b>'+(pe==null?'— (margem negativa)':dreBRL(pe))+'</b>'+(pe!=null?(' · '+(fatEfetivo>=pe?'<span style="color:var(--up)">atingido</span>':'<span style="color:var(--down)">faltam '+dreBRL(pe-fatEfetivo)+'</span>')):'')+'<br>';
   h+='Devoluções com custo: <b>'+s.nDev+'</b> · prejuízo '+dreBRL(-s.custoDev)+' (no CMV do fornecedor)<br>';
   h+='Cancelamentos sem custo: <b>'+s.nCanc+'</b> item(ns) · '+dreBRL(s.vCanc)+' (fora do resultado)';
   h+='</div>';

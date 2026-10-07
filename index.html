@@ -361,6 +361,9 @@
   .at-msg small{display:block;color:var(--muted);font-size:11px}
   .at-conv{display:flex;flex-direction:column}
   @media (max-width:640px){.dv-bar{padding:8px}.dv-cards{grid-template-columns:repeat(2,1fr)}.curva-card .val{font-size:17px}}
+  .rep-piso td{background:rgba(8,145,178,.10)}
+  .rep-piso td:first-child{box-shadow:inset 3px 0 0 #0891b2}
+  @media print{.rep-piso td{background:none}.rep-piso td:first-child{box-shadow:none}}
   #ocnDashboard,#ocnAtendimento{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
   #ocnDashboard:hover,#ocnAtendimento:hover{background:#18233c;color:#fff}
   #ocnDashboard.on,#ocnAtendimento.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
@@ -1033,19 +1036,36 @@ function htmlOcelotRepasseAba(){
   // 3. vendas do mes
   h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">3. Vendas de '+mesNome.split('/')[0]+' — detalhamento</div>';
   h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Venda = valor dos produtos pago pelo comprador. Líquido ML = valor recebido após tarifas e frete do Mercado Livre. Repasse = valor devido ao fornecedor. Linhas com repasse negativo são vendas do mês reembolsadas ao comprador, com custo de frete/tarifa cobrado pelo Mercado Livre.</div>';
+  const _rp=Number((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5), _novo=mes>='2026-10-01';
+  // 07/10/2026: vendas pagas pelo piso de R$ 40/un (pela formula o repasse teria ficado abaixo).
+  // Formula = liquido do ML - % do repasse x venda efetiva (so da para mostrar o valor a partir de set/2026).
+  const pisoDe=function(it){
+    if(it.cmv_origem!=='formula_piso')return null;
+    const q=Number(it.quantidade)||1, piso=40*q;
+    if(mes<'2026-09-01')return {q:q,piso:piso,f:null,extra:null};
+    const ef=Math.max(0,Number(it.valor_venda||0)-Number(it.valor_devolvido||0));
+    const f=Number(it.valor_liquido||0)-ef*_rp/100;
+    return {q:q,piso:piso,f:f,extra:piso-f};
+  };
+  let nPiso=0,extraPiso=0;
+  R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
+  if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
   h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th></tr>';
   let tv=0,tl=0;
   R.vendas.forEach(function(g){
     tv+=g.venda;tl+=g.liq;
-    const prod=g.itens.length>1?('Pacote de '+g.itens.length+' produtos (compra conjunta)<div style="font-size:11.5px;color:var(--muted)">'+g.itens.map(function(x){return escH(String(x.it.titulo||'').slice(0,50))+' · '+dreBRL(x.rep);}).join('<br>')+'</div>'):escH(g.itens[0].it.titulo||'');
+    const tagPiso=function(it){const pz=pisoDe(it);if(!pz)return '';
+      return ' <span class="noprint" style="display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:#0891b2;color:#fff;vertical-align:1px">PISO</span>'
+        +(pz.f!=null?'<div class="noprint" style="font-size:11.5px;color:#22d3ee">pela fórmula: '+dreBRL(pz.f)+(pz.q>1?' ('+dreBRL(pz.f/pz.q)+'/un)':'')+' · piso '+dreBRL(pz.piso)+' · +'+dreBRL(pz.extra)+' pelo piso</div>':'');};
+    const temPiso=g.itens.some(function(x){return !!pisoDe(x.it);});
+    const prod=g.itens.length>1?('Pacote de '+g.itens.length+' produtos (compra conjunta)<div style="font-size:11.5px;color:var(--muted)">'+g.itens.map(function(x){return escH(String(x.it.titulo||'').slice(0,50))+' · '+dreBRL(x.rep)+tagPiso(x.it);}).join('<br>')+'</div>'):(escH(g.itens[0].it.titulo||'')+tagPiso(g.itens[0].it));
     const cor=g.rep<0?'color:var(--down)':'';
-    h+='<tr><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
+    h+='<tr'+(temPiso?' class="rep-piso"':'')+'><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
   });
   R.foraFech.forEach(function(g){
     h+='<tr style="opacity:.55"><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
   });
   h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
-  const _rp=Number((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5), _novo=mes>='2026-10-01';
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'
     +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ receita do mês'+(_parR.fechado?', travado no fechamento':' — <b>provisório até o mês ser fechado</b>: o custo fixo pesa mais no começo do mês')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')

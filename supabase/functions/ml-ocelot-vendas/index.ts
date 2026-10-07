@@ -27,6 +27,13 @@ const FOLGA_DIAS=15;
 // v11 (05/10/2026): grava pagamento_status_detail (status_detail do pagamento no Mercado Pago).
 // Em mediacao, "bpp_covered" = o ML cobriu (vendedor fica com o dinheiro, fornecedor recebe CMV normal);
 // "bpp_refunded" = o reembolso saiu do vendedor (prejuizo cobrado do fornecedor).
+// v12 (06/10/2026): Dashboard de Vendas.
+//  (1) por=atualizacao busca pedidos por order.date_last_updated (pega aprovacao, cancelamento e
+//      devolucao recentes de pedidos criados antes da janela). Sem o parametro, nada muda.
+//      Se o ML recusar esse filtro, cai para date_created e avisa na resposta.
+//  (2) falha da busca no ML deixava de ser silenciosa: a resposta traz ok=false e o erro.
+//  (3) toda execucao vai para ml_sync_vendas_log (base do "ultima sincronizacao" e do
+//      "pula se sincronizou ha menos de 2 min"). origem: cron (segredo), painel (segredo + origem=painel), manual (JWT).
 function pagamentoPrincipal(payments:any[]){
   if(!payments||!payments.length)return {forma_pagamento:null,parcelas:null,status_detail:null};
   const aprovado=payments.find((p:any)=>p.status==="approved")||payments[0];
@@ -40,7 +47,8 @@ Deno.serve(async(req)=>{
   const secret=req.headers.get("x-collector-secret");
   const {data:cfg}=await supabase.from("app_config").select("v").eq("k","collector_secret").single();
   let authed=!!secret&&!!cfg&&secret===cfg.v;
-  if(!authed){const jwt=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");const {data:{user}}=await supabase.auth.getUser(jwt);authed=!!user;
+  const viaSegredo=authed;let usuarioId:string|null=null;
+  if(!authed){const jwt=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");const {data:{user}}=await supabase.auth.getUser(jwt);authed=!!user;usuarioId=user?.id??null;
   if(user){ const { data: _pode } = await supabase.rpc("app_pode", { p_uid: user.id, p_chave: "ocelot" });
     if (!_pode) return json({ error: "sem permissao" }, 403); }}
   if(!authed)return json({error:"unauthorized"},401);
@@ -49,7 +57,16 @@ Deno.serve(async(req)=>{
   const fromParam=url.searchParams.get("from");
   const toParam=url.searchParams.get("to");
   const semFolga=url.searchParams.get("folga")==="0";
-  const tok=await getToken(supabase,OCELOT_CONTA);
+  const porAtualizacao=url.searchParams.get("por")==="atualizacao";
+  const origemParam=url.searchParams.get("origem");
+  const origem=viaSegredo?(origemParam==="painel"?"painel":"cron"):"manual";
+  const usuarioLog=viaSegredo?(/^[0-9a-f-]{36}$/.test(url.searchParams.get("usuario")||"")?url.searchParams.get("usuario"):null):usuarioId;
+  async function logar(ok:boolean,extra:Record<string,unknown>){
+    await supabase.from("ml_sync_vendas_log").insert({conta_id:OCELOT_CONTA,origem,usuario_id:usuarioLog,ok,...extra});
+  }
+  let tok:string;
+  try{tok=await getToken(supabase,OCELOT_CONTA);if(!tok)throw new Error("token do ML indisponivel");}
+  catch(e){await logar(false,{erro:String((e as Error).message||e).slice(0,300)});return json({ok:false,erro:"token do ML indisponivel"},502);}
   const h={Authorization:`Bearer ${tok}`};
   let fromMs:number,toMs:number;
   if(fromParam&&toParam){
@@ -66,13 +83,27 @@ Deno.serve(async(req)=>{
   const WEEK=7*86400000;
   let ordersRaw:any[]=[];
   let cursor=fromMs;
+  let campoBusca=porAtualizacao?"date_last_updated":"date_created";
+  let aviso:string|null=null;
+  const falhasBusca:string[]=[];
+  async function buscar(campo:string,cf:string,ct:string,offset:number,limit:number){
+    try{const r=await fetch(`${API}/orders/search?seller=${OCELOT_UID}&order.${campo}.from=${cf}&order.${campo}.to=${ct}&sort=date_desc&limit=${limit}&offset=${offset}`,{headers:h});
+      if(!r.ok)return {ok:false,status:r.status,json:null};return {ok:true,status:r.status,json:await r.json()};}
+    catch(_){return {ok:false,status:0,json:null};}
+  }
   while(cursor<toMs){
     const chunkEndMs=Math.min(cursor+WEEK,toMs);
     const chunkFrom=new Date(cursor).toISOString();
     const chunkTo=new Date(chunkEndMs).toISOString();
     let offset=0;const limit=50;
     for(let p=0;p<40;p++){
-      const sr=await g(`${API}/orders/search?seller=${OCELOT_UID}&order.date_created.from=${chunkFrom}&order.date_created.to=${chunkTo}&sort=date_desc&limit=${limit}&offset=${offset}`,h);
+      let rr=await buscar(campoBusca,chunkFrom,chunkTo,offset,limit);
+      if(!rr.ok&&campoBusca==="date_last_updated"&&offset===0&&rr.status===400){
+        campoBusca="date_created";aviso="ML recusou a busca por data de atualizacao; usada a data de criacao";
+        rr=await buscar(campoBusca,chunkFrom,chunkTo,offset,limit);
+      }
+      if(!rr.ok){falhasBusca.push(`busca de pedidos ${chunkFrom.slice(0,10)}: ML ${rr.status||"sem resposta"}`);break;}
+      const sr=rr.json;
       if(!sr||!sr.results||!sr.results.length)break;
       ordersRaw=ordersRaw.concat(sr.results);
       offset+=limit;
@@ -125,5 +156,8 @@ Deno.serve(async(req)=>{
       }
     }catch(_e){erros++;}
   }
-  return json({ok:true,pedidos_encontrados:ordersRaw.length,linhas_gravadas:gravados,erros,periodo:{from,to}});
+  const okFinal=falhasBusca.length===0&&erros===0;
+  const erroTxt=[...falhasBusca,...(erros?[`${erros} linha(s) com erro ao gravar`]:[])].join("; ")||null;
+  await logar(okFinal,{janela_de:from,janela_ate:to,pedidos:ordersRaw.length,linhas:gravados,erro:erroTxt});
+  return json({ok:okFinal,pedidos_encontrados:ordersRaw.length,linhas_gravadas:gravados,erros,periodo:{from,to},busca_por:campoBusca,aviso,falhas:falhasBusca});
 });

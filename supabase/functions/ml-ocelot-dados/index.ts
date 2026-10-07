@@ -34,6 +34,9 @@ const CMV_PISO=40, CMV_TETO=90;
 // todos do proprio mes (travados no fechamento). Piso de R$40 por unidade em cuba do Miguel E em
 // balanco do Alan, sem teto. Setembro continua 17,5% (ja foi pago assim). repasse_pct preenchido em
 // ocelot_parametros continua valendo como valor manual para o mes.
+// v26 (07/10/2026): mes ABERTO usa os % (Ads e custo fixo) do ULTIMO MES FECHADO, estaveis no dia a dia;
+// o fechamento (ml-ocelot-set) grava os reais (TACoS do mes e custo fixo / faturamento) e tudo recalcula.
+// Sem mes fechado anterior, mantem o calculo antigo. Mesma regra de ocelot_pct_mes no banco.
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5, REPASSE_SOMA_DESDE="2026-10-01";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
@@ -223,7 +226,16 @@ Deno.serve(async(req)=>{
   const {data:snapsAll}=await supabase.from("snapshots").select("periodo_inicio,periodo_fim,tacos,granularidade").eq("conta_id",OCELOT_CONTA).not("tacos","is",null).order("periodo_fim",{ascending:false}).limit(40);
   const tacosPctMap:Record<string,number>={};
   const tacosFonteMap:Record<string,string>={};
+  // v26: ultimo mes fechado (com % gravados) antes de um mes
+  function ultimoFechadoAntes(mes:string):any{
+    let melhor:any=null;
+    for(const p of (parametros||[]))if(p.fechado&&p.fixo_pct_calculado!=null&&p.mes_competencia<mes&&(!melhor||p.mes_competencia>melhor.mes_competencia))melhor=p;
+    return melhor;
+  }
   for(const mes of mesesPresentes){
+    const pm=paramMap[mes];
+    const ant=(pm&&pm.fechado)?null:ultimoFechadoAntes(mes);
+    if(ant){tacosPctMap[mes]=Number(ant.ads_pct);tacosFonteMap[mes]="provisorio: % de "+String(ant.mes_competencia).slice(0,7)+" (ultimo mes fechado)";continue;}
     const exato=(snapsAll||[]).find((s:any)=>s.granularidade==="mensal"&&s.periodo_inicio===mes);
     if(exato){tacosPctMap[mes]=Number(exato.tacos)*100;tacosFonteMap[mes]="mensal ("+mes+")";continue;}
     const recente=(snapsAll||[])[0];
@@ -233,6 +245,8 @@ Deno.serve(async(req)=>{
   for(const mes of mesesPresentes){
     const p=paramMap[mes]||{imposto_pct:5.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
     if(p.fechado&&p.fixo_pct_calculado!=null){fixoPctMap[mes]=Number(p.fixo_pct_calculado);continue;}
+    const antF=p.fechado?null:ultimoFechadoAntes(mes);
+    if(antF){fixoPctMap[mes]=Number(antF.fixo_pct_calculado);continue;}
     const dt=new Date(mes+"T00:00:00Z");const nextMes=new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth()+1,1)).toISOString().slice(0,10);
     const {data:aggMes}=await supabase.from("ocelot_vendas_itens").select("valor_venda,status").eq("conta_id",OCELOT_CONTA).gte("data_venda",mes).lt("data_venda",nextMes).neq("status","cancelled");
     const receitaBrutaMes=(aggMes||[]).reduce((s:number,r:any)=>s+Number(r.valor_venda||0),0);

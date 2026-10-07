@@ -21,6 +21,14 @@ Deno.serve(async(req)=>{
   { const { data: _pode } = await supabase.rpc("app_pode", { p_uid: user.id, p_chave: "editar_cadastro" });
     if (!_pode) return json({ error: "sem permissao" }, 403); }
   const body=await req.json().catch(()=>({}));
+  // v10 (07/10/2026): repasse so pode ser registrado com o mes FECHADO (regra do Tiago): o fechamento
+  // grava os % reais do mes (TACoS e custo fixo) e todos os relatorios passam a usar esses valores.
+  async function exigeMesFechado(mes:string){
+    const {data:p}=await supabase.from("ocelot_parametros").select("fechado").eq("conta_id",OCELOT_CONTA).eq("mes_competencia",mes).maybeSingle();
+    if(p?.fechado)return null;
+    const [a,m]=String(mes).slice(0,7).split("-");
+    return json({error:"Feche o mês "+m+"/"+a+" antes de registrar o repasse (Gestão Ocelot → Cadastro → Parâmetros → Fechar). O fechamento grava os percentuais reais do mês."},409);
+  }
 
   if(body.tipo==="mapear_item"){
     const {error}=await supabase.from("ocelot_item_fornecedor").upsert({
@@ -60,6 +68,7 @@ Deno.serve(async(req)=>{
     const fornecedorId=FORN[String(body.fornecedor||"")];
     const mes=body.mes_competencia;
     if(!fornecedorId||!mes)return json({error:"fornecedor (miguel/alan) e mes_competencia obrigatorios"},400);
+    { const bloq=await exigeMesFechado(mes); if(bloq)return bloq; }
     const itens=Array.isArray(body.itens)?body.itens:[];
     const estornos=Array.isArray(body.estornos)?body.estornos:[];
     const valorProdutos=Number(body.valor_produtos||0), valorEstorno=Number(body.valor_estorno||0);
@@ -117,6 +126,7 @@ Deno.serve(async(req)=>{
   if(body.tipo==="marcar_pago"){
     const fornecedorId=body.fornecedor_id, mes=body.mes_competencia;
     if(!fornecedorId||!mes)return json({error:"fornecedor_id e mes_competencia obrigatorios"},400);
+    { const bloq=await exigeMesFechado(mes); if(bloq)return bloq; }
 
     const {data:mapa}=await supabase.from("ocelot_item_fornecedor").select("*").eq("conta_id",OCELOT_CONTA).eq("fornecedor_id",fornecedorId);
     const itemIds=(mapa||[]).map((m:any)=>m.item_id);

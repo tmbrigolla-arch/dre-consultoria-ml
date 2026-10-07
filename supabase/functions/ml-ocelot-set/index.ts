@@ -9,6 +9,10 @@ function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,h
 //    mes (sem snapshot mensal, mantem o % salvo em vez de usar o TACoS de outro periodo); imposto padrao 5,5%
 //    (era 4,5%); receita do mes lida com range (sem corte de 1.000 linhas);
 //  * reabrir_mes (novo): destrava o mes; % do custo fixo volta a ser recalculado.
+// v7 (07/10/2026): durante o mes valem os % do ultimo mes fechado; o fechamento grava os reais.
+//  * TACoS do mes (1o ao ultimo dia): se o snapshot mensal ainda nao existe, coleta no ML na hora
+//    (ml-fechar-mes da conta Ocelot); sem TACoS real, NAO fecha (antes caia no % salvo).
+//  * reabrir_mes recusa se o repasse do mes ja foi registrado (desfazer o registro antes).
 function mesAtualBRT(){const d=new Date(Date.now()-3*3600*1000);return d.toISOString().slice(0,7)+"-01";}
 function proximoMes(m:string){const dt=new Date(m+"T00:00:00Z");return new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth()+1,1)).toISOString().slice(0,10);}
 Deno.serve(async(req)=>{
@@ -93,17 +97,31 @@ Deno.serve(async(req)=>{
     if(p?.fechado)return json({error:"Este mês já está fechado."},409);
     const custoFixo=p?Number(p.custo_fixo_mensal):800;
     const fixoPct=receitaBruta>0?Math.min(50,(custoFixo/receitaBruta)*100):0;
-    const {data:snapMes}=await supabase.from("snapshots").select("tacos").eq("conta_id",OCELOT_CONTA).eq("granularidade","mensal").eq("periodo_inicio",mes_competencia).not("tacos","is",null).limit(1).maybeSingle();
-    const adsPctCongelado=snapMes?Number(snapMes.tacos)*100:Number(p?.ads_pct??5);
+    const lerTacos=async()=>{const {data}=await supabase.from("snapshots").select("tacos").eq("conta_id",OCELOT_CONTA).eq("granularidade","mensal").eq("periodo_inicio",mes_competencia).not("tacos","is",null).limit(1).maybeSingle();return data?Number(data.tacos)*100:null;};
+    let tacosMes=await lerTacos();
+    let coletouAgora=false;
+    if(tacosMes==null){
+      // coleta o TACoS do mes inteiro (1o ao ultimo dia) no ML; o segredo do coletor fica so no servidor
+      const {data:cfg}=await supabase.from("app_config").select("v").eq("k","collector_secret").single();
+      try{
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ml-fechar-mes?mes=${mes_competencia.slice(0,7)}&conta_id=${OCELOT_CONTA}`,{method:"POST",headers:{"x-collector-secret":cfg?.v||""}});
+      }catch(_){/* trata abaixo */}
+      tacosMes=await lerTacos();coletouAgora=true;
+    }
+    if(tacosMes==null)return json({error:"Não foi possível obter o TACoS de "+mes_competencia.slice(0,7)+" no Mercado Livre (1º ao último dia do mês). O mês não foi fechado; tente de novo mais tarde."},409);
+    const adsPctCongelado=tacosMes;
     const {error}=await supabase.from("ocelot_parametros").upsert({conta_id:OCELOT_CONTA,mes_competencia,custo_fixo_mensal:custoFixo,imposto_pct:p?.imposto_pct??5.5,gestao_pct:p?.gestao_pct??5.5,ads_pct:adsPctCongelado,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,fechado:true,atualizado_em:new Date().toISOString()},{onConflict:"conta_id,mes_competencia"});
     if(error)return json({error:error.message},500);
-    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,ads_pct_congelado:adsPctCongelado,ads_origem:snapMes?"tacos_mensal":"parametro"});
+    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,ads_pct_congelado:adsPctCongelado,ads_origem:"tacos_mensal",tacos_coletado_agora:coletouAgora});
   }
   if(tipo==="reabrir_mes"){
     const {mes_competencia}=body;
     if(!mes_competencia)return json({error:"faltando mes_competencia"},400);
     const {data:p}=await supabase.from("ocelot_parametros").select("id,fechado").eq("conta_id",OCELOT_CONTA).eq("mes_competencia",mes_competencia).maybeSingle();
     if(!p||!p.fechado)return json({error:"Este mês não está fechado."},409);
+    // v7: com repasse registrado, reabrir mudaria os % de vendas ja pagas
+    const {data:regs}=await supabase.from("ocelot_pagamentos_fornecedor").select("fornecedor_id").eq("conta_id",OCELOT_CONTA).eq("mes_competencia",mes_competencia).eq("pago",true);
+    if((regs||[]).length)return json({error:"O repasse deste mês já foi registrado para "+(regs||[]).length+" fornecedor(es). Desfaça o registro na aba Repasse a fornecedores antes de reabrir o mês."},409);
     const {error}=await supabase.from("ocelot_parametros").update({fechado:false,fixo_pct_calculado:null,receita_liquida_mes:null,atualizado_em:new Date().toISOString()}).eq("id",p.id);
     if(error)return json({error:error.message},500);
     return json({ok:true});

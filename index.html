@@ -986,6 +986,7 @@ function htmlOcelotRepasseAba(){
   const mes=ocelotMesFiltro, forn=ocelotRepForn, nome=OCN_FORN_NOME[forn];
   const R=ocelotRepasseDados(forn,mes);
   const podeEd=pode('editar_cadastro');
+  const mesFechadoPar=!!((D.parametros||[]).find(function(p){return p.mes_competencia===mes&&p.fechado;}));
   const mesNome=ocelotMesExtenso(mes);
   const fimMes=new Date(new Date(ocelotMesSeguinte(mes)+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10);
   const dBR=function(d){return d?new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';};
@@ -1019,6 +1020,7 @@ function htmlOcelotRepasseAba(){
   if(podeEd){
     h+='<div class="noprint" style="padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">';
     if(R.reg)h+='<span style="color:var(--up);font-size:13px">Fechamento registrado em '+new Date(R.reg.data_pagamento).toLocaleDateString('pt-BR')+'.</span><button onclick="ocelotDesfazerFechamento(\''+forn+'\',\''+mes+'\')" style="padding:4px 10px;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font-size:12px">desfazer registro</button>';
+    else if(!mesFechadoPar)h+='<button disabled title="Feche o mês primeiro" style="padding:6px 14px;border-radius:8px;border:none;background:#475569;color:#cbd5e1;font-weight:600;cursor:not-allowed">Registrar fechamento de '+nome+'</button><span style="font-size:12px;color:#fbbf24">'+dreMesLabel(mes)+' ainda está aberto: os valores usam % provisórios. Feche o mês para gravar os % reais (TACoS e custo fixo) e liberar o registro.</span><button onclick="ocelotIrFecharMes(\''+mes+'\')" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Ir para o fechamento do mês</button>';
     else h+='<button onclick="ocelotRegistrarFechamento(\''+forn+'\',\''+mes+'\')" style="padding:6px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer">Registrar fechamento de '+nome+'</button><span style="font-size:12px;color:var(--muted)">Grava o repasse de cada venda — se ela for devolvida depois, é esse valor que volta no ajuste.</span>';
     h+='</div>';
   }
@@ -1067,8 +1069,9 @@ function htmlOcelotRepasseAba(){
   });
   h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
+  const _fonte=(D.tacos_fonte_por_mes&&D.tacos_fonte_por_mes[mes])||'';
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'
-    +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ receita do mês'+(_parR.fechado?', travado no fechamento':' — <b>provisório até o mês ser fechado</b>: o custo fixo pesa mais no começo do mês')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')
+    +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ faturamento do mês'+(_parR.fechado?', valores reais gravados no fechamento':' — <b>provisório</b>: '+(_fonte.indexOf('provisorio')===0?'usando o TACoS e o custo fixo do último mês fechado':'estimado')+' até o mês ser fechado')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')
           :' (piso de R$ 40 por cuba)')+'. Mês registrado mostra o repasse gravado no fechamento; os ajustes de vendas pagas valem a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (set/2026 foi importado dos PDFs de fechamento).</div>';
   return h+'</div>';
 }
@@ -2099,7 +2102,7 @@ function htmlOcelotConfig(){
   const temTacos=(tacosMap[mesAtual]!=null);
   const adsEfetivo=Number(fechado?par.ads_pct:(temTacos?tacosMap[mesAtual]:par.ads_pct))||0;
   const adsAuto=(!fechado&&temTacos);
-  const adsNota=fechado?'congelado no fechamento do mês':(temTacos?('vem do TACoS da conta — '+String(tacosFonte[mesAtual]||'')):'sem TACoS deste mês carregado — mostrando o valor salvo');
+  const adsNota=fechado?'TACoS real do mês, gravado no fechamento':(temTacos?(String(tacosFonte[mesAtual]||'').indexOf('provisorio')===0?'provisório — TACoS do último mês fechado até este mês ser fechado':('vem do TACoS da conta — '+String(tacosFonte[mesAtual]||''))):'sem TACoS deste mês carregado — mostrando o valor salvo');
   const ro=(fechado||!podeEd)?' disabled style="width:%W%;opacity:.6;cursor:not-allowed"':' style="width:%W%"';
   h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:13px"><label>Imposto %<br><input id="op_imposto" type="number" step="0.1" value="'+par.imposto_pct+'"'+ro.replace('%W%','70px')+'></label><label>Gestão conta %<br><input id="op_gestao" type="number" step="0.1" value="'+par.gestao_pct+'"'+ro.replace('%W%','70px')+'></label><label>Ads %'+(adsAuto?' <span style="font-weight:400;color:var(--muted);font-size:11px">auto</span>':'')+'<br><input id="op_ads" type="number" step="0.01" value="'+adsEfetivo.toFixed(2)+'"'+((adsAuto||fechado||!podeEd)?(' readonly title="'+escH(adsNota)+'" style="width:82px;opacity:.7;cursor:not-allowed"'):' style="width:82px"')+'></label><label>Custo fixo mensal R$<br><input id="op_fixo" type="number" step="1" value="'+par.custo_fixo_mensal+'"'+ro.replace('%W%','90px')+'></label></div>';
   h+='<div class="foot" style="text-align:left;margin:-2px 0 10px">Ads: '+escH(adsNota)+'. Na DRE sintética o custo de ads usa o valor <b>real da fatura</b> do ML, não este %.</div>';
@@ -2110,8 +2113,10 @@ function htmlOcelotConfig(){
   }
   h+='<div class="foot" style="text-align:left;margin-top:8px">'+(fechado
     ?('<b>Mês fechado</b>: percentuais travados. Custo fixo = '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda; Ads = '+Number(par.ads_pct).toFixed(2).replace('.',',')+'%. Para mudar algo, reabra o mês.')
-    :(encerrado?'<b>Mês terminado, ainda aberto</b>: os percentuais ainda se mexem (o % do custo fixo é recalculado se entrar devolução ou correção, e o Ads acompanha o TACoS). Feche para travar.'
-      :'<b>Mês em curso</b>: o % do custo fixo é provisório e cai conforme entram vendas. Ele só pode ser fechado depois que o mês terminar.'))+'</div>';
+    :((function(){const f=(D.fixo_pct_por_mes||{})[mesAtual], fonte=String((D.tacos_fonte_por_mes||{})[mesAtual]||'');
+        const prov=fonte.indexOf('provisorio')===0?('Em uso agora (provisório, do último mês fechado): Ads '+adsEfetivo.toFixed(2).replace('.',',')+'%'+(f!=null?' e custo fixo '+Number(f).toFixed(2).replace('.',',')+'%':'')+'. '):'';
+        return prov+(encerrado?'<b>Mês terminado, ainda aberto</b>: ao fechar, o sistema busca o TACoS real do mês (1º ao último dia; coleta no Mercado Livre se ainda não tiver) e o custo fixo ÷ faturamento real, e todos os relatórios do mês passam a usar esses valores. O repasse aos fornecedores só pode ser registrado depois do fechamento.'
+          :'<b>Mês em curso</b>: os percentuais ficam fixos durante o mês (os do último mês fechado). Ele só pode ser fechado depois que terminar.');})()))+'</div>';
   h+='</div>';
 
   const pend=custos.filter(function(c){return c.conferir;});
@@ -2146,6 +2151,7 @@ async function atualizarOcelot(){
   OCELOT_DRE_CACHE=null;OCELOT_ALT_CACHE=null;
   renderOcelot();
 }
+function ocelotIrFecharMes(mes){ocelotParMes=mes;ocelotSubTab('config');setTimeout(function(){var e=document.getElementById('op_imposto');if(e)e.scrollIntoView({behavior:'smooth',block:'center'});},300);}
 async function ocelotParPost(body){
   const {data:{session}}=await sb.auth.getSession();
   const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
@@ -2159,9 +2165,9 @@ async function salvarParametrosOcelot(mes){
   if(await ocelotParPost(body)){OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function fecharMesOcelot(mes){
-  if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nTrava os percentuais deste mês: o custo fixo vira um % fixo da receita do mês e o Ads fica no TACoS real do mês. Os números de '+dreMesLabel(mes)+' param de mudar sozinhos. Dá para reabrir depois.'))return;
+  if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nO sistema busca o TACoS real do mês (1º ao último dia; coleta no Mercado Livre se ainda não tiver) e calcula o custo fixo ÷ faturamento real. DRE, Dashboard e Repasse de '+dreMesLabel(mes)+' passam a usar esses valores, e o repasse aos fornecedores fica liberado para registro. Dá para reabrir depois.'))return;
   const j=await ocelotParPost({tipo:'fechar_mes',mes_competencia:mes});
-  if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+(j.ads_origem==='tacos_mensal'?' (TACoS real do mês)':' (valor salvo; não há TACoS mensal coletado)'));OCELOT_DRE_CACHE=null;renderOcelot();}
+  if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+' (TACoS real do mês'+(j.tacos_coletado_agora?', coletado agora no Mercado Livre':'')+')\n\nTodos os relatórios do mês já usam esses valores. Agora dá para registrar o repasse.');OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function reabrirMesOcelot(mes){
   if(!confirm('Reabrir '+dreMesLabel(mes)+'?\n\nO % do custo fixo volta a ser recalculado e o Ads volta a acompanhar o TACoS. Os números deste mês podem mudar.'))return;

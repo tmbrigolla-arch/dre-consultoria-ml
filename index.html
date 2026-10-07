@@ -2231,10 +2231,14 @@ function htmlOcelotConfig(){
     if(fechado)h+='<button onclick="reabrirMesOcelot(\''+mesAtual+'\')" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer">Reabrir '+dreMesLabel(mesAtual)+'</button>';
   }
   h+='<div class="foot" style="text-align:left;margin-top:8px">'+(fechado
-    ?('<b>Mês fechado</b>: percentuais travados. Custo fixo = '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda; Ads = '+Number(par.ads_pct).toFixed(2).replace('.',',')+'%. Para mudar algo, reabra o mês.')
+    ?('<b>Mês fechado</b>: percentuais travados. Custo fixo = '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda; Ads = '+Number(par.ads_pct).toFixed(2).replace('.',',')+'%'
+      +(par.ads_valor_fechamento!=null&&par.vendas_ml_fechamento?(' (gasto de Ads '+dreBRL(par.ads_valor_fechamento)
+        +(par.ads_ajuste_anterior?(' '+(par.ads_ajuste_anterior>0?'+ ':'− ')+dreBRL(Math.abs(par.ads_ajuste_anterior))+' lançados pelo ML depois do fechamento de '+dreMesLabel(par.ads_ajuste_mes)):'')
+        +' ÷ vendas do ML '+dreBRL(par.vendas_ml_fechamento)+')'):'')
+      +'. Ads que o Mercado Livre lançar depois do fechamento entra no Ads do mês seguinte. Para mudar algo, reabra o mês.')
     :((function(){const f=(D.fixo_pct_por_mes||{})[mesAtual], fonte=String((D.tacos_fonte_por_mes||{})[mesAtual]||'');
         const prov=fonte.indexOf('provisorio')===0?('Em uso agora (provisório, do último mês fechado): Ads '+adsEfetivo.toFixed(2).replace('.',',')+'%'+(f!=null?' e custo fixo '+Number(f).toFixed(2).replace('.',',')+'%':'')+'. '):'';
-        return prov+(encerrado?'<b>Mês terminado, ainda aberto</b>: ao fechar, o sistema busca o TACoS real do mês (1º ao último dia; coleta no Mercado Livre se ainda não tiver) e o custo fixo ÷ faturamento real, e todos os relatórios do mês passam a usar esses valores. O repasse aos fornecedores só pode ser registrado depois do fechamento.'
+        return prov+(encerrado?'<b>Mês terminado, ainda aberto</b>: ao fechar (pode ser no dia 2), o sistema busca no Mercado Livre o gasto de Ads do mês (1º ao último dia) e o custo fixo ÷ faturamento real; o Ads do mês anterior lançado depois do fechamento dele entra neste mês, e todos os relatórios do mês passam a usar esses valores. O repasse aos fornecedores só pode ser registrado depois do fechamento.'
           :'<b>Mês em curso</b>: os percentuais ficam fixos durante o mês (os do último mês fechado). Ele só pode ser fechado depois que terminar.');})()))+'</div>';
   h+='</div>';
 
@@ -2284,9 +2288,9 @@ async function salvarParametrosOcelot(mes){
   if(await ocelotParPost(body)){OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function fecharMesOcelot(mes){
-  if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nO sistema busca o TACoS real do mês (1º ao último dia; coleta no Mercado Livre se ainda não tiver) e calcula o custo fixo ÷ faturamento real. DRE, Dashboard e Repasse de '+dreMesLabel(mes)+' passam a usar esses valores, e o repasse aos fornecedores fica liberado para registro. Dá para reabrir depois.'))return;
+  if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nO sistema busca no Mercado Livre o gasto de Ads do mês (1º ao último dia) e calcula o custo fixo ÷ faturamento real. O Ads que o ML lançar depois deste fechamento entra no Ads do mês seguinte. DRE, Dashboard e Repasse de '+dreMesLabel(mes)+' passam a usar esses valores, e o repasse aos fornecedores fica liberado para registro. Dá para reabrir depois.'))return;
   const j=await ocelotParPost({tipo:'fechar_mes',mes_competencia:mes});
-  if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+' (TACoS real do mês'+(j.tacos_coletado_agora?', coletado agora no Mercado Livre':'')+')\n\nTodos os relatórios do mês já usam esses valores. Agora dá para registrar o repasse.');OCELOT_DRE_CACHE=null;renderOcelot();}
+  if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+(j.ads_valor_mes!=null?' (gasto de Ads '+dreBRL(j.ads_valor_mes)+(j.ads_ajuste_anterior?' '+(j.ads_ajuste_anterior>0?'+ ':'− ')+dreBRL(Math.abs(j.ads_ajuste_anterior))+' lançados depois do fechamento de '+dreMesLabel(j.ads_ajuste_mes):'')+' ÷ vendas do ML '+dreBRL(j.vendas_ml_mes)+')':'')+'\n\nTodos os relatórios do mês já usam esses valores. Agora dá para registrar o repasse.');OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function reabrirMesOcelot(mes){
   if(!confirm('Reabrir '+dreMesLabel(mes)+'?\n\nO % do custo fixo volta a ser recalculado e o Ads volta a acompanhar o TACoS. Os números deste mês podem mudar.'))return;

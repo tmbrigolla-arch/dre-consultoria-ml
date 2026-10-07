@@ -13,7 +13,12 @@ function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,h
 //  * TACoS do mes (1o ao ultimo dia): se o snapshot mensal ainda nao existe, coleta no ML na hora
 //    (ml-fechar-mes da conta Ocelot); sem TACoS real, NAO fecha (antes caia no % salvo).
 //  * reabrir_mes recusa se o repasse do mes ja foi registrado (desfazer o registro antes).
+// v9 (07/10/2026): fechamento no dia 2 (regra do Tiago): o Ads que o ML lancar depois entra no mes seguinte.
+//  * sempre recoleta o mes no ML ao fechar e grava o gasto de Ads e as vendas do ML usados;
+//  * recoleta o mes anterior e soma a diferenca (Ads lancado depois do fechamento dele) no Ads deste mes:
+//    ads_pct = (gasto do mes + ajuste do anterior) / vendas do ML do mes x 100.
 function mesAtualBRT(){const d=new Date(Date.now()-3*3600*1000);return d.toISOString().slice(0,7)+"-01";}
+function mesAnterior(m:string){const dt=new Date(m+"T00:00:00Z");return new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth()-1,1)).toISOString().slice(0,10);}
 function proximoMes(m:string){const dt=new Date(m+"T00:00:00Z");return new Date(Date.UTC(dt.getUTCFullYear(),dt.getUTCMonth()+1,1)).toISOString().slice(0,10);}
 Deno.serve(async(req)=>{
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
@@ -97,22 +102,37 @@ Deno.serve(async(req)=>{
     if(p?.fechado)return json({error:"Este mês já está fechado."},409);
     const custoFixo=p?Number(p.custo_fixo_mensal):800;
     const fixoPct=receitaBruta>0?Math.min(50,(custoFixo/receitaBruta)*100):0;
-    const lerTacos=async()=>{const {data}=await supabase.from("snapshots").select("tacos").eq("conta_id",OCELOT_CONTA).eq("granularidade","mensal").eq("periodo_inicio",mes_competencia).not("tacos","is",null).limit(1).maybeSingle();return data?Number(data.tacos)*100:null;};
-    let tacosMes=await lerTacos();
-    let coletouAgora=false;
-    if(tacosMes==null){
-      // coleta o TACoS do mes inteiro (1o ao ultimo dia) no ML; o segredo do coletor fica so no servidor
-      const {data:cfg}=await supabase.from("app_config").select("v").eq("k","collector_secret").single();
+    // v9: recoleta SEMPRE o mes que esta fechando (no dia 2 o ML ainda lanca Ads dos ultimos dias) e, se o mes
+    // anterior foi fechado com o gasto gravado, recoleta ele tambem: o Ads lancado depois do fechamento dele
+    // (ads_ajuste_anterior, R$) entra no Ads deste mes. O segredo do coletor fica so no servidor.
+    const mesAnt=mesAnterior(mes_competencia);
+    const {data:pAnt}=await supabase.from("ocelot_parametros").select("fechado,ads_valor_fechamento").eq("conta_id",OCELOT_CONTA).eq("mes_competencia",mesAnt).maybeSingle();
+    const comAjuste=!!(pAnt&&pAnt.fechado&&pAnt.ads_valor_fechamento!=null);
+    const {data:cfg}=await supabase.from("app_config").select("v").eq("k","collector_secret").single();
+    const coletar=async(m:string)=>{
       try{
-        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ml-fechar-mes?mes=${mes_competencia.slice(0,7)}&conta_id=${OCELOT_CONTA}`,{method:"POST",headers:{"x-collector-secret":cfg?.v||""}});
-      }catch(_){/* trata abaixo */}
-      tacosMes=await lerTacos();coletouAgora=true;
+        const r=await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ml-fechar-mes?mes=${m.slice(0,7)}&conta_id=${OCELOT_CONTA}`,{method:"POST",headers:{"x-collector-secret":cfg?.v||""}});
+        const j=await r.json().catch(()=>({}));
+        return r.ok&&!!j?.resultados?.[0]?.ok;
+      }catch(_){return false;}
+    };
+    const lerSnap=async(m:string)=>{const {data}=await supabase.from("snapshots").select("ad_spend,vendas").eq("conta_id",OCELOT_CONTA).eq("granularidade","mensal").eq("periodo_inicio",m).maybeSingle();return data;};
+    const [okMes,okAnt]=await Promise.all([coletar(mes_competencia),comAjuste?coletar(mesAnt):Promise.resolve(true)]);
+    const sMes=okMes?await lerSnap(mes_competencia):null;
+    if(!sMes||sMes.ad_spend==null||!(Number(sMes.vendas)>0))return json({error:"Não foi possível obter o gasto de Ads de "+mes_competencia.slice(0,7)+" no Mercado Livre (1º ao último dia do mês). O mês não foi fechado; tente de novo mais tarde."},409);
+    let ajuste=0;
+    if(comAjuste){
+      const sAnt=okAnt?await lerSnap(mesAnt):null;
+      if(!sAnt||sAnt.ad_spend==null)return json({error:"Não foi possível reler o Ads de "+mesAnt.slice(0,7)+" no Mercado Livre (para somar o que foi lançado depois do fechamento dele). O mês não foi fechado; tente de novo mais tarde."},409);
+      ajuste=Math.round((Number(sAnt.ad_spend)-Number(pAnt!.ads_valor_fechamento))*100)/100;
     }
-    if(tacosMes==null)return json({error:"Não foi possível obter o TACoS de "+mes_competencia.slice(0,7)+" no Mercado Livre (1º ao último dia do mês). O mês não foi fechado; tente de novo mais tarde."},409);
-    const adsPctCongelado=tacosMes;
-    const {error}=await supabase.from("ocelot_parametros").upsert({conta_id:OCELOT_CONTA,mes_competencia,custo_fixo_mensal:custoFixo,imposto_pct:p?.imposto_pct??5.5,gestao_pct:p?.gestao_pct??5.5,ads_pct:adsPctCongelado,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,fechado:true,atualizado_em:new Date().toISOString()},{onConflict:"conta_id,mes_competencia"});
+    const adsMes=Number(sMes.ad_spend), vendasMl=Number(sMes.vendas);
+    const adsPctCongelado=Math.max(0,(adsMes+ajuste)/vendasMl*100);
+    const {error}=await supabase.from("ocelot_parametros").upsert({conta_id:OCELOT_CONTA,mes_competencia,custo_fixo_mensal:custoFixo,imposto_pct:p?.imposto_pct??5.5,gestao_pct:p?.gestao_pct??5.5,ads_pct:adsPctCongelado,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,fechado:true,
+      ads_valor_fechamento:adsMes,vendas_ml_fechamento:vendasMl,ads_ajuste_anterior:comAjuste?ajuste:null,ads_ajuste_mes:comAjuste?mesAnt:null,atualizado_em:new Date().toISOString()},{onConflict:"conta_id,mes_competencia"});
     if(error)return json({error:error.message},500);
-    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,ads_pct_congelado:adsPctCongelado,ads_origem:"tacos_mensal",tacos_coletado_agora:coletouAgora});
+    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,ads_pct_congelado:adsPctCongelado,ads_origem:"tacos_mensal",
+      ads_valor_mes:adsMes,vendas_ml_mes:vendasMl,ads_ajuste_anterior:comAjuste?ajuste:null,ads_ajuste_mes:comAjuste?mesAnt:null});
   }
   if(tipo==="reabrir_mes"){
     const {mes_competencia}=body;

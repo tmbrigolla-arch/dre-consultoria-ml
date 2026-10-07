@@ -3162,17 +3162,25 @@ function atRender(){
     h+='</div>';});
   app.innerHTML=h+'</div></div>';
 }
-async function atAcao(body,okMsg){
-  try{await dvPost(ATEND_API,body);toast(okMsg);}catch(e){toast('O Mercado Livre recusou: '+e.message);return false;}
-  renderAtendML();return true;
+// Respondeu (ou ja estava respondida): sai da tela na hora. Nao recarrega do ML logo em seguida porque
+// a busca do ML demora alguns minutos para tirar a pergunta da lista (o servidor tambem filtra pelo log).
+async function atAcao(body,okMsg,lista,i){
+  let tirar=false;
+  try{await dvPost(ATEND_API,body);toast(okMsg);tirar=true;}
+  catch(e){toast(e.message);tirar=/já tinha sido respondida/.test(e.message);}
+  if(tirar&&AT.dados&&AT.dados[lista]){AT.dados[lista].splice(i,1);if(DV.pend&&DV.pend.total)DV.pend.total--;
+    const nb=document.getElementById('ocnAtendBadge');if(nb)nb.textContent=DV.pend&&DV.pend.total?String(DV.pend.total):'';atRender();}
+  return tirar;
 }
 function atResponderPergunta(i){const q=AT.dados.perguntas[i],t=(document.getElementById('q'+i).value||'').trim();if(!t){toast('Escreva a resposta.');return;}
-  atAcao({acao:'responder_pergunta',conta_id:q.conta_id,question_id:q.question_id,texto:t},'Resposta enviada.');}
+  if(AT.ocupado)return;AT.ocupado=true;
+  atAcao({acao:'responder_pergunta',conta_id:q.conta_id,question_id:q.question_id,texto:t},'Resposta enviada ao cliente.','perguntas',i).finally(()=>{AT.ocupado=false;});}
 function atResponderMensagem(i){const m=AT.dados.mensagens[i],t=(document.getElementById('m'+i).value||'').trim();if(!t){toast('Escreva a mensagem.');return;}
   if(!m.buyer_id){toast('Comprador não identificado nesta conversa.');return;}
-  atAcao({acao:'responder_mensagem',conta_id:m.conta_id,pack_id:m.pack_id,buyer_id:m.buyer_id,texto:t},'Mensagem enviada.');}
+  if(AT.ocupado)return;AT.ocupado=true;
+  atAcao({acao:'responder_mensagem',conta_id:m.conta_id,pack_id:m.pack_id,buyer_id:m.buyer_id,texto:t},'Mensagem enviada ao cliente.','mensagens',i).finally(()=>{AT.ocupado=false;});}
 function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta conversa como lida no Mercado Livre sem responder?'))return;
-  atAcao({acao:'marcar_lida',conta_id:m.conta_id,pack_id:m.pack_id},'Conversa marcada como lida.');}
+  atAcao({acao:'marcar_lida',conta_id:m.conta_id,pack_id:m.pack_id},'Conversa marcada como lida.','mensagens',i);}
 
 /* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------
    Backend: tabela app_usuarios + function app-usuarios (so admin gerencia).

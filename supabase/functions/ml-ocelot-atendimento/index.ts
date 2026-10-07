@@ -13,6 +13,12 @@
 //      com o usuario que fez;
 //   3. ler mensagens usa mark_as_read=false: abrir a tela NAO marca nada como lido no ML.
 //      So marca como lida a conversa respondida (ou dispensada) aqui.
+// v2 (07/10/2026): a busca do ML demora alguns minutos para tirar da lista uma pergunta ja respondida
+// (no primeiro uso real, a pergunta voltou para a tela e foi respondida de novo -> ML 400 "is not
+// unanswered"). Agora o que foi tratado aqui sai da fila e da contagem (pergunta 60 min, conversa 10 min), e esse
+// erro do ML vira "esta pergunta ja foi respondida".
+// v3 (07/10/2026): pergunta com deleted_from_listing=true (apagada do anuncio) sai da fila e do contador:
+// o ML continua listando como UNANSWERED, mas ela nao aparece mais no anuncio, entao responder nao serve.
 import { adminClient, Conta, contasOcelot, CORS, erroML, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
 
 Deno.serve(async (req) => {
@@ -61,16 +67,32 @@ Deno.serve(async (req) => {
       .filter(Boolean) as { pack_id: string; count: number }[];
   }
 
+  // Perguntas e conversas tratadas aqui recentemente (o indice do ML ainda pode lista-las).
+  async function tratadosRecentes() {
+    const desde = new Date(Date.now() - 60 * 60_000).toISOString();
+    const { data } = await admin.from("ml_atendimento_log").select("tipo, referencia, ok, erro, criado_em")
+      .in("conta_id", contas.map((c) => c.id)).gte("criado_em", desde).limit(1000);
+    const perguntas = new Set<string>(), packs = new Set<string>();
+    const limitePack = Date.now() - 10 * 60_000; // conversa: so 10 min, para nao esconder mensagem nova do cliente
+    for (const l of (data || [])) {
+      if (l.tipo === "pergunta" && (l.ok || /not unanswered/i.test(l.erro || ""))) perguntas.add(String(l.referencia));
+      if ((l.tipo === "mensagem" || l.tipo === "marcar_lida") && l.ok && new Date(l.criado_em).getTime() >= limitePack) packs.add(String(l.referencia));
+    }
+    return { perguntas, packs };
+  }
+
   try {
     if (acao === "contar") {
+      const tr = await tratadosRecentes();
       const falhas: string[] = [];
       const porConta = await Promise.all(contas.map(async (c) => {
         let perguntas = 0, mensagens = 0;
         try {
-          const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=1`);
+          const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=50`);
           if (!q.ok) throw new Error(`perguntas: ${erroML(q)}`);
-          perguntas = Number(q.json?.total) || 0;
-          mensagens = (await naoLidas(c)).length;
+          const jaTratadas = (q.json?.questions || []).filter((x: any) => tr.perguntas.has(String(x.id)) || x.deleted_from_listing === true).length;
+          perguntas = Math.max(0, (Number(q.json?.total) || 0) - jaTratadas);
+          mensagens = (await naoLidas(c)).filter((p) => !tr.packs.has(p.pack_id)).length;
         } catch (e) { falhas.push(`${c.nome}: ${(e as Error).message}`); }
         return { conta_id: c.id, perguntas, mensagens };
       }));
@@ -80,6 +102,7 @@ Deno.serve(async (req) => {
     }
 
     if (acao === "listar") {
+      const tr = await tratadosRecentes();
       const falhas: string[] = [];
       const perguntas: any[] = [];
       const mensagens: any[] = [];
@@ -87,7 +110,7 @@ Deno.serve(async (req) => {
         try {
           const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=50&sort_fields=date_created&sort_types=ASC`);
           if (!q.ok) throw new Error(`perguntas: ${erroML(q)}`);
-          const qs = q.json?.questions || [];
+          const qs = (q.json?.questions || []).filter((x: any) => !tr.perguntas.has(String(x.id)) && x.deleted_from_listing !== true);
           const ids = [...new Set(qs.map((x: any) => x.item_id).filter(Boolean))] as string[];
           const itens: Record<string, any> = {};
           for (let i = 0; i < ids.length; i += 20) {
@@ -105,7 +128,7 @@ Deno.serve(async (req) => {
         } catch (e) { falhas.push(`${c.nome} (perguntas): ${(e as Error).message}`); }
 
         try {
-          const packs = await naoLidas(c);
+          const packs = (await naoLidas(c)).filter((p) => !tr.packs.has(p.pack_id));
           await Promise.all(packs.slice(0, 30).map(async (p) => {
             const r = await ml(admin, c.id, `/messages/packs/${p.pack_id}/sellers/${sellerDe(c)}?tag=post_sale&mark_as_read=false&limit=10`);
             if (!r.ok) { falhas.push(`${c.nome} (conversa ${p.pack_id}): ${erroML(r)}`); return; }
@@ -153,6 +176,9 @@ Deno.serve(async (req) => {
       const r = await ml(admin, c.id, `/answers`, { method: "POST", body: JSON.stringify({ question_id, text: texto }) });
       const erro = r.ok ? null : erroML(r);
       await logar(c.id, "pergunta", String(question_id), texto, r.ok, erro);
+      if (!r.ok && /not unanswered/i.test(String(r.json?.message || r.json?.error || ""))) {
+        return json({ ok: false, ja_respondida: true, erro: "Esta pergunta já tinha sido respondida (pelo painel ou direto no Mercado Livre). Nada foi enviado agora." }, 409);
+      }
       return r.ok ? json({ ok: true }) : json({ ok: false, erro }, 502);
     }
 

@@ -309,6 +309,62 @@
   #toastMsg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;border:1px solid #374151;border-radius:10px;padding:10px 16px;font-size:13px;z-index:120;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px)}
   #toastMsg.show{opacity:1;transform:translateX(-50%) translateY(0)}
   @media print{#toastMsg,#mSenha,.noprint{display:none!important}}
+  /* Dashboard de Vendas ML + Perguntas e Mensagens (06/10/2026) */
+  .dv{--s-receita:#3987e5;--s-margem:#199e70;--s-c1:#3987e5;--s-c2:#d95926;--s-c3:#199e70;--s-c4:#c98500;--grid:#243250}
+  .dv-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+  .dv-bar button,.dv-bar input,.dv-bar summary{font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px;cursor:pointer;color-scheme:dark}
+  .dv-bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .dv-bar button.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .dv-bar .sep{flex:1}
+  .dv-bar details{position:relative}
+  .dv-bar details .menu{position:absolute;left:0;top:36px;z-index:20;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:8px;min-width:200px}
+  .dv-bar details .menu label{display:flex;gap:8px;align-items:center;padding:5px 8px;font-size:13px;cursor:pointer}
+  .dv-badge{display:inline-block;min-width:20px;padding:1px 7px;border-radius:20px;background:#dc2626;color:#fff;font-size:11.5px;font-weight:700;margin-left:4px}
+  .dv-badge.zero{background:#94a3b8}
+  .dv-sync{font-size:12px;color:var(--muted);margin:-4px 0 12px 2px}
+  .dv-sync.err{color:#f87171}
+  .dv-aviso{background:#3a2f10;border:1px solid #7c5e14;color:#fcd34d;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px}
+  .dv-alerta{background:#3b1418;border:1px solid #7f1d1d;color:#fecaca;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+  .dv-alerta li{margin:4px 0}
+  .dv-alerta button{font:inherit;font-size:12px;margin-left:8px;border-radius:6px;border:1px solid #f87171;background:transparent;color:#fecaca;padding:2px 8px;cursor:pointer}
+  .dv-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .dv-sec{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+  .dv-sec h3{margin:0 0 10px;font-size:15px}
+  .dv-sec .sub{font-size:12px;color:var(--muted);margin:-6px 0 10px}
+  .dv-sec table{table-layout:auto}
+  .dv-sec td.l,.dv-sec th.l{text-align:left;white-space:normal}
+  .dv-fora{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+  .dv-fora > div{border:1px dashed var(--line);background:var(--panel2);border-radius:10px;padding:10px 12px;font-size:13px}
+  .dv-fora b{font-size:16px}
+  .dv-loja{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .dv-loja .tw{flex:1;min-width:280px;overflow-x:auto}
+  .dv-chart{width:100%;overflow-x:auto}
+  .dv-chart svg{display:block;width:100%;height:auto}
+  .dv-chart text{font-size:11px;fill:var(--muted)}
+  .dv-chart .bar:hover{opacity:.8}
+  .dv-2col{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+  .dv-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;margin-top:6px}
+  .dv-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .dv-hc td,.dv-hc th{text-align:center}
+  .dv-hc td.l{text-align:left}
+  .dv-neg{color:#f87171}
+  .at-item{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .at-item .meta{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .at-item .q{font-size:14px;margin:6px 0}
+  .at-item textarea{width:100%;min-height:64px;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:8px}
+  .at-item .acts{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  .at-item .acts button{font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:6px 12px;cursor:pointer}
+  .at-item .acts button.pri{background:var(--accent);border-color:var(--accent);color:#fff}
+  .at-msg{font-size:13px;padding:6px 10px;border-radius:8px;margin:4px 0;max-width:85%}
+  .at-msg.cli{background:#1e2a44}
+  .at-msg.eu{background:#1e3a8a;margin-left:auto}
+  .at-msg small{display:block;color:var(--muted);font-size:11px}
+  .at-conv{display:flex;flex-direction:column}
+  @media (max-width:640px){.dv-bar{padding:8px}.dv-cards{grid-template-columns:repeat(2,1fr)}.curva-card .val{font-size:17px}}
+  #ocnDashboard,#ocnAtendimento{display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:8px;padding:8px 11px;color:#93a4bd;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s,color .15s}
+  #ocnDashboard:hover,#ocnAtendimento:hover{background:#18233c;color:#fff}
+  #ocnDashboard.on,#ocnAtendimento.on{background:var(--accent);color:#fff;box-shadow:0 6px 16px rgba(37,99,235,.3)}
+  #ocnAtendBadge:empty{display:none}
 </style>
 </head>
 <body>
@@ -340,6 +396,8 @@
   </div>
   <button id="tabOcelot" onclick="trocaAba('ocelot')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>Gestão Ocelot<span class="caret" id="caretOce">&#9656;</span></button>
   <div class="navsub" id="navsubOcelot" style="display:none">
+    <button id="ocnDashboard" onclick="ocelotSubTab('dashboard')">Dashboard de Vendas</button>
+    <button id="ocnAtendimento" onclick="ocelotSubTab('atendimento')">Perguntas e Mensagens <span id="ocnAtendBadge" class="dv-badge" style="font-size:10.5px"></span></button>
     <button id="ocnSintetica" onclick="ocelotSubTab('sintetica')">DRE sintética</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
     <button id="ocnRepasse" onclick="ocelotSubTab('repasse')">Repasse a fornecedores</button>
@@ -536,16 +594,16 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
+function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
 function sincOcelotNav(){
-  var ids={sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+  var ids={dashboard:"ocnDashboard",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
 // v4 (09/09/2026): o botao do header era um so e sempre chamava o coletor das 9 contas, mesmo
 // estando dentro da Gestao Ocelot. Agora ele muda com a aba: em Consultoria roda o ml-coletor
 // (metricas das contas); em Gestao Ocelot roda o ml-ocelot-vendas (vendas da conta propria).
-function atualizarContexto(){ if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
+function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
 function sincBtnAtualizar(a){
   var b=document.getElementById("btnAtualizar"); if(!b)return;
   b.textContent=(a==="ocelot")?"Atualizar vendas":"Atualizar métricas";
@@ -572,17 +630,17 @@ function sincNav(a){
 }
 function trocaAba(a){
   if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
-  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=(a==="mensal"&&pode("fechar_mes"))?"":"none";
   document.getElementById("subtitulo").textContent=(a==="usuarios"||a==="permissoes")?"Quem acessa o painel e o que cada um pode ver e fazer":a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
-    :a==="ocelot"?"Gestão Ocelot — DRE sintética, DRE por venda e cadastro (conta própria)"
+    :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, atendimento, DRE e cadastro (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -1173,12 +1231,16 @@ function htmlOcelotSintetica(){
 function ocelotSubTab(s){
   if(EU&&!pode(OCN_PERM[s]))return;
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
+  if(s==='dashboard'){renderDashML();return;}
+  if(s==='atendimento'){renderAtendML();return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
   renderOcelotBody();
 }
 function ocelotSubBtn(k,label){return '';}
 function renderOcelotBody(){
+  if(ocelotSub==='dashboard'){renderDashML();return;}
+  if(ocelotSub==='atendimento'){renderAtendML();return;}
   // DRE sintetica e sempre de um mes fechado de competencia (a fatura do ML e mensal): se a tela
   // estiver em "Ultimos 30 dias", escolhe o mes mais recente e recarrega os pedidos so dele.
   if(ocelotSub==='sintetica'){
@@ -2856,28 +2918,284 @@ async function fecharMes(){
   alert("Mes "+mes+" fechado: "+okc+" conta(s) OK"+(fail.length?("\nSem dados/erro: "+fail.join(", ")):""));
 }
 
+/* ---------- DASHBOARD DE VENDAS ML + PERGUNTAS E MENSAGENS (06/10/2026) ----------
+   Replica o dashboard do antoninho-comissoes para a Ocelot. Toda soma vem pronta do banco
+   (dashboard_vendas_ocelot via ml-ocelot-dashboard): aqui so formata e desenha.
+   Margem = "resultado" da DRE por venda (liquido - repasse - imposto - Ads - custo fixo).
+   Data da venda = data de aprovacao no horario de Brasilia (igual a DRE). */
+const DASH_API=SB_URL+'/functions/v1/ml-ocelot-dashboard';
+const ATEND_API=SB_URL+'/functions/v1/ml-ocelot-atendimento';
+const HCORTE_API=SB_URL+'/functions/v1/ml-ocelot-horario-corte';
+const DV_CORES=['var(--s-c1)','var(--s-c2)','var(--s-c3)','var(--s-c4)']; // cor segue a conta (ordem do cadastro)
+let DV={de:null,ate:null,atalho:'mes',contas:null,dados:null,m12:null,horario:null,sync:null,syncErro:false,carregando:false,pend:null};
+let DV_TIMER=null;
+async function dvPost(url,body){
+  const r=await fetch(url,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
+  let j={};try{j=await r.json();}catch(e){}
+  if(r.status===401){mostrarLogin();throw new Error('sessão expirada');}
+  if(!r.ok||j.ok===false)throw new Error(j.erro||j.error||('erro '+r.status));
+  return j;
+}
+function dvHoje(){return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+function dvIso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function dvDe(s){const p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2]);}
+function dvAtalhos(){
+  const h=dvDe(dvHoje()),menos=n=>{const d=new Date(h);d.setDate(d.getDate()-n);return d;};
+  return [['hoje','Hoje',dvIso(h),dvIso(h)],['ontem','Ontem',dvIso(menos(1)),dvIso(menos(1))],['7d','7 dias',dvIso(menos(6)),dvIso(h)],
+    ['mes','Mês atual',dvIso(new Date(h.getFullYear(),h.getMonth(),1)),dvIso(h)],
+    ['mesant','Mês anterior',dvIso(new Date(h.getFullYear(),h.getMonth()-1,1)),dvIso(new Date(h.getFullYear(),h.getMonth(),0))]];
+}
+const dvR=v=>v==null?'—':'R$ '+cf.format(Number(v));
+const dvN=v=>nf.format(Number(v)||0);
+const dvP=(v,b)=>(!b||Number(b)===0)?'—':cf.format(100*Number(v)/Number(b))+'%';
+const dvRc=v=>{const n=Number(v)||0;if(Math.abs(n)>=1e3)return 'R$ '+(n/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mil';return 'R$ '+n.toLocaleString('pt-BR',{maximumFractionDigits:0});};
+const dvDt=s=>s?s.slice(8,10)+'/'+s.slice(5,7):'';
+const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
+
+async function renderDashML(){
+  const app=document.getElementById('app');app.style.maxWidth='';sincOcelotNav();
+  if(!DV.de){const a=dvAtalhos().find(x=>x[0]===DV.atalho);DV.de=a[2];DV.ate=a[3];}
+  if(!DV.dados)app.innerHTML='<div class="empty">Carregando dashboard de vendas…</div>';
+  dvTimerAtend();
+  dvCarregar();            // mostra o que ja esta gravado
+  dvSincronizar(false);    // e, em paralelo, busca o que entrou no ML (pula se sincronizou ha < 2 min)
+  dvCarregar12m();dvCarregarHorario();
+}
+async function dvCarregar(){
+  DV.carregando=true;
+  try{DV.dados=await dvPost(DASH_API,{acao:'dados',de:DV.de,ate:DV.ate,contas:DV.contas});DV.erro=null;}
+  catch(e){DV.erro=e.message;}
+  DV.carregando=false;dvRender();
+}
+async function dvCarregar12m(){try{DV.m12=await dvPost(DASH_API,{acao:'doze_meses',contas:DV.contas});}catch(e){DV.m12={erro:e.message};}dvRender();}
+async function dvCarregarHorario(){try{DV.horario=await dvPost(DASH_API,{acao:'horario'});}catch(e){DV.horario={erro:e.message};}dvRender();}
+async function dvSincronizar(forcar){
+  DV.sync='Sincronizando com o Mercado Livre…';DV.syncErro=false;dvRender();
+  try{
+    const j=await dvPost(DASH_API,{acao:'sincronizar',forcar:!!forcar});
+    const rs=j.resultados||[];
+    if(rs.every(r=>r.pulada))DV.sync='Dados já sincronizados há menos de 2 min.';
+    else DV.sync='Sincronizado agora'+(rs.some(r=>r.aviso)?' ('+rs.map(r=>r.aviso).filter(Boolean).join('; ')+')':'')+'.';
+  }catch(e){
+    DV.syncErro=true;DV.sync='Não foi possível sincronizar com o ML ('+e.message+'). Mostrando os dados já gravados.';
+  }
+  await dvCarregar();if(forcar)dvCarregar12m();
+}
+function dvAtalho(id){const a=dvAtalhos().find(x=>x[0]===id);DV.atalho=id;DV.de=a[2];DV.ate=a[3];dvCarregar();}
+function dvDatas(){const de=document.getElementById('dvDe').value,ate=document.getElementById('dvAte').value;if(!de||!ate)return;if(ate<de){toast('A data final é anterior à inicial.');return;}DV.atalho=null;DV.de=de;DV.ate=ate;dvCarregar();}
+function dvContas(){
+  const all=[...document.querySelectorAll('.dvck')],on=all.filter(x=>x.checked).map(x=>x.value);
+  DV.contas=(on.length===0||on.length===all.length)?null:on;dvCarregar();dvCarregar12m();
+}
+async function dvCiente(id){try{await dvPost(DASH_API,{acao:'ciente',alteracao_id:id});}catch(e){toast(e.message);return;}dvCarregarHorario();}
+async function dvAtualizarHorario(){
+  const b=document.getElementById('dvBtnHc');if(b){b.disabled=true;b.textContent='Consultando o ML…';}
+  try{await fetch(HCORTE_API,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:'{}'});}catch(e){}
+  dvCarregarHorario();
+}
+function dvTimerAtend(){
+  if(DV_TIMER){clearInterval(DV_TIMER);DV_TIMER=null;}
+  if(!pode('atendimento_ml'))return;
+  const contar=async()=>{
+    if(aba!=='ocelot'||(ocelotSub!=='dashboard'&&ocelotSub!=='atendimento')){clearInterval(DV_TIMER);DV_TIMER=null;return;}
+    try{DV.pend=await dvPost(ATEND_API,{acao:'contar'});}catch(e){DV.pend={erro:e.message};}
+    const el=document.getElementById('dvPend');if(el)el.outerHTML=dvBadge();
+    const nb=document.getElementById('ocnAtendBadge');if(nb)nb.textContent=DV.pend&&DV.pend.total?String(DV.pend.total):'';
+  };
+  contar();DV_TIMER=setInterval(contar,60000);
+}
+function dvBadge(){const t=DV.pend&&DV.pend.total!=null?DV.pend.total:null;return '<span id="dvPend" class="dv-badge'+(t?'':' zero')+'">'+(t==null?'…':t)+'</span>';}
+
+function dvBarras(pts,cor,fmtV){
+  // grafico de barras simples (um eixo, uma serie, linha de base no zero, valor no hover e na tabela)
+  if(!pts.length)return '<div class="sub">Sem dados.</div>';
+  const W=Math.max(480,pts.length*34),H=170,pl=72,pr=8,pt=10,pb=24,iw=W-pl-pr,ih=H-pt-pb;
+  const vals=pts.map(p=>Number(p.v)||0),mx=Math.max(0,...vals),mn=Math.min(0,...vals),rg=(mx-mn)||1;
+  const y=v=>pt+ih*(mx-v)/rg,bw=Math.max(4,Math.min(28,iw/pts.length-4));
+  let s='<svg viewBox="0 0 '+W+' '+H+'" role="img">';
+  [mx,(mx+mn)/2,mn].forEach(t=>{s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y(t)+'" y2="'+y(t)+'" stroke="var(--grid)"/><text x="'+(pl-6)+'" y="'+(y(t)+4)+'" text-anchor="end">'+dvRc(t)+'</text>';});
+  s+='<line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+y(0)+'" y2="'+y(0)+'" stroke="#94a3b8"/>';
+  const passo=Math.ceil(pts.length/12);
+  pts.forEach((p,i)=>{const cx=pl+iw*(i+.5)/pts.length,v=vals[i],y0=y(0),y1=y(v),h=Math.max(1,Math.abs(y1-y0));
+    s+='<rect class="bar" x="'+(cx-bw/2)+'" y="'+Math.min(y0,y1)+'" width="'+bw+'" height="'+h+'" rx="3" fill="'+cor+'"'+(p.parcial?' fill-opacity=".45"':'')+'><title>'+escH(p.tip||(p.l+': '+fmtV(v)))+'</title></rect>';
+    if(i%passo===0)s+='<text x="'+cx+'" y="'+(H-6)+'" text-anchor="middle">'+escH(p.l)+'</text>';});
+  return '<div class="dv-chart">'+s+'</svg></div>';
+}
+function dvRosca(fatias){
+  const tot=fatias.reduce((a,f)=>a+f.v,0);if(!tot)return '';
+  let a0=-Math.PI/2,s='<svg viewBox="0 0 120 120" width="130" height="130" role="img">';
+  fatias.forEach(f=>{const a1=a0+2*Math.PI*f.v/tot,big=(a1-a0)>Math.PI?1:0,r=54,ri=34,
+      p=(a,rr)=>(60+rr*Math.cos(a)).toFixed(2)+' '+(60+rr*Math.sin(a)).toFixed(2);
+    s+='<path d="M'+p(a0,r)+' A'+r+' '+r+' 0 '+big+' 1 '+p(a1,r)+' L'+p(a1,ri)+' A'+ri+' '+ri+' 0 '+big+' 0 '+p(a0,ri)+'Z" fill="'+f.cor+'" stroke="#fff" stroke-width="2"><title>'+escH(f.nome+': '+dvN(f.v)+' pedidos ('+cf.format(100*f.v/tot)+'%)')+'</title></path>';a0=a1;});
+  return s+'</svg>';
+}
+function dvRender(){
+  if(aba!=='ocelot'||ocelotSub!=='dashboard')return;
+  const app=document.getElementById('app');const D=DV.dados||{};const T=D.totais||{};const contas=D.contas||[];
+  const corDe={};contas.forEach((c,i)=>corDe[c.id]=DV_CORES[i%DV_CORES.length]);
+  let h='<div class="dv">';
+  // filtros
+  h+='<div class="dv-bar">';
+  if(contas.length>1){h+='<details><summary>Contas: '+(DV.contas?DV.contas.length+' de '+contas.length:'todas')+'</summary><div class="menu">'
+    +contas.map(c=>'<label><input type="checkbox" class="dvck" value="'+c.id+'"'+(!DV.contas||DV.contas.includes(c.id)?' checked':'')+' onchange="dvContas()"> '+escH(c.nome)+'</label>').join('')+'</div></details>';}
+  else if(contas.length===1)h+='<span style="font-size:13px;color:var(--muted)">Conta: <b style="color:var(--ink)">'+escH(contas[0].nome)+'</b></span>';
+  dvAtalhos().forEach(a=>{h+='<button class="'+(DV.atalho===a[0]?'on':'')+'" onclick="dvAtalho(\''+a[0]+'\')">'+a[1]+'</button>';});
+  h+='<input type="date" id="dvDe" value="'+DV.de+'" onchange="dvDatas()"><span style="font-size:12px;color:var(--muted)">até</span><input type="date" id="dvAte" value="'+DV.ate+'" onchange="dvDatas()">';
+  h+='<span class="sep"></span>';
+  if(pode('atendimento_ml'))h+='<button onclick="ocelotSubTab(\'atendimento\')">Perguntas e Mensagens '+dvBadge()+'</button>';
+  h+='<button class="pri" onclick="dvSincronizar(true)">↻ Atualizar</button></div>';
+  h+='<div class="dv-sync'+(DV.syncErro?' err':'')+'">'+escH(DV.sync||'')+(D.ultima_sincronizacao?' · Última sincronização: '+fmtDt(D.ultima_sincronizacao):'')+'</div>';
+  // alerta de horario de corte
+  const HC=DV.horario||{};
+  if(HC.alertas&&HC.alertas.length){h+='<div class="dv-alerta"><b>⚠ Horário de corte do Mercado Envios mudou</b><ul style="margin:6px 0 0;padding-left:18px">'
+    +HC.alertas.map(a=>'<li>'+escH(a.resumo)+' <span style="opacity:.75;font-size:11.5px">(detectado '+fmtDt(a.detectado_em)+')</span><button onclick="dvCiente('+Number(a.id)+')">Ciente</button></li>').join('')+'</ul></div>';}
+  if(DV.erro){h+='<div class="dv-alerta">Erro ao carregar: '+escH(DV.erro)+'</div>';}
+  if(!DV.dados){app.innerHTML=h+'<div class="empty">'+(DV.erro?'':'Carregando…')+'</div></div>';return;}
+  // cards
+  const R=Number(T.receita)||0;
+  const card=(l,v,s)=>'<div class="curva-card"><div class="lbl">'+l+'</div><div class="val">'+v+'</div><div class="sub">'+(s||'&nbsp;')+'</div></div>';
+  h+='<div class="dv-cards">'+card('Fat. bruto',dvR(R),dvN(T.unidades)+' unidades')
+    +card('Tarifa ML',dvR(T.taxa_ml),dvP(T.taxa_ml,R)+' do fat.')+card('Frete',dvR(T.frete),dvP(T.frete,R)+' do fat.')
+    +card('CMV (repasse)',dvR(T.cmv),dvP(T.cmv,R)+' do fat.')+card('Imposto',dvR(T.imposto),dvP(T.imposto,R)+' do fat.')
+    +card('Ads + custo fixo',dvR((Number(T.ads)||0)+(Number(T.custo_fixo)||0)),dvP((Number(T.ads)||0)+(Number(T.custo_fixo)||0),R)+' do fat.')
+    +card('Margem','<span class="'+(Number(T.margem)<0?'dv-neg':'')+'">'+dvR(T.margem)+'</span>',dvP(T.margem,R)+' do fat.')
+    +card('Ticket médio',T.pedidos?dvR(R/T.pedidos):'—','por pedido')
+    +card('Pedidos',dvN(T.pedidos),dvN(T.unidades)+' unidades')+'</div>';
+  if(Number(T.devolvido)>0)h+='<div class="sub" style="font-size:12px;color:var(--muted);margin:-6px 0 10px">Devoluções parciais de '+dvR(T.devolvido)+' já descontadas da margem (Fat. bruto − tarifa − frete − devolvido − CMV − imposto − Ads − fixo = margem).</div>';
+  if(Number(T.itens_sem_cmv)>0)h+='<div class="dv-aviso"><b>Margem parcial:</b> '+dvN(T.itens_sem_cmv)+' item(ns) sem CMV no período — a margem deles não foi calculada.</div>';
+  // fora dos indicadores
+  const F=D.fora||{},fc=F.canceladas||{},fd=F.devolucoes||{},fp=F.devolucoes_parciais||{};
+  h+='<div class="dv-sec"><h3>Canceladas e devoluções</h3><div class="sub">Não entram nos indicadores acima.</div><div class="dv-fora">'
+    +'<div>Canceladas<br><b>'+dvN(fc.pedidos)+'</b> pedidos · '+dvR(fc.valor)+'</div>'
+    +'<div>Devoluções com custo<br><b>'+dvN(fd.pedidos)+'</b> pedidos · '+dvR(fd.valor)+'<br><span style="color:var(--muted);font-size:12px">tarifa/frete que o ML não estornou: '+dvR(fd.custo)+' (vai para o fornecedor)</span></div>'
+    +(Number(fp.pedidos)>0?'<div>Devoluções parciais<br><b>'+dvN(fp.pedidos)+'</b> pedidos · '+dvR(fp.valor)+'<br><span style="color:var(--muted);font-size:12px">pedido segue como venda; valor devolvido já sai da margem</span></div>':'')
+    +'</div></div>';
+  // por loja
+  const PC=D.por_conta||[];
+  h+='<div class="dv-sec"><h3>Por loja</h3><div class="dv-loja">';
+  if(PC.length>1)h+=dvRosca(PC.map(c=>({nome:c.nome,v:Number(c.pedidos)||0,cor:corDe[c.conta_id]})));
+  h+='<div class="tw"><table><thead><tr><th class="l">Conta</th><th>Pedidos</th><th>Unid.</th><th>Fat. bruto</th><th>Margem</th><th>Margem %</th><th>Ticket</th></tr></thead><tbody>'
+    +PC.map(c=>'<tr><td class="l">'+(PC.length>1?'<i style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:'+corDe[c.conta_id]+'"></i>':'')+escH(c.nome)+'</td><td>'+dvN(c.pedidos)+'</td><td>'+dvN(c.unidades)+'</td><td>'+dvR(c.receita)+'</td><td class="'+(Number(c.margem)<0?'dv-neg':'')+'">'+dvR(c.margem)+'</td><td>'+dvP(c.margem,c.receita)+'</td><td>'+(c.pedidos?dvR(c.receita/c.pedidos):'—')+'</td></tr>').join('')
+    +'</tbody></table>'+(PC.length===1?'<div class="sub" style="font-size:12px;color:var(--muted)">Conta única: 100% dos pedidos (a rosca aparece quando houver mais de uma conta).</div>':'')+'</div></div></div>';
+  // por dia
+  if(D.por_dia&&D.por_dia.length){
+    const pd=D.por_dia;
+    h+='<div class="dv-sec"><h3>Por dia</h3><div class="sub">Faturamento bruto por dia de aprovação (horário de Brasília). Passe o mouse nas barras.</div>'
+      +dvBarras(pd.map(d=>({l:dvDt(d.data),v:d.receita,tip:dvDt(d.data)+': '+dvR(d.receita)+' · '+d.pedidos+' pedidos · margem '+dvR(d.margem)})),'var(--s-receita)',dvR)
+      +'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent)">Ver tabela</summary><table style="margin-top:6px"><thead><tr><th class="l">Dia</th><th>Pedidos</th><th>Unid.</th><th>Fat. bruto</th><th>Margem</th><th>Margem %</th></tr></thead><tbody>'
+      +pd.map(d=>'<tr><td class="l">'+dvDt(d.data)+'</td><td>'+dvN(d.pedidos)+'</td><td>'+dvN(d.unidades)+'</td><td>'+dvR(d.receita)+'</td><td class="'+(Number(d.margem)<0?'dv-neg':'')+'">'+dvR(d.margem)+'</td><td>'+dvP(d.margem,d.receita)+'</td></tr>').join('')+'</tbody></table></details></div>';
+  }
+  // 12 meses
+  const M=DV.m12||{};
+  h+='<div class="dv-sec"><h3>Últimos 12 meses</h3>';
+  if(M.erro)h+='<div class="dv-alerta">'+escH(M.erro)+'</div>';
+  else if(!M.meses)h+='<div class="sub">Carregando…</div>';
+  else{
+    const ini=M.primeira_venda?M.primeira_venda.slice(0,7):null;
+    const ms=M.meses.filter(m=>!ini||m.mes.slice(0,7)>=ini);
+    const marca=m=>m.em_curso?' (em curso)':(ini&&m.mes.slice(0,7)===ini&&M.primeira_venda.slice(8)!=='01'?' (dados desde '+dvDt(M.primeira_venda)+')':'');
+    h+='<div class="sub">Mês em curso e mês de início dos dados aparecem mais claros: são parciais, não queda real.</div><div class="dv-2col"><div><b style="font-size:13px">Faturamento bruto</b>'
+      +dvBarras(ms.map(m=>({l:dvMes(m.mes),v:m.receita,parcial:!!marca(m),tip:dvMes(m.mes)+marca(m)+': '+dvR(m.receita)+' · '+m.pedidos+' pedidos'})),'var(--s-receita)',dvR)
+      +'</div><div><b style="font-size:13px">Margem</b>'
+      +dvBarras(ms.map(m=>({l:dvMes(m.mes),v:m.margem,parcial:!!marca(m),tip:dvMes(m.mes)+marca(m)+': margem '+dvR(m.margem)+' ('+dvP(m.margem,m.receita)+')'})),'var(--s-margem)',dvR)
+      +'</div></div><details style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent)">Ver tabela</summary><table style="margin-top:6px"><thead><tr><th class="l">Mês</th><th>Pedidos</th><th>Unid.</th><th>Fat. bruto</th><th>Margem</th><th>Margem %</th></tr></thead><tbody>'
+      +ms.map(m=>'<tr><td class="l">'+dvMes(m.mes)+marca(m)+'</td><td>'+dvN(m.pedidos)+'</td><td>'+dvN(m.unidades)+'</td><td>'+dvR(m.receita)+'</td><td class="'+(Number(m.margem)<0?'dv-neg':'')+'">'+dvR(m.margem)+'</td><td>'+dvP(m.margem,m.receita)+'</td></tr>').join('')+'</tbody></table></details>';
+  }
+  h+='</div>';
+  // top 20 SKUs
+  const S=D.top_sku||[];
+  h+='<div class="dv-sec"><h3>Top 20 SKUs do período</h3><div style="overflow-x:auto"><table><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th>Unid.</th><th>Fat. bruto</th><th>Margem</th><th>Margem %</th></tr></thead><tbody>'
+    +(S.length?S.map(s=>'<tr><td class="l">'+escH(s.sku)+'</td><td class="l">'+escH(s.titulo||'')+'</td><td>'+dvN(s.unidades)+'</td><td>'+dvR(s.receita)+'</td><td class="'+(Number(s.margem)<0?'dv-neg':'')+'">'+dvR(s.margem)+'</td><td>'+(s.margem_pct==null?'—':cf.format(s.margem_pct)+'%')+'</td></tr>').join(''):'<tr><td class="l" colspan="6">Sem vendas no período.</td></tr>')
+    +'</tbody></table></div></div>';
+  // horario de corte
+  h+='<div class="dv-sec"><h3>Horário de corte do Mercado Envios</h3><div class="sub">Agenda de corte e coleta (agência/Places) para os próximos 7 dias. Consulta automática todo dia às 07:00.</div>';
+  if(HC.erro)h+='<div class="dv-alerta">'+escH(HC.erro)+'</div>';
+  else if(!HC.agendas)h+='<div class="sub">Carregando…</div>';
+  else if(!HC.agendas.length)h+='<div class="sub">Ainda não consultado.</div>';
+  else{
+    const DIAS=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'],DPT={monday:'seg',tuesday:'ter',wednesday:'qua',thursday:'qui',friday:'sex',saturday:'sáb',sunday:'dom'};
+    const nomeC={};(HC.contas||[]).forEach(c=>nomeC[c.id]=c.nome);
+    HC.agendas.forEach(a=>{
+      const ag=a.agenda||{};const ord=DIAS.slice().sort((x,y)=>String((ag[x]||{}).data||'').localeCompare(String((ag[y]||{}).data||'')));
+      h+='<div style="overflow-x:auto;margin-bottom:8px"><table class="dv-hc"><thead><tr><th class="l">'+escH(nomeC[a.conta_id]||'Conta')+'</th>'+ord.map(d=>'<th>'+DPT[d]+' '+dvDt((ag[d]||{}).data||'')+'</th>').join('')+'</tr></thead><tbody>'
+        +'<tr><td class="l">Corte</td>'+ord.map(d=>{const x=ag[d]||{};return '<td>'+(x.trabalha&&x.cortes&&x.cortes.length?x.cortes.map(c=>escH(c.corte)).join('<br>'):'<span style="color:var(--muted)">sem expedição</span>')+'</td>';}).join('')+'</tr>'
+        +'<tr><td class="l">Coleta</td>'+ord.map(d=>{const x=ag[d]||{};return '<td>'+(x.trabalha&&x.cortes&&x.cortes.length?x.cortes.map(c=>escH(c.coleta||'—')).join('<br>'):'')+'</td>';}).join('')+'</tr>'
+        +'</tbody></table><div style="font-size:11.5px;color:var(--muted)">Consultado '+fmtDt(a.consultado_em)+(a.erro?' · <span class="dv-neg">'+escH(a.erro)+'</span>':'')+'</div></div>';
+    });
+  }
+  h+='<button id="dvBtnHc" onclick="dvAtualizarHorario()" style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 12px;cursor:pointer">↻ Atualizar horário</button></div>';
+  h+='<div class="foot">Margem = líquido do ML − repasse ao fornecedor − imposto − Ads − custo fixo (a mesma da DRE por venda). Data da venda = aprovação do pedido no horário de Brasília. Pedidos = número de pedidos distintos.</div>';
+  app.innerHTML=h+'</div>';
+}
+
+/* ---- Perguntas e Mensagens ---- */
+let AT={dados:null,erro:null,enviando:{}};
+async function renderAtendML(){
+  const app=document.getElementById('app');app.style.maxWidth='';sincOcelotNav();
+  dvTimerAtend();
+  app.innerHTML='<div class="empty">Carregando perguntas e mensagens do Mercado Livre…</div>';
+  try{AT.dados=await dvPost(ATEND_API,{acao:'listar'});AT.erro=null;}catch(e){AT.erro=e.message;}
+  atRender();
+}
+function atRender(){
+  if(aba!=='ocelot'||ocelotSub!=='atendimento')return;
+  const app=document.getElementById('app'),A=AT.dados||{},P=A.perguntas||[],M=A.mensagens||[];
+  let h='<div class="dv"><div class="dv-bar"><b style="font-size:14px">'+P.length+' pergunta(s) · '+M.length+' conversa(s) não lida(s)</b><span class="sep"></span>'
+    +(pode('ocelot_dashboard')?'<button onclick="ocelotSubTab(\'dashboard\')">← Dashboard</button>':'')+'<button class="pri" onclick="renderAtendML()">↻ Atualizar</button></div>';
+  h+='<div class="dv-sync">Abrir esta tela não marca nada como lido no Mercado Livre. Só sai da fila o que for respondido ou marcado como lido aqui.</div>';
+  if(AT.erro)h+='<div class="dv-alerta">'+escH(AT.erro)+'</div>';
+  if(A.falhas&&A.falhas.length)h+='<div class="dv-aviso">Algumas consultas ao ML falharam: '+A.falhas.map(escH).join('; ')+'</div>';
+  h+='<div class="dv-sec"><h3>Perguntas (pré-venda)</h3>';
+  if(!P.length)h+='<div class="sub">Nenhuma pergunta sem resposta.</div>';
+  P.forEach((q,i)=>{const k='q'+i;
+    h+='<div class="at-item"><div class="meta">'+escH(q.conta_nome)+' · '+fmtDt(q.data)+' · '+(q.permalink?'<a href="'+escH(q.permalink)+'" target="_blank" rel="noopener">'+escH(q.titulo)+'</a>':escH(q.titulo))
+      +(q.preco!=null?' · '+dvR(q.preco):'')+(q.estoque!=null?' · estoque '+dvN(q.estoque):'')+'</div><div class="q">'+escH(q.texto)+'</div>'
+      +'<textarea id="'+k+'" maxlength="2000" placeholder="Sua resposta"></textarea><div class="acts"><button class="pri" '+(AT.enviando[k]?'disabled':'')+' onclick="atResponderPergunta('+i+')">Responder</button></div></div>';});
+  h+='</div><div class="dv-sec"><h3>Mensagens (pós-venda)</h3>';
+  if(!M.length)h+='<div class="sub">Nenhuma conversa não lida.</div>';
+  M.forEach((m,i)=>{const k='m'+i;
+    h+='<div class="at-item"><div class="meta">'+escH(m.conta_nome)+' · '+(m.comprador?escH(m.comprador)+' · ':'')+'pedido '+escH((m.pedidos||[]).join(', ')||m.pack_id)+' · '+dvN(m.nao_lidas)+' não lida(s)</div>'
+      +(m.produtos&&m.produtos.length?'<div class="meta">'+m.produtos.map(escH).join(' · ')+'</div>':'')
+      +'<div class="at-conv">'+(m.mensagens||[]).map(x=>'<div class="at-msg '+(x.do_cliente?'cli':'eu')+'">'+escH(x.texto||'')+(x.anexos&&x.anexos.length?'<small>anexo: '+x.anexos.map(escH).join(', ')+'</small>':'')+'<small>'+(x.do_cliente?'cliente':'Ocelot')+' · '+fmtDt(x.data)+'</small></div>').join('')+'</div>';
+    if(m.bloqueada)h+='<div class="dv-aviso" style="margin:8px 0 0">Esta conversa não aceita resposta ('+escH(m.motivo_bloqueio||'bloqueada pelo ML')+').</div><div class="acts"><button onclick="atMarcarLida('+i+')">Marcar como lida</button></div>';
+    else h+='<textarea id="'+k+'" maxlength="'+Number(m.limite_caracteres||350)+'" placeholder="Sua mensagem (até '+Number(m.limite_caracteres||350)+' caracteres)" style="margin-top:8px"></textarea><div class="acts"><button class="pri" onclick="atResponderMensagem('+i+')">Enviar</button><button onclick="atMarcarLida('+i+')">Marcar como lida</button></div>';
+    h+='</div>';});
+  app.innerHTML=h+'</div></div>';
+}
+async function atAcao(body,okMsg){
+  try{await dvPost(ATEND_API,body);toast(okMsg);}catch(e){toast('O Mercado Livre recusou: '+e.message);return false;}
+  renderAtendML();return true;
+}
+function atResponderPergunta(i){const q=AT.dados.perguntas[i],t=(document.getElementById('q'+i).value||'').trim();if(!t){toast('Escreva a resposta.');return;}
+  atAcao({acao:'responder_pergunta',conta_id:q.conta_id,question_id:q.question_id,texto:t},'Resposta enviada.');}
+function atResponderMensagem(i){const m=AT.dados.mensagens[i],t=(document.getElementById('m'+i).value||'').trim();if(!t){toast('Escreva a mensagem.');return;}
+  if(!m.buyer_id){toast('Comprador não identificado nesta conversa.');return;}
+  atAcao({acao:'responder_mensagem',conta_id:m.conta_id,pack_id:m.pack_id,buyer_id:m.buyer_id,texto:t},'Mensagem enviada.');}
+function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta conversa como lida no Mercado Livre sem responder?'))return;
+  atAcao({acao:'marcar_lida',conta_id:m.conta_id,pack_id:m.pack_id},'Conversa marcada como lida.');}
+
 /* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------
    Backend: tabela app_usuarios + function app-usuarios (so admin gerencia).
    A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
 const USR_API=SB_URL+"/functions/v1/app-usuarios";
 let EU=null, ADM=null, admSel=null;
-const OCN_PERM={sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
-const OCN_IDS={sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+const OCN_PERM={dashboard:"ocelot_dashboard",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
+const OCN_IDS={dashboard:"ocnDashboard",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
 const ACOES_INFO=[
   ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
   ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
   ["exportar_pdf","Exportar PDF",""],
   ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
   ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU — escreve direto no ML"]];
-const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"]];
 const PRESETS={
   "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
-  "p:ocelot":{menus:["ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[]}};
+  "p:ocelot":{menus:["ocelot_dashboard","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
 
 function pode(k){
   if(!EU||!EU.ativo)return false; if(EU.admin)return true;
   const p=EU.perms||{}, m=p.menus||[], a=p.acoes||[];
-  if(k==="ocelot")return m.some(function(x){return x.indexOf("ocelot_")===0;});
+  if(k==="ocelot")return m.some(function(x){return x.indexOf("ocelot_")===0;})||m.includes("atendimento_ml");
   if(k==="consultoria")return m.includes("semanal")||m.includes("mensal");
   if(k==="ocelot_dre")return m.includes("ocelot_dre")||m.includes("ocelot_detalhada");
   return !!k&&(m.includes(k)||a.includes(k));
@@ -3070,9 +3388,9 @@ function htmlPermissoes(){
   h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
   h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
   h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
-    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+'</div>';
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
   h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
-  h+='<div class="adm-box"><h3>Contas na Consultoria</h3>'
+  h+='<div class="adm-box"><h3>Contas</h3><div class="adm-hint-i" style="margin-bottom:6px">Valem para a Consultoria e para o Dashboard de Vendas e Perguntas da Ocelot</div>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="sel"'+(todas?'':' checked')+' onchange="permContasModo()"> <span>Só as marcadas</span></label>'
     +'<div id="pContasLista" class="adm-contas'+(todas?' adm-dis':'')+'">';

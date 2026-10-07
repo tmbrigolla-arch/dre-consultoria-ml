@@ -29,7 +29,12 @@ const CMV_PISO=40, CMV_TETO=90;
 // num fechamento (nao so cancelados); modo so_alterados=1 devolve as vendas de um periodo que ja foram pagas
 // e mudaram de situacao depois (cancelada/devolvida, coberta pelo ML, devolucao parcial) -- base dos ajustes
 // do fechamento seguinte; resposta traz adiantamentos (ocelot_adiantamentos).
-const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5;
+// v25 (07/10/2026): a partir de outubro/2026 o % do repasse NAO e mais 17,5% fixo (regra do Tiago):
+// % = imposto + gestao (5,5%, a parte da Ocelot) + Ads (TACoS do mes) + custo fixo (salario / receita do mes),
+// todos do proprio mes (travados no fechamento). Piso de R$40 por unidade em cuba do Miguel E em
+// balanco do Alan, sem teto. Setembro continua 17,5% (ja foi pago assim). repasse_pct preenchido em
+// ocelot_parametros continua valendo como valor manual para o mes.
+const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5, REPASSE_SOMA_DESDE="2026-10-01";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
 function mesDe(dataVenda:string){return dataVenda.slice(0,7)+"-01";}
@@ -237,6 +242,11 @@ Deno.serve(async(req)=>{
   function repasseDoMes(mes:string):number|null{
     const p=paramMap[mes];
     if(p&&p.repasse_pct!=null)return Number(p.repasse_pct);
+    if(mes>=REPASSE_SOMA_DESDE){
+      const q=p||{imposto_pct:5.5,gestao_pct:5.5,ads_pct:5};
+      const ads=q.fechado?Number(q.ads_pct):(tacosPctMap[mes]??Number(q.ads_pct));
+      return Number(q.imposto_pct)+Number(q.gestao_pct)+ads+(fixoPctMap[mes]||0);
+    }
     return mes>=REPASSE_DESDE?REPASSE_PADRAO:null;
   }
   for(const mes of mesesPresentes)repassePctMap[mes]=repasseDoMes(mes);
@@ -292,10 +302,13 @@ Deno.serve(async(req)=>{
     }else if(valorVendaEfetivo<=0){
       cmv_origem="formula_devolvido";cmv_unitario=0;cmv_total=0;
     }else if(repassePct!=null){
-      // regra da planilha: repasse = liquido - repasse_pct% da receita; piso R$40/un em cuba do Miguel; sem teto
+      // regra da planilha: repasse = liquido - repasse_pct% da receita; piso R$40/un em cuba do Miguel
+      // (e, desde outubro/2026, em balanco do Alan); sem teto
       const cmv_total_bruto=valorLiquido-valorVendaEfetivo*repassePct/100;
       const cmv_unit_bruto=Number(v.quantidade)>0?cmv_total_bruto/Number(v.quantidade):cmv_total_bruto;
-      const ehCubaMiguel=responsavel_cmv==="miguel"&&(v.titulo||"").toLowerCase().indexOf("cuba")!==-1;
+      const tituloLow=(v.titulo||"").toLowerCase();
+      const ehCubaMiguel=(responsavel_cmv==="miguel"&&tituloLow.indexOf("cuba")!==-1)
+        ||(mes>=REPASSE_SOMA_DESDE&&responsavel_cmv==="alan"&&tituloLow.indexOf("balan")!==-1);
       if(ehCubaMiguel&&cmv_unit_bruto<CMV_PISO){
         cmv_unitario=CMV_PISO;cmv_origem="formula_piso";
       }else{

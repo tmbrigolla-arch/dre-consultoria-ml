@@ -1003,7 +1003,7 @@ function htmlOcelotRepasseAba(){
   h+='</select></label>';
   h+='<span style="font-size:12.5px;color:var(--muted)">Fornecedor</span><div style="display:flex;gap:6px">';
   ['miguel','alan'].forEach(function(f){h+='<button onclick="ocelotRepFornSel(\''+f+'\')" style="padding:6px 14px;border-radius:8px;border:1px solid '+(f===forn?'var(--accent)':'var(--line)')+';background:'+(f===forn?'var(--accent)':'transparent')+';color:'+(f===forn?'#fff':'inherit')+';font-weight:600;cursor:pointer">'+OCN_FORN_NOME[f]+'</button>';});
-  h+='</div><span style="flex:1"></span><button onclick="window.print()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Imprimir / PDF</button></div>';
+  h+='</div><span style="flex:1"></span><button onclick="ocelotRepasseExcel()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Baixar Excel</button><button onclick="window.print()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Imprimir / PDF</button></div>';
   // cabecalho
   h+='<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--muted);letter-spacing:.5px">OCELOT · MERCADO LIVRE</div>';
   h+='<div style="font-size:20px;font-weight:800;margin:2px 0">Fechamento de '+mesNome+' — '+nome+'</div>';
@@ -1041,14 +1041,7 @@ function htmlOcelotRepasseAba(){
   const _rp=Number((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5), _novo=mes>='2026-10-01';
   // 07/10/2026: vendas pagas pelo piso de R$ 40/un (pela formula o repasse teria ficado abaixo).
   // Formula = liquido do ML - % do repasse x venda efetiva (so da para mostrar o valor a partir de set/2026).
-  const pisoDe=function(it){
-    if(it.cmv_origem!=='formula_piso')return null;
-    const q=Number(it.quantidade)||1, piso=40*q;
-    if(mes<'2026-09-01')return {q:q,piso:piso,f:null,extra:null};
-    const ef=Math.max(0,Number(it.valor_venda||0)-Number(it.valor_devolvido||0));
-    const f=Number(it.valor_liquido||0)-ef*_rp/100;
-    return {q:q,piso:piso,f:f,extra:piso-f};
-  };
+  const pisoDe=function(it){return ocelotPisoInfo(it,mes,_rp);};
   let nPiso=0,extraPiso=0;
   R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
   if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
@@ -1074,6 +1067,132 @@ function htmlOcelotRepasseAba(){
     +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ faturamento do mês'+(_parR.fechado?', valores reais gravados no fechamento':' — <b>provisório</b>: '+(_fonte.indexOf('provisorio')===0?'usando o TACoS e o custo fixo do último mês fechado':'estimado')+' até o mês ser fechado')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')
           :' (piso de R$ 40 por cuba)')+'. Mês registrado mostra o repasse gravado no fechamento; os ajustes de vendas pagas valem a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (set/2026 foi importado dos PDFs de fechamento).</div>';
   return h+'</div>';
+}
+// Venda paga pelo piso de R$ 40/un: quanto o repasse teria dado pela formula (liquido do ML - % do repasse x
+// venda efetiva) e quanto o piso acrescentou. Antes de set/2026 a formula era outra: so marca o piso.
+function ocelotPisoInfo(it,mes,rp){
+  if(it.cmv_origem!=='formula_piso')return null;
+  const q=Number(it.quantidade)||1, piso=40*q;
+  if(mes<'2026-09-01')return {q:q,piso:piso,f:null,extra:null};
+  const ef=Math.max(0,Number(it.valor_venda||0)-Number(it.valor_devolvido||0));
+  const f=Number(it.valor_liquido||0)-ef*rp/100;
+  return {q:q,piso:piso,f:f,extra:piso-f};
+}
+// 07/10/2026: .xlsx gerado no navegador, sem biblioteca externa (zip "store" + XML do Excel).
+// rows: [[{v,s}]] -- v numero, texto ou Date (UTC); s = indice do estilo em XLSX_ESTILOS.
+// Estilos: 0 normal, 1 negrito, 2 R$, 3 R$ negrito, 4 texto piso, 5 R$ piso, 6 cabecalho, 7 titulo,
+// 8 data, 9 data piso, 10 numero piso, 11 texto cinza.
+function xlsxGerar(nomeAba,larguras,rows){
+  const esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'');};
+  const col=function(n){let s='';n++;while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;};
+  let sd='';
+  rows.forEach(function(r,i){
+    sd+='<row r="'+(i+1)+'">';
+    (r||[]).forEach(function(c,j){
+      if(c==null)return;
+      const ref=col(j)+(i+1), s=c.s?' s="'+c.s+'"':'';
+      if(c.v instanceof Date)sd+='<c r="'+ref+'"'+s+'><v>'+((c.v.getTime()-Date.UTC(1899,11,30))/864e5)+'</v></c>';
+      else if(typeof c.v==='number'&&isFinite(c.v))sd+='<c r="'+ref+'"'+s+'><v>'+(Math.round(c.v*100)/100)+'</v></c>';
+      else if(c.v!=null&&c.v!=='')sd+='<c r="'+ref+'"'+s+' t="inlineStr"><is><t xml:space="preserve">'+esc(c.v)+'</t></is></c>';
+      else if(c.s)sd+='<c r="'+ref+'"'+s+'/>';
+    });
+    sd+='</row>';
+  });
+  const cols='<cols>'+larguras.map(function(w,i){return '<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+w+'" customWidth="1"/>';}).join('')+'</cols>';
+  const X='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+  const NS='http://schemas.openxmlformats.org/';
+  const brl='&quot;R$&quot; #,##0.00;[Red]-&quot;R$&quot; #,##0.00';
+  const piso='<fill><patternFill patternType="solid"><fgColor rgb="FFCFFAFE"/><bgColor indexed="64"/></patternFill></fill>';
+  const xf=function(f,fo,fi,ex){return '<xf numFmtId="'+f+'" fontId="'+fo+'" fillId="'+fi+'" borderId="0" xfId="0"'+(f?' applyNumberFormat="1"':'')+(fo?' applyFont="1"':'')+(fi?' applyFill="1"':'')+(ex||'')+'/>';};
+  const files={
+    '[Content_Types].xml':X+'<Types xmlns="'+NS+'package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+    '_rels/.rels':X+'<Relationships xmlns="'+NS+'package/2006/relationships"><Relationship Id="rId1" Type="'+NS+'officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    'xl/workbook.xml':X+'<workbook xmlns="'+NS+'spreadsheetml/2006/main" xmlns:r="'+NS+'officeDocument/2006/relationships"><sheets><sheet name="'+esc(String(nomeAba).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31))+'" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':X+'<Relationships xmlns="'+NS+'package/2006/relationships"><Relationship Id="rId1" Type="'+NS+'officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="'+NS+'officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+    'xl/styles.xml':X+'<styleSheet xmlns="'+NS+'spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="'+brl+'"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>'
+      +'<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><sz val="10"/><color rgb="FF64748B"/><name val="Calibri"/></font></fonts>'
+      +'<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'+piso+'<fill><patternFill patternType="solid"><fgColor rgb="FFE2E8F0"/><bgColor indexed="64"/></patternFill></fill></fills>'
+      +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      +'<cellXfs count="12">'+xf(0,0,0)+xf(0,1,0)+xf(164,0,0)+xf(164,1,0)+xf(0,0,2)+xf(164,0,2)+xf(0,1,3)+xf(0,2,0)+xf(165,0,0)+xf(165,0,2)+xf(0,0,2)+xf(0,3,0)+'</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>',
+    'xl/worksheets/sheet1.xml':X+'<worksheet xmlns="'+NS+'spreadsheetml/2006/main">'+cols+'<sheetData>'+sd+'</sheetData></worksheet>'
+  };
+  return zipStore(files);
+}
+// zip sem compressao (metodo 0), o suficiente para o Excel abrir o .xlsx
+function zipStore(files){
+  const enc=new TextEncoder();
+  const T=zipStore.T||(zipStore.T=(function(){const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})());
+  const crc=function(b){let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0;};
+  const partes=[],central=[];let off=0;
+  Object.keys(files).forEach(function(nome){
+    const n=enc.encode(nome), d=enc.encode(files[nome]), c=crc(d);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);
+    h.setUint16(10,0,true);h.setUint16(12,0x21,true);h.setUint32(14,c,true);h.setUint32(18,d.length,true);h.setUint32(22,d.length,true);
+    h.setUint16(26,n.length,true);h.setUint16(28,0,true);
+    partes.push(new Uint8Array(h.buffer),n,d);
+    const e=new DataView(new ArrayBuffer(46));
+    e.setUint32(0,0x02014b50,true);e.setUint16(4,20,true);e.setUint16(6,20,true);e.setUint16(8,0x0800,true);e.setUint16(10,0,true);
+    e.setUint16(12,0,true);e.setUint16(14,0x21,true);e.setUint32(16,c,true);e.setUint32(20,d.length,true);e.setUint32(24,d.length,true);
+    e.setUint16(28,n.length,true);e.setUint32(42,off,true);
+    central.push(new Uint8Array(e.buffer),n);
+    off+=30+n.length+d.length;
+  });
+  const tamC=central.reduce(function(s,b){return s+b.length;},0);
+  const fim=new DataView(new ArrayBuffer(22));
+  fim.setUint32(0,0x06054b50,true);fim.setUint16(8,Object.keys(files).length,true);fim.setUint16(10,Object.keys(files).length,true);
+  fim.setUint32(12,tamC,true);fim.setUint32(16,off,true);
+  return new Blob(partes.concat(central,[new Uint8Array(fim.buffer)]),{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+// Excel do fechamento de repasse: mesmo conteudo da tela, uma linha por produto, vendas pelo piso destacadas.
+function ocelotRepasseExcel(){
+  const D=OCELOT_CACHE; if(!D||!D.pedidos)return;
+  const mes=ocelotMesFiltro, forn=ocelotRepForn, nome=OCN_FORN_NOME[forn];
+  const R=ocelotRepasseDados(forn,mes);
+  const rp=Number((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5);
+  const par=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
+  const mesNome=ocelotMesExtenso(mes), mesCurto=mesNome.split('/')[0];
+  const dt=function(d){return d?new Date(d+'T00:00:00Z'):'';};
+  const T=function(v,s){return {v:v,s:s||0};};
+  const rows=[];
+  rows.push([T('Fechamento de '+mesNome+' — '+nome,7)]);
+  rows.push([T('OCELOT · MERCADO LIVRE · '+(R.reg?'registrado em '+new Date(R.reg.data_pagamento).toLocaleDateString('pt-BR'):'fechamento ainda não registrado — valores podem mudar'),11)]);
+  rows.push([T('% do repasse: '+rp.toFixed(2).replace('.',',')+'% da venda'+(mes>='2026-10-01'?(par.fechado?' (valores reais do mês fechado)':' (provisório: mês ainda aberto)'):''),11)]);
+  rows.push([]);
+  rows.push([T('1. Resumo',1)]);
+  rows.push([T('Repasse das vendas de '+mesCurto+' ('+R.vendas.length+' vendas, '+R.un+' unidades)'),null,null,null,null,null,T(R.totRep,2)]);
+  rows.push([T(R.totAj<0?'(+) Ajuste de vendas anteriores a pagar':'(−) Estorno/ajuste de vendas anteriores'),null,null,null,null,null,T(-R.totAj,2)]);
+  rows.push([T('(−) Adiantamentos'),null,null,null,null,null,T(-R.totAd,2)]);
+  R.adiant.forEach(function(a){rows.push([T('     '+(a.data?new Date(a.data+'T12:00:00Z').toLocaleDateString('pt-BR')+' · ':'')+(a.observacao||'adiantamento'),11),null,null,null,null,null,T(-Number(a.valor||0),2)]);});
+  rows.push([T('SALDO A PAGAR — '+mesCurto.toUpperCase(),1),null,null,null,null,null,T(R.saldo,3)]);
+  rows.push([]);
+  rows.push([T('2. Vendas anteriores devolvidas ou ajustadas — descontadas neste fechamento',1)]);
+  if(!R.ajustes.length)rows.push([T('Nenhuma venda anterior ajustada.',11)]);
+  else{
+    rows.push([T('Data',6),T('N.º da venda',6),T('Produto',6),T('Situação no Mercado Livre',6),T('',6),T('',6),T('Desconto',6)]);
+    R.ajustes.forEach(function(a){rows.push([T(dt(a.data),8),T(String(a.num)),T(a.produto||''),T(a.situacao||''),null,null,T(a.valor,2)]);});
+    rows.push([T('TOTAL DESCONTADO',1),null,null,null,null,null,T(R.totAj,3)]);
+  }
+  rows.push([]);
+  rows.push([T('3. Vendas de '+mesCurto+' — detalhamento (linhas em azul = pagas pelo piso de R$ 40/un)',1)]);
+  rows.push([T('Data',6),T('N.º da venda',6),T('Produto',6),T('Un.',6),T('Venda',6),T('Líquido ML',6),T('Repasse',6),T('Piso',6),T('Repasse pela fórmula',6),T('Acréscimo pelo piso',6),T('Observação',6)]);
+  let nPiso=0,extra=0,tv=0,tl=0,tr=0,tu=0;
+  const linha=function(g,x,obs){
+    const it=x.it, pz=ocelotPisoInfo(it,mes,rp), p=!!pz;
+    if(p){nPiso++;if(pz.extra!=null)extra+=pz.extra;}
+    const pac=g.itens.length>1?'pacote de '+g.itens.length+' produtos':'';
+    rows.push([T(dt(it.data_venda||g.data),p?9:8),T(String(g.num),p?4:0),T(it.titulo||'',p?4:0),T(Number(it.quantidade||0),p?10:0),
+      T(Number(it.valor_venda||0),p?5:2),T(Number(it.valor_liquido||0),p?5:2),T(x.rep,p?5:2),T(p?'SIM':'',p?4:0),
+      T(p&&pz.f!=null?pz.f:'',p?5:2),T(p&&pz.extra!=null?pz.extra:'',p?5:2),T([pac,obs].filter(Boolean).join(' · '),p?4:0)]);
+  };
+  R.vendas.forEach(function(g){g.itens.forEach(function(x){linha(g,x,'');tv+=Number(x.it.valor_venda||0);tl+=Number(x.it.valor_liquido||0);tr+=x.rep;tu+=Number(x.it.quantidade||0);});});
+  R.foraFech.forEach(function(g){g.itens.forEach(function(x){linha(g,x,'ficou fora deste fechamento — entra como valor a pagar no próximo');});});
+  rows.push([T('TOTAL ('+R.vendas.length+' vendas)',1),null,null,T(tu,1),T(tv,3),T(tl,3),T(tr,3),T(nPiso?nPiso+' item(ns)':'',1),null,T(extra||'',3)]);
+  if(nPiso)rows.push([T(nPiso+' item(ns) pagos pelo piso de R$ 40/un: pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou R$ '+extra.toFixed(2).replace('.',',')+' ao repasse (sai da parte da Ocelot).',11)]);
+  const blob=xlsxGerar('Repasse '+nome,[12,22,60,6,13,13,13,7,16,16,40],rows);
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='repasse_'+forn+'_'+mes.slice(0,7)+'.xlsx';document.body.appendChild(a);a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
 }
 async function ocelotFornSet(body){
   const {data:{session}}=await sb.auth.getSession();

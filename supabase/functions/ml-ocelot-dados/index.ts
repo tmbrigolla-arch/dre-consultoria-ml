@@ -45,8 +45,12 @@ const CMV_PISO=40, CMV_TETO=90;
 //      sao olhados juntos -- se a soma pela formula ja da R$ 40 ou mais por unidade, nenhum leva piso (antes uma
 //      cuba ficava com R$ 54 e a outra era completada ate R$ 40). Abaixo disso, piso por item como antes.
 //  Mesma regra em ocelot_vendas_calc no banco.
+// v28 (07/10/2026): troca da regra (1), pedido do Tiago -- item abaixo de R$ 79 vendido sozinho PAGA frete no ML
+// (~R$ 11,05), entao no pacote ele leva o frete da ultima venda avulsa do mesmo anuncio antes desta (pedido
+// sozinho, frete > 0; sem venda avulsa anterior, R$ 11,05). O resto do frete vai para os itens de R$ 79 ou mais,
+// pelo valor; se os fretes de referencia passarem do frete do pacote, ele e dividido entre eles na proporcao.
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5, REPASSE_SOMA_DESDE="2026-10-01";
-const FRETE79_DESDE="2026-10-01", FRETE_MIN_ITEM=79, PISO_PACOTE_DESDE="2026-10-01";
+const FRETE79_DESDE="2026-10-01", FRETE_MIN_ITEM=79, PISO_PACOTE_DESDE="2026-10-01", FRETE_REF_PADRAO=11.05;
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
 function mesDe(dataVenda:string){return dataVenda.slice(0,7)+"-01";}
@@ -214,22 +218,64 @@ Deno.serve(async(req)=>{
     const k=String(v.pack_id||v.order_id);
     (porPackFrete[k]=porPackFrete[k]||[]).push(v);
   }
+  // v28: pacotes (desde out/2026) com itens de R$ 79 ou mais E itens abaixo: os abaixo levam o frete de referencia
+  const pacotes79:Record<string,boolean>={};
+  const idsRef=new Set<string>();
+  for(const k in porPackFrete){
+    const itensPack=porPackFrete[k];
+    if(new Set(itensPack.map((it:any)=>String(it.order_id))).size<=1)continue;
+    const ativos=itensPack.filter((it:any)=>it.status!=="cancelled");
+    if(!ativos.length||mesDe(String(itensPack[0].data_venda))<FRETE79_DESDE)continue;
+    const n79=ativos.filter((it:any)=>Number(it.valor_venda||0)>=FRETE_MIN_ITEM).length;
+    if(n79>0&&n79<ativos.length){pacotes79[k]=true;for(const it of ativos)if(Number(it.valor_venda||0)<FRETE_MIN_ITEM)idsRef.add(String(it.item_id));}
+  }
+  const candRef:any[]=[], ordensPorPack:Record<string,Set<string>>={};
+  const listaRef=Array.from(idsRef);
+  for(let i=0;i<listaRef.length;i+=150){
+    const {data:c}=await supabase.from("ocelot_vendas_itens").select("order_id,pack_id,item_id,data_venda_ts,frete_vendedor").eq("conta_id",OCELOT_CONTA).in("item_id",listaRef.slice(i,i+150)).neq("status","cancelled").gt("frete_vendedor",0).range(0,9999);
+    for(const r of (c||[]))candRef.push(r);
+  }
+  const packsCand=Array.from(new Set(candRef.filter((r:any)=>r.pack_id!=null).map((r:any)=>String(r.pack_id))));
+  for(let i=0;i<packsCand.length;i+=150){
+    const {data:pm}=await supabase.from("ocelot_vendas_itens").select("order_id,pack_id").eq("conta_id",OCELOT_CONTA).in("pack_id",packsCand.slice(i,i+150)).range(0,9999);
+    for(const r of (pm||[])){const pk=String(r.pack_id);(ordensPorPack[pk]=ordensPorPack[pk]||new Set()).add(String(r.order_id));}
+  }
+  candRef.sort((a:any,b:any)=>new Date(b.data_venda_ts).getTime()-new Date(a.data_venda_ts).getTime());
+  function freteRef(it:any):number{
+    const t=new Date(it.data_venda_ts).getTime();
+    for(const r of candRef){
+      if(String(r.item_id)!==String(it.item_id)||new Date(r.data_venda_ts).getTime()>=t)continue;
+      if(r.pack_id!=null&&(ordensPorPack[String(r.pack_id)]?.size||0)>1)continue; // nao foi venda avulsa
+      return Number(r.frete_vendedor);
+    }
+    return FRETE_REF_PADRAO;
+  }
   for(const k in porPackFrete){
     const itensPack=porPackFrete[k];
     const orderIdsUnicos=new Set(itensPack.map((it:any)=>String(it.order_id)));
     if(orderIdsUnicos.size<=1)continue;
     const freteTotalPacote=Number(itensPack[0].frete_vendedor||0);
     const ativos=itensPack.filter((it:any)=>it.status!=="cancelled");
-    let base=ativos.length?ativos:itensPack;
-    // v27: item abaixo de R$ 79 nao leva frete do pacote
-    if(ativos.length&&mesDe(String(itensPack[0].data_venda))>=FRETE79_DESDE){
-      const comFrete=ativos.filter((it:any)=>Number(it.valor_venda||0)>=FRETE_MIN_ITEM);
-      if(comFrete.length&&comFrete.length<ativos.length)base=comFrete;
+    if(pacotes79[k]){
+      // v28: abaixo de R$ 79 leva o frete de referencia; o resto vai para os de R$ 79 ou mais, pelo valor
+      const refs=new Map<any,number>();
+      for(const it of ativos)if(Number(it.valor_venda||0)<FRETE_MIN_ITEM)refs.set(it,freteRef(it));
+      let somaRef=0;refs.forEach((v)=>{somaRef+=v;});
+      const venda79=ativos.filter((it:any)=>Number(it.valor_venda||0)>=FRETE_MIN_ITEM).reduce((s:number,it:any)=>s+Number(it.valor_venda||0),0);
+      for(const it of ativos){
+        let freteItem:number;
+        if(refs.has(it))freteItem=(somaRef>=freteTotalPacote&&somaRef>0)?freteTotalPacote*refs.get(it)!/somaRef:refs.get(it)!;
+        else freteItem=venda79>0?Math.max(0,freteTotalPacote-somaRef)*Number(it.valor_venda||0)/venda79:0;
+        it.frete_vendedor=freteItem;
+        it.valor_liquido=Number(it.valor_venda||0)-Number(it.taxa_ml||0)-freteItem-Number(it.valor_devolvido||0);
+      }
+      continue;
     }
+    const base=ativos.length?ativos:itensPack;
     const somaVendaPacote=base.reduce((s:number,it:any)=>s+Number(it.valor_venda||0),0);
     for(const it of itensPack){
       if(ativos.length&&it.status==="cancelled")continue;
-      const share=base.indexOf(it)<0?0:(somaVendaPacote>0?Number(it.valor_venda||0)/somaVendaPacote:1/base.length);
+      const share=somaVendaPacote>0?Number(it.valor_venda||0)/somaVendaPacote:1/base.length;
       const freteItem=freteTotalPacote*share;
       it.frete_vendedor=freteItem;
       it.valor_liquido=Number(it.valor_venda||0)-Number(it.taxa_ml||0)-freteItem-Number(it.valor_devolvido||0);

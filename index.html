@@ -1277,6 +1277,7 @@ function renderOcelotBody(){
 }
 let ocelotFiltroCats={cancelada:false,devolucao:false,cmvZero:false};
 let ocelotMesFiltro=null;
+let ocelotParMes=null;
 let ocelotSortBy='data';
 let ocelotSortDir='desc';
 let ocelotBusca='';
@@ -1739,7 +1740,7 @@ function ocelotTh(col,rotulo,cls,estilo){
   const on=ocelotOrdem.col===col, seta=on?(ocelotOrdem.dir>0?' &#9650;':' &#9660;'):' <span style="opacity:.3">&#8693;</span>';
   return '<th'+(cls?' class="'+cls+'"':'')+' onclick="ocelotOrdenar(\''+col+'\')" title="Clique para ordenar" style="cursor:pointer;user-select:none'+(estilo?';'+estilo:'')+(on?';color:#93c5fd':'')+'">'+rotulo+seta+'</th>';
 }
-function ocelotMesAtual(){return new Date().toISOString().slice(0,7)+'-01';}
+function ocelotMesAtual(){return new Date(Date.now()-3*3600*1000).toISOString().slice(0,7)+'-01';} // horario de Brasilia (UTC-3, sem horario de verao)
 function ocelotMesSel(){return ocelotCustoMes+'-01';}
 function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
 function ocelotSetCustoMes(v){if(!v)return;ocelotCustoMes=String(v).slice(0,7);renderOcelotBody();}
@@ -2052,27 +2053,41 @@ async function aplicarTodosCustoRef(){
 }
 function htmlOcelotConfig(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
-  const mesAtual=new Date().toISOString().slice(0,7)+'-01';
+  // 07/10/2026: parametros por mes (antes so o mes corrente: o "Fechar mes" fechou outubro com 6 dias de venda).
+  // Mes fechado = percentuais travados (campos so leitura); so fecha mes que ja terminou; da para reabrir.
+  const mesHoje=ocelotMesAtual();
+  const mesesPar=[mesHoje].concat((D.meses_disponiveis||[]).filter(function(m){return m!==mesHoje;})).sort().reverse();
+  if(!ocelotParMes||mesesPar.indexOf(ocelotParMes)<0)ocelotParMes=mesHoje;
+  const mesAtual=ocelotParMes;
   const par=(D.parametros||[]).filter(function(p){return p.mes_competencia===mesAtual;})[0]||{imposto_pct:5.5,gestao_pct:5.5,ads_pct:5,custo_fixo_mensal:800,fechado:false};
   const skus=D.skus||[], semSku=D.itens_sem_sku||[], custos=D.custos||[];
   const infoSku={};
   for(let i=0;i<skus.length;i++)infoSku[skus[i].sku]=skus[i];
+  const fechado=par.fechado===true, encerrado=mesAtual<mesHoje, podeEd=pode('editar_cadastro');
   let h='<div class="cli" style="max-width:660px">';
-  h+='<h2>Parâmetros da fórmula (mês '+mesAtual.slice(0,7)+')</h2>';
+  h+='<h2 style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">Parâmetros da fórmula <select onchange="ocelotParMes=this.value;renderOcelotBody()" style="padding:5px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;font-weight:600">'
+    +mesesPar.map(function(m){const pp=(D.parametros||[]).filter(function(p){return p.mes_competencia===m;})[0];return '<option value="'+m+'"'+(m===mesAtual?' selected':'')+'>'+dreMesLabel(m)+(pp&&pp.fechado?' · fechado':(m===mesHoje?' · em curso':' · aberto'))+'</option>';}).join('')
+    +'</select>'+(fechado?'<span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:9px;background:#14532d;color:#bbf7d0">FECHADO</span>':'<span style="font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:9px;background:#3a2f10;color:#fcd34d">ABERTO</span>')+'</h2>';
   h+='<div class="sub">Usado só nos produtos SEM custo cadastrado abaixo. CMV = Valor líquido recebido do ML × soma dos %.</div>';
-  // v2 (09/09/2026): Ads deixou de ser digitavel — mostra o TACoS real da conta, que e a mesma fonte
-  // que o backend (ocelot_pct_mes) ja usava no calculo. Antes o campo exibia 5% fixo enquanto a DRE
-  // rodava com outro numero. So volta a ser um valor salvo quando o mes esta fechado (congelado).
+  // v2 (09/09/2026): Ads mostra o TACoS real da conta (mesma fonte do backend, ocelot_pct_mes).
+  // So volta a ser um valor salvo quando o mes esta fechado (congelado).
   const tacosMap=D.tacos_pct_por_mes||{}, tacosFonte=D.tacos_fonte_por_mes||{};
   const temTacos=(tacosMap[mesAtual]!=null);
-  const adsEfetivo=Number(par.fechado?par.ads_pct:(temTacos?tacosMap[mesAtual]:par.ads_pct))||0;
-  const adsAuto=(!par.fechado&&temTacos);
-  const adsNota=par.fechado?'congelado no fechamento do mês':(temTacos?('vem do TACoS da conta — '+String(tacosFonte[mesAtual]||'')):'sem TACoS coletado ainda — usando o valor salvo');
-  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:13px"><label>Imposto %<br><input id="op_imposto" type="number" step="0.1" value="'+par.imposto_pct+'" style="width:70px"></label><label>Gestão conta %<br><input id="op_gestao" type="number" step="0.1" value="'+par.gestao_pct+'" style="width:70px"></label><label>Ads %'+(adsAuto?' <span style="font-weight:400;color:var(--muted);font-size:11px">auto</span>':'')+'<br><input id="op_ads" type="number" step="0.01" value="'+adsEfetivo.toFixed(2)+'"'+(adsAuto?(' readonly title="'+escH(adsNota)+'" style="width:82px;opacity:.7;cursor:not-allowed"'):' style="width:82px"')+'></label><label>Custo fixo mensal R$<br><input id="op_fixo" type="number" step="1" value="'+par.custo_fixo_mensal+'" style="width:90px"></label></div>';
-  h+='<div class="foot" style="text-align:left;margin:-2px 0 10px">Ads: '+escH(adsNota)+'. Na DRE mensal o custo de ads usa o valor <b>real da fatura</b> do ML, não este %.</div>';
-  h+='<button onclick="salvarParametrosOcelot(\''+mesAtual+'\')" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Salvar parâmetros</button> ';
-  h+='<button onclick="fecharMesOcelot(\''+mesAtual+'\')" style="background:transparent;border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer;margin-left:6px">Fechar mês (trava o % do custo fixo)</button>';
-  h+='<div class="foot" style="text-align:left;margin-top:8px">'+(par.fechado?('Mês fechado — % do custo fixo travado em '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% (receita líquida do mês: '+('R$ '+cf.format(par.receita_liquida_mes))+').'):('Mês em aberto — o % do custo fixo é provisório, recalculado a cada atualização com base na receita líquida acumulada até agora.'))+'</div>';
+  const adsEfetivo=Number(fechado?par.ads_pct:(temTacos?tacosMap[mesAtual]:par.ads_pct))||0;
+  const adsAuto=(!fechado&&temTacos);
+  const adsNota=fechado?'congelado no fechamento do mês':(temTacos?('vem do TACoS da conta — '+String(tacosFonte[mesAtual]||'')):'sem TACoS deste mês carregado — mostrando o valor salvo');
+  const ro=(fechado||!podeEd)?' disabled style="width:%W%;opacity:.6;cursor:not-allowed"':' style="width:%W%"';
+  h+='<div style="display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;font-size:13px"><label>Imposto %<br><input id="op_imposto" type="number" step="0.1" value="'+par.imposto_pct+'"'+ro.replace('%W%','70px')+'></label><label>Gestão conta %<br><input id="op_gestao" type="number" step="0.1" value="'+par.gestao_pct+'"'+ro.replace('%W%','70px')+'></label><label>Ads %'+(adsAuto?' <span style="font-weight:400;color:var(--muted);font-size:11px">auto</span>':'')+'<br><input id="op_ads" type="number" step="0.01" value="'+adsEfetivo.toFixed(2)+'"'+((adsAuto||fechado||!podeEd)?(' readonly title="'+escH(adsNota)+'" style="width:82px;opacity:.7;cursor:not-allowed"'):' style="width:82px"')+'></label><label>Custo fixo mensal R$<br><input id="op_fixo" type="number" step="1" value="'+par.custo_fixo_mensal+'"'+ro.replace('%W%','90px')+'></label></div>';
+  h+='<div class="foot" style="text-align:left;margin:-2px 0 10px">Ads: '+escH(adsNota)+'. Na DRE sintética o custo de ads usa o valor <b>real da fatura</b> do ML, não este %.</div>';
+  if(podeEd){
+    if(!fechado)h+='<button onclick="salvarParametrosOcelot(\''+mesAtual+'\')" style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer">Salvar parâmetros de '+dreMesLabel(mesAtual)+'</button> ';
+    if(!fechado&&encerrado)h+='<button onclick="fecharMesOcelot(\''+mesAtual+'\')" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer;margin-left:6px">Fechar '+dreMesLabel(mesAtual)+'</button>';
+    if(fechado)h+='<button onclick="reabrirMesOcelot(\''+mesAtual+'\')" style="background:transparent;color:var(--ink);border:1px solid var(--line);padding:7px 14px;border-radius:7px;cursor:pointer">Reabrir '+dreMesLabel(mesAtual)+'</button>';
+  }
+  h+='<div class="foot" style="text-align:left;margin-top:8px">'+(fechado
+    ?('<b>Mês fechado</b>: percentuais travados. Custo fixo = '+Number(par.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda; Ads = '+Number(par.ads_pct).toFixed(2).replace('.',',')+'%. Para mudar algo, reabra o mês.')
+    :(encerrado?'<b>Mês terminado, ainda aberto</b>: os percentuais ainda se mexem (o % do custo fixo é recalculado se entrar devolução ou correção, e o Ads acompanha o TACoS). Feche para travar.'
+      :'<b>Mês em curso</b>: o % do custo fixo é provisório e cai conforme entram vendas. Ele só pode ser fechado depois que o mês terminar.'))+'</div>';
   h+='</div>';
 
   const pend=custos.filter(function(c){return c.conferir;});
@@ -2107,17 +2122,26 @@ async function atualizarOcelot(){
   OCELOT_DRE_CACHE=null;OCELOT_ALT_CACHE=null;
   renderOcelot();
 }
+async function ocelotParPost(body){
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
+  let j={};try{j=await r.json();}catch(e){}
+  if(!r.ok||j.error){alert(j.error||('Erro '+r.status));return null;}
+  return j;
+}
 async function salvarParametrosOcelot(mes){
   const body={tipo:'parametros',mes_competencia:mes,imposto_pct:Number(document.getElementById('op_imposto').value),gestao_pct:Number(document.getElementById('op_gestao').value),ads_pct:Number(document.getElementById('op_ads').value),custo_fixo_mensal:Number(document.getElementById('op_fixo').value)};
-  const {data:{session}}=await sb.auth.getSession();
-  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(body)});
-  renderOcelot();
+  if(!confirm('Salvar os parâmetros de '+dreMesLabel(mes)+'? Só este mês muda; os outros meses não são afetados.'))return;
+  if(await ocelotParPost(body)){OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function fecharMesOcelot(mes){
-  if(!confirm('Fechar o mês '+mes.slice(0,7)+'? Isso trava o % do custo fixo com base na receita líquida já registrada até agora.'))return;
-  const {data:{session}}=await sb.auth.getSession();
-  await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'fechar_mes',mes_competencia:mes})});
-  renderOcelot();
+  if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nTrava os percentuais deste mês: o custo fixo vira um % fixo da receita do mês e o Ads fica no TACoS real do mês. Os números de '+dreMesLabel(mes)+' param de mudar sozinhos. Dá para reabrir depois.'))return;
+  const j=await ocelotParPost({tipo:'fechar_mes',mes_competencia:mes});
+  if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+(j.ads_origem==='tacos_mensal'?' (TACoS real do mês)':' (valor salvo; não há TACoS mensal coletado)'));OCELOT_DRE_CACHE=null;renderOcelot();}
+}
+async function reabrirMesOcelot(mes){
+  if(!confirm('Reabrir '+dreMesLabel(mes)+'?\n\nO % do custo fixo volta a ser recalculado e o Ads volta a acompanhar o TACoS. Os números deste mês podem mudar.'))return;
+  if(await ocelotParPost({tipo:'reabrir_mes',mes_competencia:mes})){OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function ocelotSetCusto(payload){
   const {data:{session}}=await sb.auth.getSession();

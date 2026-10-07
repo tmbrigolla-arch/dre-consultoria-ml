@@ -37,7 +37,16 @@ const CMV_PISO=40, CMV_TETO=90;
 // v26 (07/10/2026): mes ABERTO usa os % (Ads e custo fixo) do ULTIMO MES FECHADO, estaveis no dia a dia;
 // o fechamento (ml-ocelot-set) grava os reais (TACoS do mes e custo fixo / faturamento) e tudo recalcula.
 // Sem mes fechado anterior, mantem o calculo antigo. Mesma regra de ocelot_pct_mes no banco.
+// v27 (07/10/2026), regras do Tiago, a partir de outubro/2026:
+//  (1) frete de pacote: item abaixo de R$ 79 nao leva frete (vendido sozinho, o ML nao cobraria frete do
+//      vendedor); o frete do pacote e rateado so entre os itens de R$ 79 ou mais (se todos forem abaixo, rateia
+//      entre todos, como antes);
+//  (2) piso em pacote: itens com piso (cuba do Miguel / balanco do Alan) do mesmo pacote e mesmo fornecedor
+//      sao olhados juntos -- se a soma pela formula ja da R$ 40 ou mais por unidade, nenhum leva piso (antes uma
+//      cuba ficava com R$ 54 e a outra era completada ate R$ 40). Abaixo disso, piso por item como antes.
+//  Mesma regra em ocelot_vendas_calc no banco.
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5, REPASSE_SOMA_DESDE="2026-10-01";
+const FRETE79_DESDE="2026-10-01", FRETE_MIN_ITEM=79, PISO_PACOTE_DESDE="2026-10-01";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
 function mesDe(dataVenda:string){return dataVenda.slice(0,7)+"-01";}
@@ -211,11 +220,16 @@ Deno.serve(async(req)=>{
     if(orderIdsUnicos.size<=1)continue;
     const freteTotalPacote=Number(itensPack[0].frete_vendedor||0);
     const ativos=itensPack.filter((it:any)=>it.status!=="cancelled");
-    const base=ativos.length?ativos:itensPack;
+    let base=ativos.length?ativos:itensPack;
+    // v27: item abaixo de R$ 79 nao leva frete do pacote
+    if(ativos.length&&mesDe(String(itensPack[0].data_venda))>=FRETE79_DESDE){
+      const comFrete=ativos.filter((it:any)=>Number(it.valor_venda||0)>=FRETE_MIN_ITEM);
+      if(comFrete.length&&comFrete.length<ativos.length)base=comFrete;
+    }
     const somaVendaPacote=base.reduce((s:number,it:any)=>s+Number(it.valor_venda||0),0);
     for(const it of itensPack){
       if(ativos.length&&it.status==="cancelled")continue;
-      const share=somaVendaPacote>0?Number(it.valor_venda||0)/somaVendaPacote:1/base.length;
+      const share=base.indexOf(it)<0?0:(somaVendaPacote>0?Number(it.valor_venda||0)/somaVendaPacote:1/base.length);
       const freteItem=freteTotalPacote*share;
       it.frete_vendedor=freteItem;
       it.valor_liquido=Number(it.valor_venda||0)-Number(it.taxa_ml||0)-freteItem-Number(it.valor_devolvido||0);
@@ -277,6 +291,7 @@ Deno.serve(async(req)=>{
     const responsavel_cmv=v.responsavel_cmv||classifyResponsavel(v.titulo);
     let cmv_origem:string,cmv_unitario:number,cmv_total:number,ads_pct_usado:number|null=null;
     let imposto_valor:number|null=null,ads_valor:number|null=null,custofixo_valor:number|null=null,resultado:number;
+    let pisoPacote:any=null;
     if(v.status==="cancelled"){
       const cc=custoCancelado[String(v.order_id)];
       const shareP=vendaPorPedido[String(v.order_id)]>0?valorVenda/vendaPorPedido[String(v.order_id)]:1;
@@ -329,6 +344,8 @@ Deno.serve(async(req)=>{
         cmv_origem="formula";cmv_unitario=cmv_unit_bruto;
       }
       cmv_total=Number(v.quantidade)>0?cmv_unitario*Number(v.quantidade):cmv_unitario;
+      // v27: guarda a formula para a regra do piso por pacote
+      if(ehCubaMiguel&&mes>=PISO_PACOTE_DESDE&&v.status!=="partially_refunded")pisoPacote={formula:cmv_total_bruto};
     }else{
       const gestao_valor=valorVendaEfetivo*Number(p.gestao_pct)/100;
       const retencao=imposto_valor+ads_valor+custofixo_valor+gestao_valor;
@@ -349,9 +366,28 @@ Deno.serve(async(req)=>{
       cmv_origem="estorno_fornecedor";cmv_unitario=0;cmv_total=0;
     }
     resultado=valorLiquido-cmv_total-imposto_valor-ads_valor-custofixo_valor;
-    return {...v,sku:skuItem,cmv_chave,mes_competencia:mes,cmv_origem,cmv_unitario,cmv_total,resultado,ads_pct_usado,imposto_valor,ads_valor,custofixo_valor,responsavel_cmv};
+    return {...v,sku:skuItem,cmv_chave,mes_competencia:mes,cmv_origem,cmv_unitario,cmv_total,resultado,ads_pct_usado,imposto_valor,ads_valor,custofixo_valor,responsavel_cmv,_pisoPacote:pisoPacote};
   }
-  const vendasCalc=vendas.map(calcItem).map((v:any)=>{const kp=String(v.order_id)+"|"+v.item_id;
+  const vendasCalc0=vendas.map(calcItem);
+  // v27: piso por pacote -- se os itens com piso do mesmo pacote e fornecedor somam R$ 40/un ou mais pela
+  // formula, nenhum deles leva piso (paga a formula de cada um)
+  const gruposPiso:Record<string,any[]>={};
+  for(const v of vendasCalc0)if(v._pisoPacote){const k=String(v.pack_id||v.order_id)+"|"+v.responsavel_cmv;(gruposPiso[k]=gruposPiso[k]||[]).push(v);}
+  for(const k in gruposPiso){
+    const g=gruposPiso[k];
+    if(g.length<2)continue;
+    const soma=g.reduce((s:number,v:any)=>s+Number(v._pisoPacote.formula),0);
+    const un=g.reduce((s:number,v:any)=>s+(Number(v.quantidade)||1),0);
+    if(soma<CMV_PISO*un)continue;
+    for(const v of g){
+      if(v.cmv_origem!=="formula_piso")continue;
+      const novo=Number(v._pisoPacote.formula);
+      v.resultado=Number(v.resultado)+Number(v.cmv_total)-novo;
+      v.cmv_total=novo;v.cmv_unitario=Number(v.quantidade)>0?novo/Number(v.quantidade):novo;v.cmv_origem="formula";
+    }
+  }
+  for(const v of vendasCalc0)delete v._pisoPacote;
+  const vendasCalc=vendasCalc0.map((v:any)=>{const kp=String(v.order_id)+"|"+v.item_id;
     return {...v,permalink:permalinkMap[v.item_id]||null,cmv_pago_registrado:(kp in cmvPagoMap)?cmvPagoMap[kp]:null,cmv_pago_fornecedor_id:fornPagoMap[kp]||null};});
   // v21: "cancelado" agora so e o cancelamento SEM custo (oculto); devolucao com custo conta na DRE
   const cancelados=vendasCalc.filter((v:any)=>v.status==="cancelled"&&!v.devolucao_com_custo);

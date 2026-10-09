@@ -3146,7 +3146,7 @@ const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
 const AE_API=SB_URL+'/functions/v1/ml-ocelot-a-entregar';
 let AE={dados:null,erro:null,carregando:false,em:0,atalho:'todas',de:'',ate:'',status:'todos'};
 const AE_ST={pending:'Aguardando',handling:'Em preparação',ready_to_ship:'Pronto p/ envio',shipped:'A caminho',not_delivered:'Não entregue'};
-const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada'};
+const AE_SUB={buffered:'em espera',manufacturing:'em fabricação',invoice_pending:'aguardando NF-e',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada'};
 const AE_LOG={self_service:'Flex',xd_drop_off:'Agência',drop_off:'Agência',cross_docking:'Coleta',fulfillment:'Full'};
 function aeAtalhos(){
   const h=dvDe(dvHoje()),d=n=>{const x=new Date(h);x.setDate(x.getDate()+n);return dvIso(x);};
@@ -3169,13 +3169,10 @@ document.addEventListener('visibilitychange',()=>{
 });
 function aeAtalho(id){AE.atalho=id;const a=aeAtalhos().find(x=>x[0]===id);AE.de=a[2]||'';AE.ate=a[3]||'';aeRender();}
 function aeDatas(){const de=document.getElementById('aeDe').value,ate=document.getElementById('aeAte').value;if(de&&ate&&ate<de){toast('A data final é anterior à inicial.');return;}AE.atalho=null;AE.de=de;AE.ate=ate||de;aeRender();}
-function aeStatus(s){AE.status=s;aeRender();}
 function aeDespachado(p){return p.shipping_status==='shipped'||!!p.data_envio;}
 function aeFiltrados(){
   const hoje=dvHoje();
   return ((AE.dados||{}).pedidos||[]).filter(p=>{
-    if(AE.status==='despachar'&&aeDespachado(p))return false;
-    if(AE.status==='caminho'&&!aeDespachado(p))return false;
     const d=p.data_ref_envio||'';
     if(AE.atalho==='atrasadas')return !aeDespachado(p)&&d&&d<hoje;
     if(AE.de&&(!d||d<AE.de))return false;
@@ -3192,7 +3189,6 @@ function aeRender(){
   aeAtalhos().forEach(a=>{h+='<button class="'+(AE.atalho===a[0]?'on':'')+'" onclick="aeAtalho(\''+a[0]+'\')">'+a[1]+'</button>';});
   h+='<input type="date" id="aeDe" value="'+escH(AE.de)+'" onchange="aeDatas()"><span style="font-size:12px;color:var(--muted)">até</span><input type="date" id="aeAte" value="'+escH(AE.ate)+'" onchange="aeDatas()">';
   h+='<span class="sep"></span>';
-  [['todos','Todos'],['despachar','A despachar'],['caminho','A caminho']].forEach(s=>{h+='<button class="'+(AE.status===s[0]?'on':'')+'" onclick="aeStatus(\''+s[0]+'\')">'+s[1]+'</button>';});
   h+='<button class="pri" onclick="aeCarregar()"'+(AE.carregando?' disabled':'')+'>'+(AE.carregando?'Atualizando…':'↻ Atualizar')+'</button></div>';
   h+='<div class="dv-sync'+(AE.erro?' err':'')+'">'+(AE.carregando?'Consultando o Mercado Livre…':AE.erro?'Não foi possível atualizar ('+escH(AE.erro)+').':(D.atualizado_em?'Atualizado em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
   if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
@@ -3202,7 +3198,7 @@ function aeRender(){
   const card=(l,v,s)=>'<div class="curva-card"><div class="lbl">'+l+'</div><div class="val">'+v+'</div><div class="sub">'+(s||'&nbsp;')+'</div></div>';
   h+='<div class="dv-cards">'+card('Vendas',dvN(L.length),dvN(tot.q)+' unidades')+card('Valor',dvR(tot.v),'vendido')+card('Repasse estimado',dvR(tot.r),tot.inc?tot.inc+' venda(s) sem custo cadastrado':'aos fornecedores')
     +card('Atrasadas',dvN(tot.atr),'prazo de envio vencido')+'</div>';
-  h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou). Repasse estimado pela mesma regra da DRE por venda.</div>';
+  h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Só o que ainda precisa sair da Ocelot: venda postada na agência ou coletada sai da lista. Envio = prazo que o ML dá para despachar. Repasse estimado pela mesma regra da DRE por venda.</div>';
   if(!L.length){app.innerHTML=h+'<div class="empty">Nenhuma venda neste filtro.</div></div></div>';return;}
   h+='<div style="overflow-x:auto"><table><thead><tr><th class="l">Envio</th><th class="l">Previsão de entrega</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
   L.forEach(p=>{

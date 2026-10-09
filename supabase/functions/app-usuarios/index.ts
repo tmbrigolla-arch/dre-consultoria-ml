@@ -1,10 +1,11 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey", "Content-Type": "application/json" };
+// v3 (09/10/2026): menu "ocelot_entregas" (A entregar).
 // v2 (06/10/2026): menus "ocelot_dashboard" (Dashboard de Vendas) e "atendimento_ml" (Perguntas e Mensagens).
 // Tambem "ocelot_repasse": a tela ja oferecia esse menu, mas o servidor descartava ao salvar.
 // atendimento_ml nao comeca com "ocelot_" de proposito: app_pode(uid,'ocelot') libera todos os dados
 // financeiros da Ocelot para qualquer menu "ocelot_*", e quem so atende cliente nao precisa disso.
-const MENUS = ["semanal", "mensal", "ocelot_dre", "ocelot_vendas", "ocelot_detalhada", "ocelot_repasse", "ocelot_cadastro", "ocelot_dashboard", "atendimento_ml"];
+const MENUS = ["semanal", "mensal", "ocelot_dre", "ocelot_vendas", "ocelot_detalhada", "ocelot_repasse", "ocelot_cadastro", "ocelot_dashboard", "atendimento_ml", "ocelot_entregas"];
 const ACOES = ["atualizar", "fechar_mes", "exportar_pdf", "editar_cadastro", "alterar_ml"];
 const J = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: CORS });
 

@@ -400,6 +400,7 @@
   <button id="tabOcelot" onclick="trocaAba('ocelot')"><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/></svg>Gestão Ocelot<span class="caret" id="caretOce">&#9656;</span></button>
   <div class="navsub" id="navsubOcelot" style="display:none">
     <button id="ocnDashboard" onclick="ocelotSubTab('dashboard')">Dashboard de Vendas</button>
+    <button id="ocnAEntregar" onclick="ocelotSubTab('aentregar')">Vendas a entregar</button>
     <button id="ocnAtendimento" onclick="ocelotSubTab('atendimento')">Perguntas e Mensagens <span id="ocnAtendBadge" class="dv-badge" style="font-size:10.5px"></span></button>
     <button id="ocnSintetica" onclick="ocelotSubTab('sintetica')">DRE sintética</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
@@ -597,16 +598,16 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
+function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",aentregar:"Vendas a entregar",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
 function sincOcelotNav(){
-  var ids={dashboard:"ocnDashboard",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+  var ids={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
 // v4 (09/09/2026): o botao do header era um so e sempre chamava o coletor das 9 contas, mesmo
 // estando dentro da Gestao Ocelot. Agora ele muda com a aba: em Consultoria roda o ml-coletor
 // (metricas das contas); em Gestao Ocelot roda o ml-ocelot-vendas (vendas da conta propria).
-function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
+function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="aentregar")return aeCarregar(); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
 function sincBtnAtualizar(a){
   var b=document.getElementById("btnAtualizar"); if(!b)return;
   b.textContent=(a==="ocelot")?"Atualizar vendas":"Atualizar métricas";
@@ -633,7 +634,7 @@ function sincNav(a){
 }
 function trocaAba(a){
   if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
-  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","aentregar","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
@@ -643,7 +644,7 @@ function trocaAba(a){
     :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, atendimento, DRE e cadastro (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="aentregar")renderAEntregar();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -1385,6 +1386,7 @@ function ocelotSubTab(s){
   if(EU&&!pode(OCN_PERM[s]))return;
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
   if(s==='dashboard'){renderDashML();return;}
+  if(s==='aentregar'){renderAEntregar();return;}
   if(s==='atendimento'){renderAtendML();return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
@@ -1393,6 +1395,7 @@ function ocelotSubTab(s){
 function ocelotSubBtn(k,label){return '';}
 function renderOcelotBody(){
   if(ocelotSub==='dashboard'){renderDashML();return;}
+  if(ocelotSub==='aentregar'){renderAEntregar();return;}
   if(ocelotSub==='atendimento'){renderAtendML();return;}
   // DRE sintetica e sempre de um mes fechado de competencia (a fatura do ML e mensal): se a tela
   // estiver em "Ultimos 30 dias", escolhe o mes mais recente e recarrega os pedidos so dele.
@@ -3136,13 +3139,99 @@ const dvRc=v=>{const n=Number(v)||0;if(Math.abs(n)>=1e3)return 'R$ '+(n/1e3).toL
 const dvDt=s=>s?s.slice(8,10)+'/'+s.slice(5,7):'';
 const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
 
+/* ===== Vendas a entregar (09/10/2026) =====
+   Vendas pagas ainda nao entregues, com prazo de despacho do ML (/shipments/{id}/sla), previsao de entrega,
+   itens do pacote (MLB + link do anuncio), valor e repasse estimado ao fornecedor (mesma regra da DRE por venda).
+   Toda a busca no ML e feita no servidor (ml-ocelot-a-entregar); aqui so filtra por data de envio e status. */
+const AE_API=SB_URL+'/functions/v1/ml-ocelot-a-entregar';
+let AE={dados:null,erro:null,carregando:false,em:0,atalho:'todas',de:'',ate:'',status:'todos'};
+const AE_ST={pending:'Aguardando',handling:'Em preparação',ready_to_ship:'Pronto p/ envio',shipped:'A caminho',not_delivered:'Não entregue'};
+const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada'};
+const AE_LOG={self_service:'Flex',xd_drop_off:'Agência',drop_off:'Agência',cross_docking:'Coleta',fulfillment:'Full'};
+function aeAtalhos(){
+  const h=dvDe(dvHoje()),d=n=>{const x=new Date(h);x.setDate(x.getDate()+n);return dvIso(x);};
+  return [['todas','Todas',null,null],['atrasadas','Atrasadas',null,null],['hoje','Hoje',d(0),d(0)],['amanha','Amanhã',d(1),d(1)],['7d','Próx. 7 dias',d(0),d(6)]];
+}
+async function renderAEntregar(){
+  const app=document.getElementById('app');app.style.maxWidth='none';sincOcelotNav();
+  if(!AE.dados)app.innerHTML='<div class="empty">Carregando vendas a entregar (consultando os envios no Mercado Livre)…</div>';
+  aeCarregar();
+}
+async function aeCarregar(){
+  if(AE.carregando)return;
+  AE.carregando=true;AE.em=Date.now();aeRender();
+  try{AE.dados=await dvPost(AE_API,{});AE.erro=null;}
+  catch(e){AE.erro=e.message;}
+  AE.carregando=false;aeRender();
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&aba==='ocelot'&&ocelotSub==='aentregar'&&Date.now()-AE.em>60000)aeCarregar();
+});
+function aeAtalho(id){AE.atalho=id;const a=aeAtalhos().find(x=>x[0]===id);AE.de=a[2]||'';AE.ate=a[3]||'';aeRender();}
+function aeDatas(){const de=document.getElementById('aeDe').value,ate=document.getElementById('aeAte').value;if(de&&ate&&ate<de){toast('A data final é anterior à inicial.');return;}AE.atalho=null;AE.de=de;AE.ate=ate||de;aeRender();}
+function aeStatus(s){AE.status=s;aeRender();}
+function aeDespachado(p){return p.shipping_status==='shipped'||!!p.data_envio;}
+function aeFiltrados(){
+  const hoje=dvHoje();
+  return ((AE.dados||{}).pedidos||[]).filter(p=>{
+    if(AE.status==='despachar'&&aeDespachado(p))return false;
+    if(AE.status==='caminho'&&!aeDespachado(p))return false;
+    const d=p.data_ref_envio||'';
+    if(AE.atalho==='atrasadas')return !aeDespachado(p)&&d&&d<hoje;
+    if(AE.de&&(!d||d<AE.de))return false;
+    if(AE.ate&&(!d||d>AE.ate))return false;
+    return true;
+  });
+}
+function aeDataBr(s){return s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';}
+function aeRender(){
+  if(aba!=='ocelot'||ocelotSub!=='aentregar')return;
+  const app=document.getElementById('app');const D=AE.dados||{};const hoje=dvHoje();
+  let h='<div class="dv">';
+  h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Data de envio:</span>';
+  aeAtalhos().forEach(a=>{h+='<button class="'+(AE.atalho===a[0]?'on':'')+'" onclick="aeAtalho(\''+a[0]+'\')">'+a[1]+'</button>';});
+  h+='<input type="date" id="aeDe" value="'+escH(AE.de)+'" onchange="aeDatas()"><span style="font-size:12px;color:var(--muted)">até</span><input type="date" id="aeAte" value="'+escH(AE.ate)+'" onchange="aeDatas()">';
+  h+='<span class="sep"></span>';
+  [['todos','Todos'],['despachar','A despachar'],['caminho','A caminho']].forEach(s=>{h+='<button class="'+(AE.status===s[0]?'on':'')+'" onclick="aeStatus(\''+s[0]+'\')">'+s[1]+'</button>';});
+  h+='<button class="pri" onclick="aeCarregar()"'+(AE.carregando?' disabled':'')+'>'+(AE.carregando?'Atualizando…':'↻ Atualizar')+'</button></div>';
+  h+='<div class="dv-sync'+(AE.erro?' err':'')+'">'+(AE.carregando?'Consultando o Mercado Livre…':AE.erro?'Não foi possível atualizar ('+escH(AE.erro)+').':(D.atualizado_em?'Atualizado em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
+  if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
+  if(!AE.dados){app.innerHTML=h+'<div class="empty">'+(AE.erro?'':'Carregando…')+'</div></div>';return;}
+  const L=aeFiltrados();
+  const tot=L.reduce((t,p)=>{t.q+=p.quantidade;t.v+=p.valor;t.r+=p.repasse;if(p.repasse_incompleto)t.inc++;if(!aeDespachado(p)&&p.data_ref_envio&&p.data_ref_envio<hoje)t.atr++;return t;},{q:0,v:0,r:0,inc:0,atr:0});
+  const card=(l,v,s)=>'<div class="curva-card"><div class="lbl">'+l+'</div><div class="val">'+v+'</div><div class="sub">'+(s||'&nbsp;')+'</div></div>';
+  h+='<div class="dv-cards">'+card('Vendas',dvN(L.length),dvN(tot.q)+' unidades')+card('Valor',dvR(tot.v),'vendido')+card('Repasse estimado',dvR(tot.r),tot.inc?tot.inc+' venda(s) sem custo cadastrado':'aos fornecedores')
+    +card('Atrasadas',dvN(tot.atr),'prazo de envio vencido')+'</div>';
+  h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou). Repasse estimado pela mesma regra da DRE por venda.</div>';
+  if(!L.length){app.innerHTML=h+'<div class="empty">Nenhuma venda neste filtro.</div></div></div>';return;}
+  h+='<div style="overflow-x:auto"><table><thead><tr><th class="l">Envio</th><th class="l">Previsão de entrega</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
+  L.forEach(p=>{
+    const desp=aeDespachado(p),d=p.data_ref_envio;
+    let prazo='';
+    if(!desp&&d){const n=Math.round((dvDe(d)-dvDe(hoje))/86400000);prazo=n<0?'<span class="dv-neg"><b>atrasada '+(-n)+'d</b></span>':n===0?'<b style="color:#f59e0b">hoje</b>':n===1?'amanhã':'em '+n+' dias';}
+    else if(desp)prazo='<span style="color:var(--muted)">despachada</span>';
+    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a href="'+escH(it.link)+'" target="_blank" rel="noopener">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
+    const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
+    h+='<tr><td class="l" style="white-space:nowrap">'+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
+      +'<td class="l" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'
+      +'<td class="l" style="white-space:nowrap"><a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>'+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
+      +'<td class="l" style="min-width:260px">'+itens+'</td>'
+      +'<td>'+dvN(p.quantidade)+'</td><td>'+dvR(p.valor)+'</td>'
+      +'<td>'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
+      +'<td class="l" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
+  });
+  h+='</tbody><tfoot><tr><td class="l" colspan="4"><b>Total ('+L.length+' vendas)</b></td><td><b>'+dvN(tot.q)+'</b></td><td><b>'+dvR(tot.v)+'</b></td><td><b>'+dvR(tot.r)+'</b></td><td></td></tr></tfoot></table></div></div></div>';
+  app.innerHTML=h;
+}
+
 async function renderDashML(){
   const app=document.getElementById('app');app.style.maxWidth='';sincOcelotNav();
-  if(!DV.de){const a=dvAtalhos().find(x=>x[0]===DV.atalho);DV.de=a[2];DV.ate=a[3];}
+  // atalho (Hoje, 7 dias...) recalculado a cada entrada: aba aberta de um dia para o outro nao fica presa na data velha
+  if(DV.atalho||!DV.de){const a=dvAtalhos().find(x=>x[0]===(DV.atalho||'mes'));DV.atalho=a[0];DV.de=a[2];DV.ate=a[3];}
   if(!DV.dados)app.innerHTML='<div class="empty">Carregando dashboard de vendas…</div>';
   dvTimerAtend();
   dvCarregar();            // mostra o que ja esta gravado
-  dvSincronizar(false);    // e, em paralelo, busca o que entrou no ML (pula se sincronizou ha < 2 min)
+  dvSincronizar(true);     // e, em paralelo, sempre busca no ML o que entrou (entrar ou F5 = vendas atualizadas)
   dvCarregar12m();dvCarregarHorario();
 }
 async function dvCarregar(){
@@ -3154,6 +3243,15 @@ async function dvCarregar(){
 async function dvCarregar12m(){try{DV.m12=await dvPost(DASH_API,{acao:'doze_meses',contas:DV.contas});}catch(e){DV.m12={erro:e.message};}dvRender();}
 async function dvCarregarHorario(){try{DV.horario=await dvPost(DASH_API,{acao:'horario'});}catch(e){DV.horario={erro:e.message};}dvRender();}
 async function dvSincronizar(forcar){
+  if(DV.sincronizando)return;   // clique duplo / F5 com sync em andamento nao dispara outra busca no ML
+  DV.sincronizando=true;DV.syncEm=Date.now();
+  try{await dvSincronizarML(forcar);}finally{DV.sincronizando=false;}
+}
+// voltar para a aba do navegador com o dashboard aberto tambem atualiza (no maximo 1x por minuto)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&aba==='ocelot'&&ocelotSub==='dashboard'&&Date.now()-(DV.syncEm||0)>60000)dvSincronizar(true);
+});
+async function dvSincronizarML(forcar){
   DV.sync='Sincronizando com o Mercado Livre…';DV.syncErro=false;dvRender();
   try{
     const j=await dvPost(DASH_API,{acao:'sincronizar',forcar:!!forcar});
@@ -3371,18 +3469,18 @@ function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta 
    A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
 const USR_API=SB_URL+"/functions/v1/app-usuarios";
 let EU=null, ADM=null, admSel=null;
-const OCN_PERM={dashboard:"ocelot_dashboard",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
-const OCN_IDS={dashboard:"ocnDashboard",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+const OCN_PERM={dashboard:"ocelot_dashboard",aentregar:"ocelot_entregas",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
+const OCN_IDS={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
 const ACOES_INFO=[
   ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
   ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
   ["exportar_pdf","Exportar PDF",""],
   ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
   ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU — escreve direto no ML"]];
-const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"],["ocelot_entregas","Ocelot Vendas a entregar"]];
 const PRESETS={
   "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
-  "p:ocelot":{menus:["ocelot_dashboard","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
+  "p:ocelot":{menus:["ocelot_dashboard","ocelot_entregas","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
 
 function pode(k){
   if(!EU||!EU.ativo)return false; if(EU.admin)return true;
@@ -3580,7 +3678,7 @@ function htmlPermissoes(){
   h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
   h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
   h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
-    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_entregas","Vendas a entregar","Prazo de envio, itens, valor e repasse estimado. Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
   h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
   h+='<div class="adm-box"><h3>Contas</h3><div class="adm-hint-i" style="margin-bottom:6px">Valem para a Consultoria e para o Dashboard de Vendas e Perguntas da Ocelot</div>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'

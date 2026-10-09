@@ -3138,11 +3138,12 @@ const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
 
 async function renderDashML(){
   const app=document.getElementById('app');app.style.maxWidth='';sincOcelotNav();
-  if(!DV.de){const a=dvAtalhos().find(x=>x[0]===DV.atalho);DV.de=a[2];DV.ate=a[3];}
+  // atalho (Hoje, 7 dias...) recalculado a cada entrada: aba aberta de um dia para o outro nao fica presa na data velha
+  if(DV.atalho||!DV.de){const a=dvAtalhos().find(x=>x[0]===(DV.atalho||'mes'));DV.atalho=a[0];DV.de=a[2];DV.ate=a[3];}
   if(!DV.dados)app.innerHTML='<div class="empty">Carregando dashboard de vendas…</div>';
   dvTimerAtend();
   dvCarregar();            // mostra o que ja esta gravado
-  dvSincronizar(false);    // e, em paralelo, busca o que entrou no ML (pula se sincronizou ha < 2 min)
+  dvSincronizar(true);     // e, em paralelo, sempre busca no ML o que entrou (entrar ou F5 = vendas atualizadas)
   dvCarregar12m();dvCarregarHorario();
 }
 async function dvCarregar(){
@@ -3154,6 +3155,15 @@ async function dvCarregar(){
 async function dvCarregar12m(){try{DV.m12=await dvPost(DASH_API,{acao:'doze_meses',contas:DV.contas});}catch(e){DV.m12={erro:e.message};}dvRender();}
 async function dvCarregarHorario(){try{DV.horario=await dvPost(DASH_API,{acao:'horario'});}catch(e){DV.horario={erro:e.message};}dvRender();}
 async function dvSincronizar(forcar){
+  if(DV.sincronizando)return;   // clique duplo / F5 com sync em andamento nao dispara outra busca no ML
+  DV.sincronizando=true;DV.syncEm=Date.now();
+  try{await dvSincronizarML(forcar);}finally{DV.sincronizando=false;}
+}
+// voltar para a aba do navegador com o dashboard aberto tambem atualiza (no maximo 1x por minuto)
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&aba==='ocelot'&&ocelotSub==='dashboard'&&Date.now()-(DV.syncEm||0)>60000)dvSincronizar(true);
+});
+async function dvSincronizarML(forcar){
   DV.sync='Sincronizando com o Mercado Livre…';DV.syncErro=false;dvRender();
   try{
     const j=await dvPost(DASH_API,{acao:'sincronizar',forcar:!!forcar});

@@ -1107,18 +1107,20 @@ function ocelotSugHtml(it,multi,podeEd){
   const S=x.sugerido,V=x.venda||{},A=x.anuncio||{};
   const pc=function(v){return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:0})+'%';};
   // detalhes so no passar o mouse
-  const det=(A.em_promocao?'Com a promoção atual o cliente paga '+dreBRL(S.preco)+' no preço sugerido\n':'')+'Repasse pela fórmula: '+dreBRL(S.repasse_formula)+'/un\nTarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot'
+  const det='Preço de tabela que cobre o piso de R$ 40/un\nRepasse pela fórmula: '+dreBRL(S.repasse_formula)+'/un\nTarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot'
     +(A.em_promocao?'\nAnúncio em promoção'+(A.promocao&&A.promocao.tipo?' ('+A.promocao.tipo+')':'')+': tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador):'')
     +((S.avisos||[]).length?'\n\n'+S.avisos.join('\n'):'');
-  // 12/10/2026 (pedido do Tiago): preco atual do anuncio -> preco sugerido (os dois de tabela, o que o botao
-  // grava) e uma frase dizendo se a venda foi em promocao ou pelo preco de tabela.
-  const sugTab=S.preco_tabela||S.preco, cobre=!A.erro&&Number(A.comprador)>=S.preco-0.005;
+  // 12/10/2026 (pedido do Tiago): tudo pelo preco de TABELA. Preco atual do anuncio -> preco sugerido (o que o botao
+  // grava); a promocao nao entra na conta, so e indicada. Se a tabela de hoje ja cobre o piso, o piso veio da
+  // promocao (ou de preco antigo) e nao precisa mexer no preco.
+  const sugTab=S.preco, cobre=!A.erro&&Number(A.tabela)>=sugTab-0.005;
   let h=pre+'<div title="'+escH(det)+'" style="cursor:help;white-space:nowrap">'
     +(A.erro?'<span style="font-size:12px;color:var(--down)">'+escH(A.erro)+'</span>'
-      :cobre?'<span style="font-size:14px;font-weight:800">'+dreBRL(A.tabela)+'</span> <span style="font-size:11px;color:var(--up)">já cobre</span>'
+      :cobre?'<span style="font-size:14px;font-weight:800">'+dreBRL(A.tabela)+'</span> <span style="font-size:11px;color:var(--up)">✓ preço correto</span>'
       :'<span style="font-size:12.5px;color:var(--muted)">'+dreBRL(A.tabela)+'</span> → <span style="font-size:15px;font-weight:800">'+dreBRL(sugTab)+'</span>')+'</div>';
   if(!V.erro)h+='<div style="font-size:11px;margin-top:2px;color:'+(V.em_promocao?'#f59e0b':'var(--up)')+'">'
-    +(V.em_promocao?'Venda em promoção (−'+pc(V.desconto_pct)+'): '+dreBRL(V.pago):'Venda pelo preço de tabela: '+dreBRL(V.pago))+'</div>';
+    +(V.em_promocao?'Venda em promoção (−'+pc(V.desconto_pct)+'): '+dreBRL(V.pago)+(cobre?' — sem a promoção o repasse cobriria o piso':''):'Venda pelo preço de tabela: '+dreBRL(V.pago))+'</div>';
+  if(!A.erro&&A.em_promocao)h+='<div style="font-size:11px;color:#f59e0b">Anúncio em promoção hoje (−'+pc((1-A.comprador/A.tabela)*100)+')</div>';
   const fretePct=Number(V.pago)>0?S.frete/Number(V.pago)*100:0;
   if(fretePct>30)h+='<div title="Frete de '+escH(dreBRL(S.frete))+' = '+pc(fretePct)+' da venda: confira peso/medidas do anúncio" style="font-size:11px;color:#f87171;cursor:help">⚠ frete '+pc(fretePct)+' da venda</div>';
   if(!A.erro&&!cobre&&podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+sugTab+')" style="margin-top:4px;padding:3px 9px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:11.5px">Efetivar preço</button>';
@@ -1127,7 +1129,7 @@ function ocelotSugHtml(it,multi,podeEd){
 async function ocelotEfetivarPreco(itemId,orderId,preco){
   const x=OCELOT_SUG.itens[orderId+'|'+itemId]||{},A=x.anuncio||{};
   let msg='Mudar o preço de tabela do anúncio '+itemId+' no Mercado Livre?\n\nHoje: '+dreBRL(A.tabela)+'\nNovo: '+dreBRL(preco);
-  if(A.em_promocao)msg+='\n\nO anúncio está em promoção (hoje: tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador)+'). Com o mesmo desconto, o comprador passa a pagar ~'+dreBRL(preco*A.comprador/A.tabela)+'. Se o ML tirar o anúncio da promoção, ele paga a tabela cheia.';
+  if(A.em_promocao)msg+='\n\nO anúncio está em promoção hoje: enquanto ela durar, o comprador paga menos que o preço de tabela.';
   const v=prompt(msg+'\n\nConfirme ou ajuste o preço:',String(preco.toFixed(2)).replace('.',','));
   if(v==null)return;
   const novo=Number(String(v).replace(/\./g,'').replace(',','.'));

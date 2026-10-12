@@ -1,3 +1,4 @@
+// v3 (12/10/2026): o sugerido e sempre o preco de TABELA, sem descontar promocao (a promocao so e indicada).
 // v2 (12/10/2026): venda abaixo da tabela de hoje = promocao (campanha do ML); com promocao ativa sugere o
 //   preco de TABELA que, com o desconto atual, faz o comprador pagar o sugerido (o botao grava esse).
 // ml-ocelot-preco v1 (12/10/2026) - preco sugerido das vendas pagas pelo piso (aba Repasse a fornecedores).
@@ -133,16 +134,8 @@ Deno.serve(async (req) => {
         avisos.push(sug >= FRETE_GRATIS_MIN ? "acima de R$ 79 o ML passa a cobrar o frete grátis do vendedor: o frete usado (desta venda) deve subir" : "abaixo de R$ 79 o frete do vendedor muda: o frete usado (desta venda) é só referência");
       if (freteUn > 0 && precoUn > 0 && freteUn / precoUn > 0.3)
         avisos.push(`frete de ${r2(freteUn).toFixed(2).replace(".", ",")} = ${Math.round(freteUn / precoUn * 100)}% da venda: confira peso/medidas do anúncio`);
-      if (an.em_promocao) avisos.push("tabela calculada com o desconto atual da promoção; se o ML tirar o anúncio dela, o comprador paga a tabela cheia");
-      // v2: anuncio em promocao -> o preco a gravar e o de TABELA; com o desconto atual (mesma proporcao) o
-      // comprador paga o sugerido. Ex.: campanha -5%, sugerido 193,90 -> tabela 204,90.
-      let precoTabela = r2(sug);
-      if (an.em_promocao && Number(an.tabela) > 0 && Number(an.comprador) > 0) {
-        const fator = Number(an.comprador) / Number(an.tabela);
-        precoTabela = final90(sug / fator);
-        while (precoTabela * fator < sug - 0.005) precoTabela += 1;
-      }
-      res.sugerido = { preco: r2(sug), preco_tabela: r2(precoTabela), tarifa: r2(l.t), frete: r2(freteUn), repasse_formula: r2(l.r), rp, tarifa_tabela_ml: tarifaReal, avisos };
+      // v3: sempre preco de TABELA (regra do Tiago): a promocao so e indicada, nao entra na conta.
+      res.sugerido = { preco: r2(sug), tarifa: r2(l.t), frete: r2(freteUn), repasse_formula: r2(l.r), rp, tarifa_tabela_ml: tarifaReal, avisos };
       out.push(res);
     });
     return json({ ok: true, itens: out });

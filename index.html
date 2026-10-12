@@ -1045,9 +1045,14 @@ function htmlOcelotRepasseAba(){
   const pisoDe=function(it){return ocelotPisoInfo(it,mes,_rp);};
   let nPiso=0,extraPiso=0;
   R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
+  let nPisoF=0;const sugItens=[];
+  R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz&&pz.f!=null){nPisoF++;sugItens.push(x.it);}});});
+  if(nPisoF)ocelotSugGarante(mes,_rp,sugItens);
   if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
-  h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th></tr>';
+  h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th>'+(nPisoF?'<th class="noprint" style="'+th+';text-align:right">Preço sugerido<div style="font-weight:400;font-size:11px">p/ repasse sem piso</div></th>':'')+'</tr>';
   let tv=0,tl=0;
+  const colSug=function(g){if(!nPisoF)return '';const ps=g.itens.filter(function(x){const pz=pisoDe(x.it);return pz&&pz.f!=null;});
+    return '<td class="noprint" style="'+td+';text-align:right;min-width:190px">'+ps.map(function(x){return ocelotSugHtml(x.it,g.itens.length>1,podeEd);}).join('<hr style="border:0;border-top:1px dashed var(--line);margin:6px 0">')+'</td>';};
   R.vendas.forEach(function(g){
     tv+=g.venda;tl+=g.liq;
     const tagPiso=function(it){const pz=pisoDe(it);if(!pz)return '';
@@ -1056,18 +1061,85 @@ function htmlOcelotRepasseAba(){
     const temPiso=g.itens.some(function(x){return !!pisoDe(x.it);});
     const prod=g.itens.length>1?('Pacote de '+g.itens.length+' produtos (compra conjunta)<div style="font-size:11.5px;color:var(--muted)">'+g.itens.map(function(x){return escH(String(x.it.titulo||'').slice(0,50))+' · '+dreBRL(x.rep)+tagPiso(x.it);}).join('<br>')+'</div>'):(escH(g.itens[0].it.titulo||'')+tagPiso(g.itens[0].it));
     const cor=g.rep<0?'color:var(--down)':'';
-    h+='<tr'+(temPiso?' class="rep-piso"':'')+'><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
+    h+='<tr'+(temPiso?' class="rep-piso"':'')+'><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td>'+colSug(g)+'</tr>';
   });
   R.foraFech.forEach(function(g){
-    h+='<tr style="opacity:.55"><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
+    h+='<tr style="opacity:.55"><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+'">'+dreBRL(g.rep)+'</td>'+(nPisoF?'<td class="noprint" style="'+td+'"></td>':'')+'</tr>';
   });
-  h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
+  h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td>'+(nPisoF?'<td class="noprint" style="'+td+'"></td>':'')+'</tr></table></div>';
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
   const _fonte=(D.tacos_fonte_por_mes&&D.tacos_fonte_por_mes[mes])||'';
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'
     +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ faturamento do mês'+(_parR.fechado?', valores reais gravados no fechamento':' — <b>provisório</b>: '+(_fonte.indexOf('provisorio')===0?'usando o TACoS e o custo fixo do último mês fechado':'estimado')+' até o mês ser fechado')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')
           :' (piso de R$ 40 por cuba)')+'. Mês registrado mostra o repasse gravado no fechamento; os ajustes de vendas pagas valem a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (set/2026 foi importado dos PDFs de fechamento).</div>';
   return h+'</div>';
+}
+// 12/10/2026: preco sugerido das vendas pagas pelo piso (ml-ocelot-preco). Menor preco (final ,90) em que o
+// repasse pela formula ja chega a R$ 40/un -- a Ocelot fica com a margem padrao (o % do repasse do mes) e
+// o piso deixa de sair da parte dela. Mostra se a venda e o anuncio de hoje estao em promocao; "Efetivar
+// preco" muda o preco de tabela no ML (permissao editar_cadastro) e fica registrado em ocelot_precos_log.
+let OCELOT_SUG={chave:null,itens:{},carregando:false,erro:null};
+function ocelotSugK(it){return String(it.order_id)+'|'+it.item_id;}
+function ocelotSugGarante(mes,rp,itens){
+  const chave=mes+'|'+rp+'|'+itens.map(ocelotSugK).sort().join(',');
+  if(OCELOT_SUG.chave===chave)return;
+  OCELOT_SUG={chave:chave,itens:{},carregando:true,erro:null};
+  (async function(){
+    try{
+      const {data:{session}}=await sb.auth.getSession();
+      const corpo={acao:'consultar',rp:rp,itens:itens.map(function(it){return {order_id:String(it.order_id),item_id:it.item_id,quantidade:it.quantidade,valor_venda:it.valor_venda,taxa_ml:it.taxa_ml,frete_vendedor:it.frete_vendedor};})};
+      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-preco',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(corpo)});
+      const j=await r.json().catch(function(){return {};});
+      if(OCELOT_SUG.chave!==chave)return;
+      if(!r.ok||!j.ok)OCELOT_SUG.erro=j.erro||('erro '+r.status);
+      (j.itens||[]).forEach(function(x){OCELOT_SUG.itens[x.order_id+'|'+x.item_id]=x;});
+    }catch(e){if(OCELOT_SUG.chave===chave)OCELOT_SUG.erro=String(e);}
+    if(OCELOT_SUG.chave!==chave)return;
+    OCELOT_SUG.carregando=false;
+    if(ocelotSub==='repasse')renderOcelotBodyMantendoTela();
+  })();
+}
+function ocelotSugHtml(it,multi,podeEd){
+  const pre=multi?'<div style="font-size:11px;color:var(--muted);text-align:left">'+escH(String(it.titulo||'').slice(0,40))+'</div>':'';
+  if(OCELOT_SUG.carregando)return pre+'<span style="font-size:12px;color:var(--muted)">consultando ML…</span>';
+  const x=OCELOT_SUG.itens[ocelotSugK(it)];
+  if(!x||!x.sugerido)return pre+'<span style="font-size:12px;color:var(--down)">'+escH(OCELOT_SUG.erro||'sem resposta do ML')+'</span>';
+  const S=x.sugerido,V=x.venda||{},A=x.anuncio||{},pc=function(v){return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';};
+  const tag=function(txt,cor){return '<span style="display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:'+cor+';color:#fff">'+txt+'</span>';};
+  let h=pre+'<div style="font-size:15px;font-weight:800">'+dreBRL(S.preco)+'</div>';
+  h+='<div style="font-size:11px;color:var(--muted)">repasse pela fórmula '+dreBRL(S.repasse_formula)+'/un<br>tarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot</div>';
+  // venda
+  if(V.erro)h+='<div style="font-size:11px;color:var(--muted)">venda: '+escH(V.erro)+'</div>';
+  else h+='<div style="font-size:11px;margin-top:4px">Venda: '+(V.em_promocao?tag('PROMOÇÃO','#d97706')+' cheio '+dreBRL(V.cheio)+' → pago '+dreBRL(V.pago)+' (−'+pc(V.desconto_pct)+')':tag('PREÇO CHEIO','#16a34a')+' '+dreBRL(V.pago))+'</div>';
+  // anuncio hoje
+  if(A.erro)h+='<div style="font-size:11px;color:var(--down)">anúncio: '+escH(A.erro)+'</div>';
+  else{
+    h+='<div style="font-size:11px;margin-top:2px">Hoje: '+(A.em_promocao?tag('EM PROMOÇÃO','#d97706')+' tabela '+dreBRL(A.tabela)+' · comprador paga '+dreBRL(A.comprador)+(A.promocao&&A.promocao.tipo?' ('+escH(A.promocao.tipo)+')':''):tag('PREÇO DE TABELA','#16a34a')+' '+dreBRL(A.tabela))+(A.status&&A.status!=='active'?' · '+escH(A.status):'')+'</div>';
+  }
+  (S.avisos||[]).forEach(function(a){h+='<div style="font-size:10.5px;color:#fbbf24;text-align:left;margin-top:2px">⚠ '+escH(a)+'</div>';});
+  if(!A.erro){
+    if(Number(A.comprador)>=S.preco-0.005)h+='<div style="font-size:11.5px;color:var(--up);margin-top:4px">preço de hoje já cobre o piso</div>';
+    else if(podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+S.preco+')" style="margin-top:5px;padding:4px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:12px">Efetivar preço</button>';
+  }
+  return h;
+}
+async function ocelotEfetivarPreco(itemId,orderId,preco){
+  const x=OCELOT_SUG.itens[orderId+'|'+itemId]||{},A=x.anuncio||{};
+  let msg='Mudar o preço do anúncio '+itemId+' no Mercado Livre?\n\nPreço de tabela hoje: '+dreBRL(A.tabela)+'\nNovo preço: '+dreBRL(preco);
+  if(A.em_promocao)msg+='\n\nATENÇÃO: o anúncio está em promoção (comprador paga '+dreBRL(A.comprador)+'). O novo valor vira o preço de tabela; o ML pode tirar o anúncio da promoção ou manter o desconto sobre o novo preço.';
+  const v=prompt(msg+'\n\nConfirme ou ajuste o preço:',String(preco.toFixed(2)).replace('.',','));
+  if(v==null)return;
+  const novo=Number(String(v).replace(/\./g,'').replace(',','.'));
+  if(!(novo>0)){alert('Preço inválido.');return;}
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-preco',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({acao:'efetivar',item_id:itemId,order_id:String(orderId),preco:novo})});
+    const j=await r.json().catch(function(){return {};});
+    if(!r.ok||(!j.ok&&!j.depois)){alert('O preço NÃO foi alterado: '+(j.erro||('erro '+r.status)));return;}
+    Object.keys(OCELOT_SUG.itens).forEach(function(k){if(OCELOT_SUG.itens[k].item_id===itemId&&j.depois&&!j.depois.erro)OCELOT_SUG.itens[k].anuncio=j.depois;});
+    alert(j.ok?('Preço alterado no ML: '+dreBRL(novo)+'.'+(j.depois&&j.depois.em_promocao?' O anúncio continua em promoção: comprador paga '+dreBRL(j.depois.comprador)+'.':'')):('Enviado ao ML. '+(j.aviso||'')));
+  }catch(e){alert('Falha ao falar com o servidor: '+e);return;}
+  renderOcelotBodyMantendoTela();
 }
 // Venda paga pelo piso de R$ 40/un: quanto o repasse teria dado pela formula (liquido do ML - % do repasse x
 // venda efetiva) e quanto o piso acrescentou. Antes de set/2026 a formula era outra: so marca o piso.

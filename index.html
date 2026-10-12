@@ -3782,6 +3782,8 @@ async function salvarPermissoes(){
   var contas=modo==="*"?"*":[].map.call(ed.querySelectorAll("input[data-c]:checked"),function(e){return e.dataset.c;});
   var adminCk=document.getElementById("pAdmin"), isAdmin=adminCk.checked;
   var avisos=[];
+  // tela Ocelot sem a conta Ocelot = "conta Ocelot fora do seu acesso" no servidor; inclui sozinha
+  if(!isAdmin&&Array.isArray(contas)&&!contas.includes(OCELOT_CONTA_ID)&&menus.some(function(m){return m.indexOf("ocelot_")===0||m==="atendimento_ml";})) contas.push(OCELOT_CONTA_ID);
   if(!isAdmin){
     if(!menus.length) avisos.push("nenhum menu marcado — ele não vai ver nada");
     if((menus.includes("semanal")||menus.includes("mensal"))&&contas!=="*"&&!contas.length) avisos.push("Consultoria liberada mas nenhuma conta marcada — as tabelas vão aparecer vazias");

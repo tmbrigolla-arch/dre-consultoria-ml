@@ -1052,7 +1052,7 @@ function htmlOcelotRepasseAba(){
   h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th>'+(nPisoF?'<th class="noprint" style="'+th+';text-align:right">Preço sugerido<div style="font-weight:400;font-size:11px">p/ repasse sem piso</div></th>':'')+'</tr>';
   let tv=0,tl=0;
   const colSug=function(g){if(!nPisoF)return '';const ps=g.itens.filter(function(x){const pz=pisoDe(x.it);return pz&&pz.f!=null;});
-    return '<td class="noprint" style="'+td+';text-align:right;min-width:190px">'+ps.map(function(x){return ocelotSugHtml(x.it,g.itens.length>1,podeEd);}).join('<hr style="border:0;border-top:1px dashed var(--line);margin:6px 0">')+'</td>';};
+    return '<td class="noprint" style="'+td+';text-align:right;min-width:150px">'+ps.map(function(x){return ocelotSugHtml(x.it,g.itens.length>1,podeEd);}).join('<hr style="border:0;border-top:1px dashed var(--line);margin:6px 0">')+'</td>';};
   R.vendas.forEach(function(g){
     tv+=g.venda;tl+=g.liq;
     const tagPiso=function(it){const pz=pisoDe(it);if(!pz)return '';
@@ -1104,29 +1104,32 @@ function ocelotSugHtml(it,multi,podeEd){
   if(OCELOT_SUG.carregando)return pre+'<span style="font-size:12px;color:var(--muted)">consultando ML…</span>';
   const x=OCELOT_SUG.itens[ocelotSugK(it)];
   if(!x||!x.sugerido)return pre+'<span style="font-size:12px;color:var(--down)">'+escH(OCELOT_SUG.erro||'sem resposta do ML')+'</span>';
-  const S=x.sugerido,V=x.venda||{},A=x.anuncio||{},pc=function(v){return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%';};
-  const tag=function(txt,cor){return '<span style="display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9px;background:'+cor+';color:#fff">'+txt+'</span>';};
-  let h=pre+'<div style="font-size:15px;font-weight:800">'+dreBRL(S.preco)+'</div>';
-  h+='<div style="font-size:11px;color:var(--muted)">repasse pela fórmula '+dreBRL(S.repasse_formula)+'/un<br>tarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot</div>';
-  // venda
-  if(V.erro)h+='<div style="font-size:11px;color:var(--muted)">venda: '+escH(V.erro)+'</div>';
-  else h+='<div style="font-size:11px;margin-top:4px">Venda: '+(V.em_promocao?tag('PROMOÇÃO','#d97706')+' cheio '+dreBRL(V.cheio)+' → pago '+dreBRL(V.pago)+' (−'+pc(V.desconto_pct)+')':tag('PREÇO CHEIO','#16a34a')+' '+dreBRL(V.pago))+'</div>';
-  // anuncio hoje
-  if(A.erro)h+='<div style="font-size:11px;color:var(--down)">anúncio: '+escH(A.erro)+'</div>';
-  else{
-    h+='<div style="font-size:11px;margin-top:2px">Hoje: '+(A.em_promocao?tag('EM PROMOÇÃO','#d97706')+' tabela '+dreBRL(A.tabela)+' · comprador paga '+dreBRL(A.comprador)+(A.promocao&&A.promocao.tipo?' ('+escH(A.promocao.tipo)+')':''):tag('PREÇO DE TABELA','#16a34a')+' '+dreBRL(A.tabela))+(A.status&&A.status!=='active'?' · '+escH(A.status):'')+'</div>';
-  }
-  (S.avisos||[]).forEach(function(a){h+='<div style="font-size:10.5px;color:#fbbf24;text-align:left;margin-top:2px">⚠ '+escH(a)+'</div>';});
+  const S=x.sugerido,V=x.venda||{},A=x.anuncio||{};
+  const pc=function(v){return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:0})+'%';};
+  const chip=function(txt,cor,tit){return '<span title="'+escH(tit||'')+'" style="display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:9px;background:'+cor+';color:#fff;white-space:nowrap">'+txt+'</span>';};
+  // detalhes so no passar o mouse
+  const det='Repasse pela fórmula: '+dreBRL(S.repasse_formula)+'/un\nTarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot'
+    +(A.em_promocao?'\nAnúncio em promoção'+(A.promocao&&A.promocao.tipo?' ('+A.promocao.tipo+')':'')+': tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador):'')
+    +((S.avisos||[]).length?'\n\n'+S.avisos.join('\n'):'');
+  const promoHoje=A.em_promocao&&S.preco_tabela&&S.preco_tabela>S.preco+0.005;
+  let h=pre+'<div title="'+escH(det)+'" style="cursor:help;line-height:1.25"><span style="font-size:15px;font-weight:800">'+dreBRL(S.preco)+'</span>'
+    +(promoHoje?'<div style="font-size:11px;color:var(--muted)">tabela '+dreBRL(S.preco_tabela)+'</div>':'')+'</div>';
+  // venda / hoje numa linha
+  const vTag=V.erro?'':(V.em_promocao?chip('venda −'+pc(V.desconto_pct),'#d97706','Vendida em promoção: '+dreBRL(V.pago)+' (tabela '+dreBRL(V.cheio)+')'):chip('venda cheia','#16a34a','Vendida a '+dreBRL(V.pago)+', sem promoção'));
+  const hTag=A.erro?chip('anúncio?','#dc2626',A.erro):(A.em_promocao?chip('hoje −'+pc((1-A.comprador/A.tabela)*100),'#d97706','Em promoção agora: tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador)):chip('hoje sem promo','#16a34a','Preço de tabela '+dreBRL(A.tabela)));
+  const fretePct=Number(V.pago)>0?S.frete/Number(V.pago)*100:0;
+  const fTag=fretePct>30?chip('frete '+pc(fretePct),'#b91c1c','Frete de '+dreBRL(S.frete)+' = '+pc(fretePct)+' da venda: confira peso/medidas do anúncio'):'';
+  h+='<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;margin-top:3px">'+vTag+hTag+fTag+'</div>';
   if(!A.erro){
-    if(Number(A.comprador)>=S.preco-0.005)h+='<div style="font-size:11.5px;color:var(--up);margin-top:4px">preço de hoje já cobre o piso</div>';
-    else if(podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+S.preco+')" style="margin-top:5px;padding:4px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:12px">Efetivar preço</button>';
+    if(Number(A.comprador)>=S.preco-0.005)h+='<div style="font-size:11px;color:var(--up);margin-top:3px">preço de hoje já cobre</div>';
+    else if(podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+(S.preco_tabela||S.preco)+')" style="margin-top:4px;padding:3px 9px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:11.5px">Efetivar preço</button>';
   }
   return h;
 }
 async function ocelotEfetivarPreco(itemId,orderId,preco){
   const x=OCELOT_SUG.itens[orderId+'|'+itemId]||{},A=x.anuncio||{};
-  let msg='Mudar o preço do anúncio '+itemId+' no Mercado Livre?\n\nPreço de tabela hoje: '+dreBRL(A.tabela)+'\nNovo preço: '+dreBRL(preco);
-  if(A.em_promocao)msg+='\n\nATENÇÃO: o anúncio está em promoção (comprador paga '+dreBRL(A.comprador)+'). O novo valor vira o preço de tabela; o ML pode tirar o anúncio da promoção ou manter o desconto sobre o novo preço.';
+  let msg='Mudar o preço de tabela do anúncio '+itemId+' no Mercado Livre?\n\nHoje: '+dreBRL(A.tabela)+'\nNovo: '+dreBRL(preco);
+  if(A.em_promocao)msg+='\n\nO anúncio está em promoção (hoje: tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador)+'). Com o mesmo desconto, o comprador passa a pagar ~'+dreBRL(preco*A.comprador/A.tabela)+'. Se o ML tirar o anúncio da promoção, ele paga a tabela cheia.';
   const v=prompt(msg+'\n\nConfirme ou ajuste o preço:',String(preco.toFixed(2)).replace('.',','));
   if(v==null)return;
   const novo=Number(String(v).replace(/\./g,'').replace(',','.'));
@@ -1370,7 +1373,7 @@ function htmlOcelotSintetica(){
     return '<tr><td style="'+st+'text-align:left">'+rot+(origem?tag(origem):'')+(obs?'<div style="font-size:11.5px;color:var(--muted);font-weight:400;margin-top:2px">'+obs+'</div>':'')+'</td><td style="'+sv+cor+'">'+dreBRL(v)+'</td><td style="'+sv+'">'+pctT(v)+'</td></tr>';
   }
   function secao(t){return '<tr><th colspan="3" style="text-align:left;padding:9px 12px;font-size:12px;letter-spacing:.5px;color:var(--muted);background:var(--panel2,transparent);border-bottom:2px solid var(--line)">'+t+'</th></tr>';}
-  function card(rot,val,sub,cor){return '<div style="flex:1;min-width:190px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel)"><div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">'+rot+'</div><div style="font-size:22px;font-weight:700;margin-top:4px;'+(cor||'')+'">'+val+'</div><div style="font-size:12px;color:var(--muted);margin-top:2px">'+(sub||'')+'</div></div>';}
+  function card(rot,val,sub,cor){return '<div style="flex:1;min-width:150px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel)"><div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">'+rot+'</div><div style="font-size:22px;font-weight:700;margin-top:4px;'+(cor||'')+'">'+val+'</div><div style="font-size:12px;color:var(--muted);margin-top:2px">'+(sub||'')+'</div></div>';}
   const boxSt='flex:1;min-width:290px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--panel);font-size:13px;line-height:1.75';
   const fmtPct=function(v){return String(v.toFixed(1)).replace('.',',')+'%';};
 

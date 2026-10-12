@@ -100,7 +100,25 @@ export async function tokenML(admin: SupabaseClient, contaId: string): Promise<s
   return (cacheToken[contaId] = t.access_token);
 }
 
+// TRAVA ANTI-EXCLUSAO (12/10/2026, pedido do Tiago): nenhuma function do painel pode excluir ou encerrar
+// anuncio no ML. Toda chamada ao ML passa por ml(); aqui e recusada, antes de sair, qualquer escrita em
+// /items que seja DELETE ou que leve status closed/deleted ou "deleted": true. Excluir anuncio so pelo
+// proprio Mercado Livre.
+export function escritaProibida(caminho: string, init: RequestInit): string | null {
+  const metodo = String(init.method || "GET").toUpperCase();
+  if (metodo === "GET" || !/^\/items(\/|\?|$)/.test(caminho)) return null;
+  if (metodo === "DELETE") return "excluir anuncio pelo painel e proibido";
+  let corpo: any = null;
+  try { corpo = typeof init.body === "string" ? JSON.parse(init.body) : null; } catch { return "corpo de escrita em /items ilegivel"; }
+  const proibido = (o: any) => o && (o.deleted === true || ["closed", "deleted"].includes(String(o.status || "").toLowerCase()));
+  if (proibido(corpo) || (Array.isArray(corpo?.variations) && corpo.variations.some(proibido)))
+    return "encerrar/excluir anuncio pelo painel e proibido";
+  return null;
+}
+
 export async function ml(admin: SupabaseClient, contaId: string, caminho: string, init: RequestInit = {}) {
+  const proib = escritaProibida(caminho, init);
+  if (proib) return { status: 403, ok: false, json: { message: `trava do painel: ${proib}` } };
   const t = await tokenML(admin, contaId);
   const r = await fetch(`${ML_API}${caminho}`, {
     ...init,

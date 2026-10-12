@@ -1,3 +1,5 @@
+// v4 (12/10/2026): efetivar passa a ser chamado pela aba Cadastro (preco por anuncio, saiu da aba Repasse) e
+//   exige a permissao alterar_ml, a mesma da troca de SKU, situacao e estoque (tudo que escreve no anuncio do ML).
 // v3 (12/10/2026): o sugerido e sempre o preco de TABELA, sem descontar promocao (a promocao so e indicada).
 // v2 (12/10/2026): venda abaixo da tabela de hoje = promocao (campanha do ML); com promocao ativa sugere o
 //   preco de TABELA que, com o desconto atual, faz o comprador pagar o sugerido (o botao grava esse).
@@ -10,7 +12,7 @@
 //   * sugerido: menor preco (final ,90) em que liquido - rp% x preco >= R$ 40/un, ou seja, o repasse pela
 //     formula ja cobre o piso e a Ocelot fica com a margem padrao (rp%). Tarifa pela tabela do ML
 //     (/sites/MLB/listing_prices, com a taxa fixa abaixo de R$ 79); frete = o frete por unidade desta venda.
-// POST { acao:"efetivar", item_id, preco, order_id? }  (permissao editar_cadastro)
+// POST { acao:"efetivar", item_id, preco, order_id? }  (permissao alterar_ml -- v4: era editar_cadastro)
 //   Muda o preco de tabela do anuncio no ML (PUT /items/{id}), confere relendo o anuncio e grava em
 //   ocelot_precos_log (quem, quando, de quanto para quanto, resposta do ML).
 // Token do ML so no servidor. Leitura com permissao "ocelot".
@@ -142,7 +144,7 @@ Deno.serve(async (req) => {
   }
 
   if (body.acao === "efetivar") {
-    const u = await exigirUsuario(admin, req, "editar_cadastro");
+    const u = await exigirUsuario(admin, req, "alterar_ml");
     if (u instanceof Response) return u;
     if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
     const itemId = String(body.item_id || "");

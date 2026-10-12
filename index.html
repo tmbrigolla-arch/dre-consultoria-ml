@@ -3294,7 +3294,7 @@ function aeRender(){
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
     h+='<tr><td class="l" style="white-space:nowrap">'+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
       +'<td class="l" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'
-      +'<td class="l" style="white-space:nowrap"><a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>'+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
+      +'<td class="l" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
       +'<td class="l" style="min-width:260px">'+itens+'</td>'
       +'<td>'+dvN(p.quantidade)+'</td><td>'+dvR(p.valor)+'</td>'
       +'<td>'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'

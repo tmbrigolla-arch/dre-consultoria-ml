@@ -22,7 +22,7 @@
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
-const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink";
+const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
 const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
 async function contaOk(admin: any, uid: string) {
@@ -42,6 +42,7 @@ function resumo(b: any) {
     preco: b.price == null ? null : Number(b.price),
     estoque: vars.length ? vars.reduce((s: number, v: any) => s + v.estoque, 0) : Number(b.available_quantity ?? 0),
     variacoes: vars, full: b.shipping?.logistic_type === "fulfillment", permalink: b.permalink || null,
+    user_product_id: b.user_product_id || null, family_id: b.family_id ?? null,
   };
 }
 

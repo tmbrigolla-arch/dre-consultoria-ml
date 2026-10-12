@@ -1106,24 +1106,22 @@ function ocelotSugHtml(it,multi,podeEd){
   if(!x||!x.sugerido)return pre+'<span style="font-size:12px;color:var(--down)">'+escH(OCELOT_SUG.erro||'sem resposta do ML')+'</span>';
   const S=x.sugerido,V=x.venda||{},A=x.anuncio||{};
   const pc=function(v){return Number(v).toLocaleString('pt-BR',{maximumFractionDigits:0})+'%';};
-  const chip=function(txt,cor,tit){return '<span title="'+escH(tit||'')+'" style="display:inline-block;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:9px;background:'+cor+';color:#fff;white-space:nowrap">'+txt+'</span>';};
   // detalhes so no passar o mouse
-  const det='Repasse pela fórmula: '+dreBRL(S.repasse_formula)+'/un\nTarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot'
+  const det=(A.em_promocao?'Com a promoção atual o cliente paga '+dreBRL(S.preco)+' no preço sugerido\n':'')+'Repasse pela fórmula: '+dreBRL(S.repasse_formula)+'/un\nTarifa '+dreBRL(S.tarifa)+' · frete '+dreBRL(S.frete)+' · '+String(S.rp).replace('.',',')+'% Ocelot'
     +(A.em_promocao?'\nAnúncio em promoção'+(A.promocao&&A.promocao.tipo?' ('+A.promocao.tipo+')':'')+': tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador):'')
     +((S.avisos||[]).length?'\n\n'+S.avisos.join('\n'):'');
-  const promoHoje=A.em_promocao&&S.preco_tabela&&S.preco_tabela>S.preco+0.005;
-  let h=pre+'<div title="'+escH(det)+'" style="cursor:help;line-height:1.25"><span style="font-size:15px;font-weight:800">'+dreBRL(S.preco)+'</span>'
-    +(promoHoje?'<div style="font-size:11px;color:var(--muted)">tabela '+dreBRL(S.preco_tabela)+'</div>':'')+'</div>';
-  // venda / hoje numa linha
-  const vTag=V.erro?'':(V.em_promocao?chip('venda −'+pc(V.desconto_pct),'#d97706','Vendida em promoção: '+dreBRL(V.pago)+' (tabela '+dreBRL(V.cheio)+')'):chip('venda cheia','#16a34a','Vendida a '+dreBRL(V.pago)+', sem promoção'));
-  const hTag=A.erro?chip('anúncio?','#dc2626',A.erro):(A.em_promocao?chip('hoje −'+pc((1-A.comprador/A.tabela)*100),'#d97706','Em promoção agora: tabela '+dreBRL(A.tabela)+', comprador paga '+dreBRL(A.comprador)):chip('hoje sem promo','#16a34a','Preço de tabela '+dreBRL(A.tabela)));
+  // 12/10/2026 (pedido do Tiago): preco atual do anuncio -> preco sugerido (os dois de tabela, o que o botao
+  // grava) e uma frase dizendo se a venda foi em promocao ou pelo preco de tabela.
+  const sugTab=S.preco_tabela||S.preco, cobre=!A.erro&&Number(A.comprador)>=S.preco-0.005;
+  let h=pre+'<div title="'+escH(det)+'" style="cursor:help;white-space:nowrap">'
+    +(A.erro?'<span style="font-size:12px;color:var(--down)">'+escH(A.erro)+'</span>'
+      :cobre?'<span style="font-size:14px;font-weight:800">'+dreBRL(A.tabela)+'</span> <span style="font-size:11px;color:var(--up)">já cobre</span>'
+      :'<span style="font-size:12.5px;color:var(--muted)">'+dreBRL(A.tabela)+'</span> → <span style="font-size:15px;font-weight:800">'+dreBRL(sugTab)+'</span>')+'</div>';
+  if(!V.erro)h+='<div style="font-size:11px;margin-top:2px;color:'+(V.em_promocao?'#f59e0b':'var(--up)')+'">'
+    +(V.em_promocao?'Venda em promoção (−'+pc(V.desconto_pct)+'): '+dreBRL(V.pago):'Venda pelo preço de tabela: '+dreBRL(V.pago))+'</div>';
   const fretePct=Number(V.pago)>0?S.frete/Number(V.pago)*100:0;
-  const fTag=fretePct>30?chip('frete '+pc(fretePct),'#b91c1c','Frete de '+dreBRL(S.frete)+' = '+pc(fretePct)+' da venda: confira peso/medidas do anúncio'):'';
-  h+='<div style="display:flex;gap:3px;flex-wrap:wrap;justify-content:flex-end;margin-top:3px">'+vTag+hTag+fTag+'</div>';
-  if(!A.erro){
-    if(Number(A.comprador)>=S.preco-0.005)h+='<div style="font-size:11px;color:var(--up);margin-top:3px">preço de hoje já cobre</div>';
-    else if(podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+(S.preco_tabela||S.preco)+')" style="margin-top:4px;padding:3px 9px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:11.5px">Efetivar preço</button>';
-  }
+  if(fretePct>30)h+='<div title="Frete de '+escH(dreBRL(S.frete))+' = '+pc(fretePct)+' da venda: confira peso/medidas do anúncio" style="font-size:11px;color:#f87171;cursor:help">⚠ frete '+pc(fretePct)+' da venda</div>';
+  if(!A.erro&&!cobre&&podeEd)h+='<button onclick="ocelotEfetivarPreco(\''+it.item_id+'\',\''+it.order_id+'\','+sugTab+')" style="margin-top:4px;padding:3px 9px;border-radius:6px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:11.5px">Efetivar preço</button>';
   return h;
 }
 async function ocelotEfetivarPreco(itemId,orderId,preco){

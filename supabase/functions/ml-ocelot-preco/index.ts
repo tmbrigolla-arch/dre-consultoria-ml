@@ -1,3 +1,5 @@
+// v2 (12/10/2026): venda abaixo da tabela de hoje = promocao (campanha do ML); com promocao ativa sugere o
+//   preco de TABELA que, com o desconto atual, faz o comprador pagar o sugerido (o botao grava esse).
 // ml-ocelot-preco v1 (12/10/2026) - preco sugerido das vendas pagas pelo piso (aba Repasse a fornecedores).
 //
 // POST { acao:"consultar", rp, itens:[{order_id,item_id,quantidade,valor_venda,taxa_ml,frete_vendedor}] }
@@ -100,6 +102,12 @@ Deno.serve(async (req) => {
       } catch (e) { res.venda = { erro: String((e as Error).message || e) }; }
       const an = anuncios[x.item_id] || {};
       res.anuncio = an;
+      // v2: campanha do ML (marketplace_campaign) nao vem no full_unit_price do pedido. Se o preco pago ficou
+      // abaixo do preco de tabela de hoje, a venda e tratada como promocao (desconto contra a tabela).
+      const V = res.venda;
+      if (V && !V.erro && !V.em_promocao && an.tabela && Number(an.tabela) - V.pago >= 0.01) {
+        V.em_promocao = true; V.cheio = Number(an.tabela); V.desconto_pct = r2((1 - V.pago / V.cheio) * 100); V.pela_tabela = true;
+      }
       // preco sugerido: liquido(P) - rp% P = 40 -> P - tarifa(P) - frete - rp% P = 40
       const pctProp = precoUn > 0 ? taxaUn / precoUn : 0.14; // fallback: tarifa proporcional a desta venda
       const liq = async (p: number) => {
@@ -125,8 +133,16 @@ Deno.serve(async (req) => {
         avisos.push(sug >= FRETE_GRATIS_MIN ? "acima de R$ 79 o ML passa a cobrar o frete grátis do vendedor: o frete usado (desta venda) deve subir" : "abaixo de R$ 79 o frete do vendedor muda: o frete usado (desta venda) é só referência");
       if (freteUn > 0 && precoUn > 0 && freteUn / precoUn > 0.3)
         avisos.push(`frete de ${r2(freteUn).toFixed(2).replace(".", ",")} = ${Math.round(freteUn / precoUn * 100)}% da venda: confira peso/medidas do anúncio`);
-      if (an.em_promocao) avisos.push("anúncio em promoção agora: o botão muda o preço de tabela; o comprador paga o preço da promoção e o ML pode tirar o anúncio dela");
-      res.sugerido = { preco: r2(sug), tarifa: r2(l.t), frete: r2(freteUn), repasse_formula: r2(l.r), rp, tarifa_tabela_ml: tarifaReal, avisos };
+      if (an.em_promocao) avisos.push("tabela calculada com o desconto atual da promoção; se o ML tirar o anúncio dela, o comprador paga a tabela cheia");
+      // v2: anuncio em promocao -> o preco a gravar e o de TABELA; com o desconto atual (mesma proporcao) o
+      // comprador paga o sugerido. Ex.: campanha -5%, sugerido 193,90 -> tabela 204,90.
+      let precoTabela = r2(sug);
+      if (an.em_promocao && Number(an.tabela) > 0 && Number(an.comprador) > 0) {
+        const fator = Number(an.comprador) / Number(an.tabela);
+        precoTabela = final90(sug / fator);
+        while (precoTabela * fator < sug - 0.005) precoTabela += 1;
+      }
+      res.sugerido = { preco: r2(sug), preco_tabela: r2(precoTabela), tarifa: r2(l.t), frete: r2(freteUn), repasse_formula: r2(l.r), rp, tarifa_tabela_ml: tarifaReal, avisos };
       out.push(res);
     });
     return json({ ok: true, itens: out });

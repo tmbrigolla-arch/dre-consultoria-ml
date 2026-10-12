@@ -19,6 +19,10 @@
 //   (b) "excluido" so tira do cadastro apos 2a leitura individual confirmar; (c) mais de 10 (ou 5%) de uma vez
 //   ficam pendentes ate alguem confirmar na tela (POST sincronizar com confirmar_exclusoes:[ids]);
 //   (d) anuncio marcado que volta a existir no ML e restaurado sozinho.
+// v3 (12/10/2026): o estoque no ML e o LIMITE que o Tiago define (quem tem o produto e o fornecedor; quando
+//   ele nao tem, o Tiago limita). Anuncios do mesmo produto do vendedor (user_product_id, uma cor) dividem o
+//   estoque no ML. POST { acao:"estoque_lote", item_ids, quantidade } grava o mesmo limite em todas as cores
+//   de um SKU (uma gravacao por produto).
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
@@ -54,6 +58,32 @@ async function lerItem(admin: any, itemId: string) {
 
 async function log(admin: any, linha: Record<string, unknown>) {
   await admin.from("ocelot_anuncios_log").insert({ conta_id: OCELOT_CONTA, ...linha });
+}
+
+// Grava o estoque de UM anuncio (ja lido em "antes"), confere relendo e registra no log.
+async function gravarEstoque(admin: any, itemId: string, antes: any, quantidade: any, variacaoId: any, uid: string) {
+  const q = Number(quantidade);
+  if (!Number.isInteger(q) || q < 0 || q > 99999) return { http: 400, corpo: { ok: false, erro: "quantidade invalida (inteiro de 0 a 99999)" } };
+  if (antes.full) return { http: 409, corpo: { ok: false, erro: "anúncio no Full: o estoque é o que está no armazém do ML, não dá para alterar aqui", antes } };
+  let corpo: any, vid: number | null = null, qAntes: number;
+  if (antes.variacoes.length) {
+    vid = Number(variacaoId);
+    const alvo = antes.variacoes.find((v: any) => v.id === vid);
+    if (!alvo) return { http: 400, corpo: { ok: false, erro: "anúncio com variações: escolha a variação", antes } };
+    qAntes = alvo.estoque;
+    corpo = { variations: antes.variacoes.map((v: any) => ({ id: v.id, available_quantity: v.id === vid ? q : v.estoque })) };
+  } else {
+    qAntes = antes.estoque;
+    corpo = { available_quantity: q };
+  }
+  if (qAntes === q) return { http: 200, corpo: { ok: true, antes, depois: antes } };
+  const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify(corpo) });
+  const depois: any = r.ok ? await lerItem(admin, itemId) : null;
+  const qDepois = depois && !depois.erro ? (vid != null ? (depois.variacoes.find((v: any) => v.id === vid)?.estoque ?? null) : depois.estoque) : null;
+  const ok = r.ok && qDepois === q;
+  await log(admin, { item_id: itemId, tipo: "estoque", variacao_id: vid, antes: String(qAntes), depois: String(q), usuario_id: uid, ok, resposta: r.ok ? null : erroML(r) });
+  if (!r.ok) return { http: 502, corpo: { ok: false, erro: erroML(r), antes } };
+  return { http: 200, corpo: { ok, antes, depois, aviso: ok ? null : "o ML aceitou, mas o estoque relido ainda não é o novo (pode levar alguns minutos)" } };
 }
 
 Deno.serve(async (req) => {
@@ -158,29 +188,38 @@ Deno.serve(async (req) => {
     }
 
     // estoque
-    const q = Number(body.quantidade);
-    if (!Number.isInteger(q) || q < 0 || q > 99999) return json({ ok: false, erro: "quantidade invalida (inteiro de 0 a 99999)" }, 400);
-    if (antes.full) return json({ ok: false, erro: "anúncio no Full: o estoque é o que está no armazém do ML, não dá para alterar aqui", antes }, 409);
-    let corpo: any, vid: number | null = null, qAntes: number;
-    if (antes.variacoes.length) {
-      vid = Number(body.variacao_id);
-      const alvo = antes.variacoes.find((v: any) => v.id === vid);
-      if (!alvo) return json({ ok: false, erro: "anúncio com variações: escolha a variação", antes }, 400);
-      qAntes = alvo.estoque;
-      corpo = { variations: antes.variacoes.map((v: any) => ({ id: v.id, available_quantity: v.id === vid ? q : v.estoque })) };
-    } else {
-      qAntes = antes.estoque;
-      corpo = { available_quantity: q };
-    }
-    if (qAntes === q) return json({ ok: true, antes, depois: antes });
-    const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify(corpo) });
-    const depois: any = r.ok ? await lerItem(admin, itemId) : null;
-    const qDepois = depois && !depois.erro ? (vid != null ? (depois.variacoes.find((v: any) => v.id === vid)?.estoque ?? null) : depois.estoque) : null;
-    const ok = r.ok && qDepois === q;
-    await log(admin, { item_id: itemId, tipo: "estoque", variacao_id: vid, antes: String(qAntes), depois: String(q), usuario_id: u.id, ok, resposta: r.ok ? null : erroML(r) });
-    if (!r.ok) return json({ ok: false, erro: erroML(r), antes }, 502);
-    return json({ ok, antes, depois, aviso: ok ? null : "o ML aceitou, mas o estoque relido ainda não é o novo (pode levar alguns minutos)" });
+    const x = await gravarEstoque(admin, itemId, antes, body.quantidade, body.variacao_id, u.id);
+    return json(x.corpo, x.http);
   }
 
-  return json({ ok: false, erro: "acao invalida (use sincronizar|status|estoque)" }, 400);
+  if (body.acao === "estoque_lote") {
+    // v3: o mesmo limite em varios anuncios (todas as cores de um SKU). Anuncios do mesmo produto do
+    // vendedor (user_product_id) dividem o estoque no ML: grava em UM deles por produto e o ML replica.
+    const u = await exigirUsuario(admin, req, "alterar_ml");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const ids = Array.from(new Set((Array.isArray(body.item_ids) ? body.item_ids : []).map((x: any) => String(x).trim().toUpperCase())))
+      .filter((x) => /^MLB\d+$/.test(x)).slice(0, 60);
+    if (!ids.length) return json({ ok: false, erro: "informe item_ids" }, 400);
+    const lidos: any[] = [];
+    for (let i = 0; i < ids.length; i += 20) {
+      const r = await ml(admin, OCELOT_CONTA, `/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=${CAMPOS}`);
+      if (!r.ok || !Array.isArray(r.json)) return json({ ok: false, erro: erroML(r) }, 502);
+      for (const e of r.json) if (e?.code === 200 && e.body?.id) lidos.push(resumo(e.body));
+    }
+    const resultados: any[] = [], feitos = new Set<string>();
+    for (const it of lidos) {
+      const grupo = it.user_product_id || it.item_id;
+      if (feitos.has(grupo)) { resultados.push({ item_id: it.item_id, ok: true, pulado: "mesmo produto de outro anúncio já gravado (estoque compartilhado)" }); continue; }
+      if (it.status === "closed") { resultados.push({ item_id: it.item_id, ok: false, erro: "encerrado" }); continue; }
+      if (it.full) { resultados.push({ item_id: it.item_id, ok: false, erro: "Full: estoque do ML" }); continue; }
+      if (it.variacoes.length) { resultados.push({ item_id: it.item_id, ok: false, erro: "tem variações: ajuste por variação" }); continue; }
+      const x = await gravarEstoque(admin, it.item_id, it, body.quantidade, null, u.id);
+      if (x.corpo.ok || x.corpo.depois) feitos.add(grupo);
+      resultados.push({ item_id: it.item_id, ok: !!x.corpo.ok, erro: x.corpo.erro || x.corpo.aviso || null, depois: x.corpo.depois || null });
+    }
+    return json({ ok: resultados.every((r) => r.ok), resultados });
+  }
+
+  return json({ ok: false, erro: "acao invalida (use sincronizar|status|estoque|estoque_lote)" }, 400);
 });

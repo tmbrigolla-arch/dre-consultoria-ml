@@ -1898,8 +1898,9 @@ function ocelotLiveInfo(){
 function ocelotEstoqueLinha(l){
   if(!OCELOT_LIVE.lidoEm)return null;
   const ids=l.tipo==='sku'?(l.anuncios||[]).map(function(a){return a.item_id;}):[l.chave];
-  let t=0,achou=false;
-  ids.forEach(function(id){const v=OCELOT_LIVE.itens[id];if(v&&v.status!=='closed'){t+=Number(v.estoque||0);achou=true;}});
+  // anuncios do mesmo produto do vendedor (user_product_id = uma cor) dividem o estoque no ML: conta 1x
+  let t=0,achou=false; const vistos={};
+  ids.forEach(function(id){const v=OCELOT_LIVE.itens[id];if(!v||v.status==='closed')return;const g=v.user_product_id||id;if(vistos[g])return;vistos[g]=1;t+=Number(v.estoque||0);achou=true;});
   return achou?t:null;
 }
 function ocelotStatusCell(id){
@@ -1921,6 +1922,8 @@ function ocelotEstoqueCell(id){
   let h='';
   if(v.variacoes&&v.variacoes.length)v.variacoes.forEach(function(x){h+=inp(x.id,x.estoque,String(x.nome).slice(0,18));});
   else h=inp(null,v.estoque,'');
+  let irm=0; if(v.user_product_id)for(const k in OCELOT_LIVE.itens)if(k!==id&&OCELOT_LIVE.itens[k].user_product_id===v.user_product_id&&OCELOT_LIVE.itens[k].status!=='closed')irm++;
+  if(irm)h+='<div style="font-size:10px;color:var(--muted)" title="Mesmo produto no ML: o estoque é um só para estes anúncios">compartilhado c/ '+irm+' anúncio(s)</div>';
   return h+'<div id="esst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
 }
 function ocelotPrecoCell(a){
@@ -1944,8 +1947,28 @@ async function ocelotAnunciosPost(corpo){
 // grava o anuncio relido do ML na leitura ao vivo e no cache, e repinta mantendo a tela
 function ocelotLiveAtualiza(id,depois){
   if(!depois||depois.erro)return;
-  OCELOT_LIVE.itens[id]=depois; OCELOT_LIVE.aplicadoEm=null; ocelotLiveAplica();
+  OCELOT_LIVE.itens[id]=depois; OCELOT_LIVE.aplicadoEm=null;
+  // os outros anuncios do mesmo produto do vendedor dividem o estoque: o ML ja replicou
+  if(depois.user_product_id&&!(depois.variacoes&&depois.variacoes.length))for(const k in OCELOT_LIVE.itens){const o=OCELOT_LIVE.itens[k];if(k!==id&&o.user_product_id===depois.user_product_id)o.estoque=depois.estoque;}
+  ocelotLiveAplica();
   setTimeout(renderOcelotBodyMantendoTela,900);
+}
+async function ocelotEstoqueLote(k,qFixo){
+  const l=OCELOT_LINHAS[k]; if(!l)return;
+  const inp=document.getElementById('lote_'+k), st=document.getElementById('lotest_'+k);
+  const q=qFixo!=null?qFixo:Number(String(inp?inp.value:'').trim());
+  if(!Number.isInteger(q)||q<0){alert('Informe um número inteiro (0 ou mais).');return;}
+  const ids=(l.anuncios||[]).map(function(a){return a.item_id;}).filter(function(id){const v=OCELOT_LIVE.itens[id];return v&&v.status!=='closed'&&!v.full;});
+  if(!ids.length)return;
+  if(!confirm('Definir o estoque de TODAS as cores/produtos do SKU '+l.chave+' em '+q+' no Mercado Livre?'+(q===0?'\n\nCom estoque 0 o ML pausa os anúncios até você colocar estoque de novo.':'')+'\n\n'+ids.length+' anúncio(s).'))return;
+  if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
+  try{
+    const x=await ocelotAnunciosPost({acao:'estoque_lote',item_ids:ids,quantidade:q});
+    if(!x.r.ok&&!x.j.resultados){if(st){st.textContent=x.j.erro||('erro '+x.r.status);st.style.color='#f87171';}return;}
+    const R=x.j.resultados||[], falhas=R.filter(function(r){return !r.ok;});
+    R.forEach(function(r){if(r.depois)ocelotLiveAtualiza(r.item_id,r.depois);});
+    if(st){st.textContent=falhas.length?('gravado, mas '+falhas.length+' não: '+falhas.map(function(f){return f.item_id+' ('+f.erro+')';}).join('; ')):'gravado no ML';st.style.color=falhas.length?'#fbbf24':'#34d399';}
+  }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}}
 }
 async function ocelotTrocaStatus(id){
   const v=OCELOT_LIVE.itens[id]; if(!v)return;
@@ -2140,6 +2163,16 @@ function htmlExpansaoLinha(l){
   if(l.tipo==='sku'){
     const an=l.anuncios||[];
     h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncios com este SKU ('+an.length+')</div>';
+    if(an.length&&pode('alterar_ml')&&OCELOT_LIVE.lidoEm){
+      const ups={};an.forEach(function(a){const v=OCELOT_LIVE.itens[a.item_id];if(v&&v.status!=='closed'&&!v.full)ups[v.user_product_id||a.item_id]=1;});
+      const nUp=Object.keys(ups).length;
+      if(nUp)h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;margin:4px 0 8px;padding:6px 10px;border:1px dashed var(--line);border-radius:8px">'
+        +'<span>Limitar estoque de <b>todas as '+nUp+' cor(es)/produto(s)</b> deste SKU:</span>'
+        +'<input id="lote_'+l.k+'" type="number" min="0" step="1" placeholder="qtd" onclick="event.stopPropagation()" style="width:70px;text-align:right;padding:2px 5px;font-size:12px">'
+        +'<button onclick="event.stopPropagation();ocelotEstoqueLote(\''+l.k+'\',null)" style="padding:3px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px">Aplicar</button>'
+        +'<button onclick="event.stopPropagation();ocelotEstoqueLote(\''+l.k+'\',0)" style="padding:3px 10px;border-radius:6px;border:1px solid #f87171;background:transparent;color:#f87171;cursor:pointer;font-size:12px">Zerar todas</button>'
+        +'<span id="lotest_'+l.k+'" style="font-size:11px"></span></div>';
+    }
     if(!an.length)h+='<div style="font-size:12px;color:var(--muted)">Nenhum an&uacute;ncio na &uacute;ltima coleta.</div>';
     else{
       h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';

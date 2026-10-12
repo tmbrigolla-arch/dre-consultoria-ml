@@ -333,6 +333,9 @@
   .dv-sec .sub{font-size:12px;color:var(--muted);margin:-6px 0 10px}
   .dv-sec table{table-layout:auto}
   .dv-sec td.l,.dv-sec th.l{text-align:left;white-space:normal}
+  .dv-sec a.ae-prod{color:#60a5fa;font-weight:600;text-decoration:underline;text-underline-offset:2px}
+  .dv-sec a.ae-prod:hover{color:#93c5fd}
+  .dv-sec a.ae-prod::after{content:" \2197";font-size:.85em;text-decoration:none;display:inline-block}
   .dv-fora{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
   .dv-fora > div{border:1px dashed var(--line);background:var(--panel2);border-radius:10px;padding:10px 12px;font-size:13px}
   .dv-fora b{font-size:16px}
@@ -3287,7 +3290,7 @@ function aeRender(){
     let prazo='';
     if(!desp&&d){const n=Math.round((dvDe(d)-dvDe(hoje))/86400000);prazo=n<0?'<span class="dv-neg"><b>atrasada '+(-n)+'d</b></span>':n===0?'<b style="color:#f59e0b">hoje</b>':n===1?'amanhã':'em '+n+' dias';}
     else if(desp)prazo='<span style="color:var(--muted)">despachada</span>';
-    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a href="'+escH(it.link)+'" target="_blank" rel="noopener">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
+    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
     h+='<tr><td class="l" style="white-space:nowrap">'+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
       +'<td class="l" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'

@@ -1848,7 +1848,7 @@ function statusPt(s){const m={active:'ativo',paused:'pausado',closed:'encerrado'
      (permissao alterar_ml, a mesma da troca de SKU). Preco usa o ml-ocelot-preco (trava de faixa segura).
    A leitura vale 5 min: salvar custo recarrega o cache e reaplica a mesma leitura sem chamar o ML de novo.
    ============================================================ */
-let OCELOT_LIVE={itens:{},lidoEm:0,carregando:false,erro:null,aplicadoEm:null,excluidos:[],excluidosIds:[]};
+let OCELOT_LIVE={itens:{},lidoEm:0,carregando:false,erro:null,aplicadoEm:null,excluidos:[],excluidosIds:[],pendentes:[],confirmar:null};
 function ocelotLiveAplica(){
   const D=OCELOT_CACHE; if(!D||OCELOT_LIVE.aplicadoEm===D||!OCELOT_LIVE.lidoEm)return;
   OCELOT_LIVE.aplicadoEm=D;
@@ -1870,11 +1870,12 @@ function ocelotLiveGarante(){
   (async function(){
     try{
       const {data:{session}}=await sb.auth.getSession();
-      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-anuncios',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({acao:'sincronizar'})});
+      const corpo={acao:'sincronizar'}; if(OCELOT_LIVE.confirmar){corpo.confirmar_exclusoes=OCELOT_LIVE.confirmar;OCELOT_LIVE.confirmar=null;}
+      const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-anuncios',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(corpo)});
       const j=await r.json().catch(function(){return {};});
       if(!r.ok||!j.ok){OCELOT_LIVE.erro=j.erro||('erro '+r.status);}
       else{
-        OCELOT_LIVE.itens=j.itens||{}; OCELOT_LIVE.excluidos=OCELOT_LIVE.excluidos.concat(j.excluidos||[]); OCELOT_LIVE.excluidosIds=j.excluidos_ids||[];
+        OCELOT_LIVE.itens=j.itens||{}; OCELOT_LIVE.excluidos=OCELOT_LIVE.excluidos.concat(j.excluidos||[]); OCELOT_LIVE.excluidosIds=j.excluidos_ids||[]; OCELOT_LIVE.pendentes=j.exclusoes_pendentes||[];
         OCELOT_LIVE.lidoEm=Date.now(); OCELOT_LIVE.aplicadoEm=null;
         if(j.lotes_com_erro)OCELOT_LIVE.erro=j.lotes_com_erro+' lote(s) sem resposta do ML';
       }
@@ -1889,7 +1890,9 @@ function ocelotLiveInfo(){
   if(!OCELOT_LIVE.lidoEm)return '';
   const h=new Date(OCELOT_LIVE.lidoEm).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   const n=OCELOT_LIVE.excluidos.length;
-  return 'Situação, estoque e preço <b>ao vivo do ML</b> (lido às '+h+')'+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
+  const P=OCELOT_LIVE.pendentes;
+  const pend=P.length?'<div style="margin:6px 0;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5)"><b>Trava:</b> o ML diz que <b>'+P.length+' anúncios</b> foram excluídos de uma vez. Por segurança <b>nada foi tirado do cadastro</b> — confira no Mercado Livre antes de confirmar.<div style="font-size:11.5px;color:var(--muted);margin:4px 0">'+P.slice(0,30).map(function(x){return escH(x.item_id);}).join(', ')+(P.length>30?' …':'')+'</div>'+(pode('alterar_ml')?'<button onclick="ocelotConfirmaExclusoes()" style="padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;background:transparent;color:#fbbf24;cursor:pointer;font-size:12px">Confirmo: tirar estes '+P.length+' do cadastro</button>':'')+'</div>':'';
+  return pend+'Situação, estoque e preço <b>ao vivo do ML</b> (lido às '+h+')'+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
 }
 // estoque somado dos anuncios de uma linha do cadastro (null = ainda sem leitura do ML)
 function ocelotEstoqueLinha(l){
@@ -1925,6 +1928,12 @@ function ocelotPrecoCell(a){
   if(!v||v.status==='closed'||!pode('alterar_ml'))return precoTxt(v?v.preco:a.preco);
   return '<input type="text" inputmode="decimal" value="'+(v.preco!=null?Number(v.preco).toFixed(2).replace('.',','):'')+'" data-p="'+(v.preco==null?'':v.preco)+'" onclick="event.stopPropagation()" onchange="ocelotSalvaPreco(this,\''+a.item_id+'\')" title="Preço de tabela no ML" style="width:82px;text-align:right;padding:2px 5px;font-size:12px">'
     +'<div id="prst_'+a.item_id+'" style="font-size:10.5px;min-height:12px"></div>';
+}
+function ocelotConfirmaExclusoes(){
+  const P=OCELOT_LIVE.pendentes; if(!P.length)return;
+  if(prompt('Isto só tira os anúncios do CADASTRO do painel (não mexe no Mercado Livre).\n\nPara confirmar a retirada de '+P.length+' anúncios, digite o número '+P.length+':')!==String(P.length))return;
+  OCELOT_LIVE.confirmar=P.map(function(x){return x.item_id;}); OCELOT_LIVE.lidoEm=0;
+  ocelotLiveGarante(); renderOcelotBodyMantendoTela();
 }
 async function ocelotAnunciosPost(corpo){
   const {data:{session}}=await sb.auth.getSession();

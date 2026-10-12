@@ -1,4 +1,4 @@
-// ml-ocelot-anuncios v1 (12/10/2026) - Cadastro integrado com o Mercado Livre (aba Cadastro, anuncios de cada SKU).
+// ml-ocelot-anuncios v2 (12/10/2026) - Cadastro integrado com o Mercado Livre (aba Cadastro, anuncios de cada SKU).
 //
 // POST { acao:"sincronizar" }  (permissao "ocelot", ou cron com x-cron-secret)
 //   Le AO VIVO no ML (GET /items?ids=..., 20 por chamada) todos os anuncios de ocelot_itens_sku ainda nao
@@ -14,10 +14,16 @@
 //   variacoes (o ML apaga a variacao que nao vier no corpo) -- so a escolhida muda. Full: estoque e do ML.
 // Preco: a tela usa o ml-ocelot-preco (acao efetivar), que ja tem a trava de faixa segura e o log.
 // Toda escrita confere relendo o anuncio e fica em ocelot_anuncios_log. Token do ML so no servidor.
+// v2 (12/10/2026) TRAVAS contra exclusao por engano: (a) o painel NUNCA exclui/encerra anuncio no ML -- a
+//   status so aceita active/paused e o ml() compartilhado recusa DELETE e status closed/deleted em /items;
+//   (b) "excluido" so tira do cadastro apos 2a leitura individual confirmar; (c) mais de 10 (ou 5%) de uma vez
+//   ficam pendentes ate alguem confirmar na tela (POST sincronizar com confirmar_exclusoes:[ids]);
+//   (d) anuncio marcado que volta a existir no ML e restaurado sozinho.
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink";
+const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
 async function contaOk(admin: any, uid: string) {
   const { data } = await admin.rpc("app_contas", { p_uid: uid });
@@ -64,14 +70,18 @@ Deno.serve(async (req) => {
       if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
       uid = u.id;
     }
-    const { data: linhas } = await admin.from("ocelot_itens_sku").select("item_id")
-      .eq("conta_id", OCELOT_CONTA).is("excluido_em", null).range(0, 4999);
+    // le tambem os ja marcados como excluidos: se voltarem a existir no ML, saem da marcacao (restaura)
+    const { data: linhas } = await admin.from("ocelot_itens_sku").select("item_id,excluido_em")
+      .eq("conta_id", OCELOT_CONTA).range(0, 4999);
+    const jaExcluido = new Set((linhas || []).filter((r: any) => r.excluido_em).map((r: any) => String(r.item_id)));
     const ids = Array.from(new Set((linhas || []).map((r: any) => String(r.item_id)).filter((x: string) => /^MLB\d+$/.test(x))));
     const itens: Record<string, any> = {};
-    const excluidos: { item_id: string; motivo: string }[] = [];
+    const candidatos: { item_id: string; motivo: string }[] = [];
+    const restaurar: string[] = [];
     let lotesErro = 0;
     const lotes: string[][] = [];
     for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20));
+    const ehExcluido = (code: number, b: any) => code === 404 || (b?.status === "closed" && Array.isArray(b?.sub_status) && b.sub_status.includes("deleted"));
     for (let i = 0; i < lotes.length; i += 4) {
       await Promise.all(lotes.slice(i, i + 4).map(async (lote) => {
         let r = await ml(admin, OCELOT_CONTA, `/items?ids=${lote.join(",")}&attributes=${CAMPOS}`);
@@ -79,25 +89,47 @@ Deno.serve(async (req) => {
         if (!r.ok || !Array.isArray(r.json)) { lotesErro++; return; }
         r.json.forEach((e: any, k: number) => {
           const id = e?.body?.id || lote[k];
-          if (e?.code === 404) { excluidos.push({ item_id: id, motivo: "ML: anúncio não existe mais (404)" }); return; }
-          if (e?.code !== 200 || !e.body?.id) return; // outro erro: nao conclui nada
-          const s = resumo(e.body);
-          if (s.status === "closed" && s.sub_status.includes("deleted")) { excluidos.push({ item_id: id, motivo: "ML: excluído (closed/deleted)" }); return; }
-          itens[id] = s;
+          if (e?.code !== 404 && (e?.code !== 200 || !e.body?.id)) return; // outro erro: nao conclui nada
+          if (ehExcluido(e.code, e.body)) {
+            if (!jaExcluido.has(id)) candidatos.push({ item_id: id, motivo: e.code === 404 ? "ML: anúncio não existe mais (404)" : "ML: excluído (closed/deleted)" });
+            return;
+          }
+          if (jaExcluido.has(id)) restaurar.push(id);
+          itens[id] = resumo(e.body);
         });
       }));
     }
+    // TRAVA 1: so marca como excluido depois de uma 2a leitura, individual, confirmar a exclusao
+    const confirmados: { item_id: string; motivo: string }[] = [];
+    for (const c of candidatos) {
+      const r = await ml(admin, OCELOT_CONTA, `/items/${c.item_id}?attributes=${CAMPOS}`);
+      if (ehExcluido(r.status, r.json)) confirmados.push(c);
+    }
+    // TRAVA 2: muitas exclusoes de uma vez (erro do ML/token, conta trocada...) nao tira nada do cadastro
+    // sozinho: devolve a lista pendente e so marca quando alguem confirmar na tela. O cron nunca confirma.
+    const limite = Math.max(LIMITE_EXCLUSOES, Math.ceil(ids.length * 0.05));
+    const conf = new Set((Array.isArray(body.confirmar_exclusoes) ? body.confirmar_exclusoes : []).map(String));
+    const pendentes = confirmados.length > limite ? confirmados.filter((x) => !conf.has(x.item_id)) : [];
+    const pend = new Set(pendentes.map((x) => x.item_id));
+    const excluidos = confirmados.filter((x) => !pend.has(x.item_id));
     const agora = new Date().toISOString();
     for (const x of excluidos) {
       const { error } = await admin.from("ocelot_itens_sku").update({ excluido_em: agora, excluido_motivo: x.motivo })
         .eq("conta_id", OCELOT_CONTA).eq("item_id", x.item_id).is("excluido_em", null);
       if (!error) await log(admin, { item_id: x.item_id, tipo: "excluido", depois: x.motivo, usuario_id: uid, ok: true });
     }
-    // todos os ja excluidos (inclusive de leituras anteriores): a tela tira esses anuncios do cadastro
+    // TRAVA 3: anuncio marcado como excluido que voltou a existir no ML volta para o cadastro sozinho
+    for (const id of restaurar) {
+      const { error } = await admin.from("ocelot_itens_sku").update({ excluido_em: null, excluido_motivo: null })
+        .eq("conta_id", OCELOT_CONTA).eq("item_id", id);
+      if (!error) await log(admin, { item_id: id, tipo: "restaurado", depois: "existe de novo no ML", usuario_id: uid, ok: true });
+    }
+    // todos os excluidos (inclusive de leituras anteriores): a tela tira esses anuncios do cadastro
     const { data: exRows } = await admin.from("ocelot_itens_sku").select("item_id")
       .eq("conta_id", OCELOT_CONTA).not("excluido_em", "is", null).range(0, 4999);
     const excluidosIds = (exRows || []).map((r: any) => String(r.item_id));
-    return json({ ok: true, consultados: ids.length, lotes_com_erro: lotesErro, itens, excluidos, excluidos_ids: excluidosIds, lido_em: agora });
+    return json({ ok: true, consultados: ids.length, lotes_com_erro: lotesErro, itens, excluidos, excluidos_ids: excluidosIds,
+      exclusoes_pendentes: pendentes, restaurados: restaurar, nao_confirmados: candidatos.length - confirmados.length, lido_em: agora });
   }
 
   if (body.acao === "status" || body.acao === "estoque") {
@@ -111,6 +143,8 @@ Deno.serve(async (req) => {
     if (antes.status === "closed") return json({ ok: false, erro: "anúncio encerrado no ML: só volta republicando pelo Mercado Livre", antes }, 409);
 
     if (body.acao === "status") {
+      // so ativar ou pausar: nunca encerrar/excluir (ver tambem a trava em _shared/ocelot.ts)
+      if (body.ativo !== true && body.ativo !== false) return json({ ok: false, erro: "informe ativo: true ou false" }, 400);
       const novo = body.ativo ? "active" : "paused";
       if (antes.status === novo) return json({ ok: true, antes, depois: antes });
       if (novo === "active" && antes.estoque <= 0) return json({ ok: false, erro: "sem estoque: coloque estoque antes de ativar", antes }, 409);

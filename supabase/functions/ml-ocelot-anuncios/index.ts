@@ -23,10 +23,13 @@
 //   ele nao tem, o Tiago limita). Anuncios do mesmo produto do vendedor (user_product_id, uma cor) dividem o
 //   estoque no ML. POST { acao:"estoque_lote", item_ids, quantidade } grava o mesmo limite em todas as cores
 //   de um SKU (uma gravacao por produto).
+// v4 (13/10/2026): edicao de estoque DESLIGADA a pedido do Tiago -- o painel nao grava estoque no ML
+//   (acoes estoque e estoque_lote recusadas). Ler estoque e ativar/pausar continuam. Religar: ESTOQUE_LIGADO.
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
+const ESTOQUE_LIGADO = false; // v4: o painel nao mexe no estoque do ML por enquanto
 const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
 async function contaOk(admin: any, uid: string) {
@@ -162,6 +165,9 @@ Deno.serve(async (req) => {
     return json({ ok: true, consultados: ids.length, lotes_com_erro: lotesErro, itens, excluidos, excluidos_ids: excluidosIds,
       exclusoes_pendentes: pendentes, restaurados: restaurar, nao_confirmados: candidatos.length - confirmados.length, lido_em: agora });
   }
+
+  if ((body.acao === "estoque" || body.acao === "estoque_lote") && !ESTOQUE_LIGADO)
+    return json({ ok: false, erro: "edição de estoque desligada no painel: altere o estoque direto no Mercado Livre" }, 403);
 
   if (body.acao === "status" || body.acao === "estoque") {
     const u = await exigirUsuario(admin, req, "alterar_ml");

@@ -1918,13 +1918,14 @@ function ocelotStatusCell(id){
   return '<button '+(pd?'onclick="event.stopPropagation();ocelotTrocaStatus(\''+id+'\')"':'disabled')+' title="'+(pd?(at?'Clique para pausar no ML':'Clique para ativar no ML'):'Sem permissão para alterar o anúncio no ML')+'" style="border:none;border-radius:10px;padding:2px 10px;font-size:11.5px;font-weight:700;cursor:'+(pd?'pointer':'default')+';background:'+(at?'#14532d':'#3f3f46')+';color:'+(at?'#bbf7d0':'#d4d4d8')+'">'+(at?'● Ativo':'❚❚ Pausado')+'</button>'+sub
     +'<div id="anst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
 }
+const OCELOT_ESTOQUE_EDITAVEL=false; // painel nao grava estoque no ML por enquanto (servidor tambem recusa)
 function ocelotEstoqueCell(id){
   const v=OCELOT_LIVE.itens[id];
   if(!v)return '<span style="color:var(--muted)">'+(OCELOT_LIVE.carregando?'…':'—')+'</span>';
   if(v.full)return '<span title="Anúncio no Full: o estoque é o do armazém do ML">'+v.estoque+' <span style="font-size:10px;background:#1e3a8a;color:#bfdbfe;padding:1px 5px;border-radius:4px">Full</span></span>';
   if(v.status==='closed')return '<span style="color:var(--muted)">'+v.estoque+'</span>';
-  const ro=pode('alterar_ml')?'':' disabled';
-  const inp=function(vid,q,rot){return '<div style="white-space:nowrap">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+'<input type="number" min="0" step="1" value="'+q+'" data-q="'+q+'"'+ro+' onclick="event.stopPropagation()" onchange="ocelotSalvaEstoque(this,\''+id+'\','+(vid==null?'null':vid)+')" title="Estoque disponível no ML. Digite o total, ou +N para somar." style="width:64px;text-align:right;padding:2px 5px;font-size:12px"></div>';};
+  const ro=pode('alterar_ml')&&OCELOT_ESTOQUE_EDITAVEL?'':' disabled';
+  const inp=!OCELOT_ESTOQUE_EDITAVEL?function(vid,q,rot){return '<div style="white-space:nowrap" title="Estoque no ML (só leitura: altere direto no Mercado Livre)">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+q+'</div>';}:function(vid,q,rot){return '<div style="white-space:nowrap">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+'<input type="number" min="0" step="1" value="'+q+'" data-q="'+q+'"'+ro+' onclick="event.stopPropagation()" onchange="ocelotSalvaEstoque(this,\''+id+'\','+(vid==null?'null':vid)+')" title="Estoque disponível no ML. Digite o total, ou +N para somar." style="width:64px;text-align:right;padding:2px 5px;font-size:12px"></div>';};
   let h='';
   if(v.variacoes&&v.variacoes.length)v.variacoes.forEach(function(x){h+=inp(x.id,x.estoque,String(x.nome).slice(0,18));});
   else h=inp(null,v.estoque,'');
@@ -2169,7 +2170,7 @@ function htmlExpansaoLinha(l){
   if(l.tipo==='sku'){
     const an=l.anuncios||[];
     h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncios com este SKU ('+an.length+')</div>';
-    if(an.length&&pode('alterar_ml')&&OCELOT_LIVE.lidoEm){
+    if(an.length&&pode('alterar_ml')&&OCELOT_ESTOQUE_EDITAVEL&&OCELOT_LIVE.lidoEm){
       const ups={};an.forEach(function(a){const v=OCELOT_LIVE.itens[a.item_id];if(v&&v.status!=='closed'&&!v.full)ups[v.user_product_id||a.item_id]=1;});
       const nUp=Object.keys(ups).length;
       if(nUp)h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;margin:4px 0 8px;padding:6px 10px;border:1px dashed var(--line);border-radius:8px">'

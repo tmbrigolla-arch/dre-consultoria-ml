@@ -1,4 +1,6 @@
-// ml-ocelot-etiquetas v1 (13/10/2026) - aba "Etiquetas de Envio" da Gestao Ocelot.
+// ml-ocelot-etiquetas v2 (13/10/2026) - aba "Etiquetas de Envio" da Gestao Ocelot.
+// v2: envio AGENDADO (pending/buffered, ou manufacturing = prazo de fabricacao) tambem aparece, com a data em que o
+//     ML libera a etiqueta. Na v1 so ready_to_ship aparecia: em 13/10 a lista tinha 2 envios e 24 agendados ficavam de fora.
 // Copia do que ja roda no antoninho-comissoes (ml-etiquetas), no padrao deste projeto (_shared/ocelot.ts).
 //
 // Por que existe: a etiqueta era baixada em ZPL, convertida no Labelary e impressa como imagem; a janela de
@@ -124,7 +126,7 @@ Deno.serve(async (req) => {
       const cache: Record<string, any> = {};
       for (let i = 0; i < orderIds.length; i += 300) {
         const { data } = await admin.from("ocelot_entregas")
-          .select("order_id, shipping_status, shipping_substatus, logistic_type, data_envio, receiver_name, atualizado_em")
+          .select("order_id, shipping_status, shipping_substatus, logistic_type, data_envio, data_limite_envio, receiver_name, atualizado_em")
           .in("order_id", orderIds.slice(i, i + 300));
         for (const e of data || []) cache[String(e.order_id)] = e;
       }
@@ -145,9 +147,12 @@ Deno.serve(async (req) => {
         return agora - new Date(e.atualizado_em || 0).getTime() > CACHE_MIN * 60_000;
       });
       let falhasML = 0;
+      const liberacao: Record<string, string | null> = {};   // dia em que o ML libera a etiqueta do agendado
       await emLotes(consultar, PARALELO, async (sid) => {
         const s = await ml(admin, OCELOT_CONTA, `/shipments/${sid}`);
         if (!s.ok || !s.json?.status) { falhasML++; return; }
+        const buf = s.json.shipping_option?.buffering?.date ?? s.json.lead_time?.buffering?.date ?? null;
+        if (buf) liberacao[sid] = String(buf).slice(0, 10);
         // so as colunas de status: data limite/SLA continuam com a aba "Vendas a entregar"
         const linha = {
           conta_id: OCELOT_CONTA, shipping_id: Number(sid),
@@ -167,11 +172,16 @@ Deno.serve(async (req) => {
       const envios: Record<string, any> = {};
       for (const v of vs) {
         const e = cache[String(v.order_id)] || {};
-        if (saiu(e) || e.shipping_status !== "ready_to_ship") continue;
+        if (saiu(e)) continue;
+        const agendado = e.shipping_status === "pending" && ["buffered", "manufacturing"].includes(e.shipping_substatus);
+        if (e.shipping_status !== "ready_to_ship" && !agendado) continue;
         const k = String(v.shipping_id);
         const g = (envios[k] ||= {
           shipping_id: k, venda: String(v.pack_id || v.order_id), data_venda: v.data_venda, data_venda_ts: v.data_venda_ts,
-          substatus: e.shipping_substatus ?? null, logistic_type: e.logistic_type ?? null,
+          // agendado vira um substatus proprio para a tela; libera_em = buffering.date do ML (ou o prazo gravado)
+          substatus: agendado ? "agendado" : (e.shipping_substatus ?? null), logistic_type: e.logistic_type ?? null,
+          motivo_agenda: agendado ? e.shipping_substatus : null,
+          libera_em: agendado ? (liberacao[k] ?? (e.data_limite_envio ? String(e.data_limite_envio).slice(0, 10) : null)) : null,
           comprador: e.receiver_name ?? null,
           ao_vivo: agora - new Date(e.atualizado_em || 0).getTime() < 2 * 60_000,   // status lido agora no ML
           itens: [], quantidade: 0, valor: 0,

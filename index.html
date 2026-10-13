@@ -3449,7 +3449,7 @@ function aeRender(){
 const ETQ_API=SB_URL+'/functions/v1/ml-ocelot-etiquetas';
 const ETQ_LIBS=['https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js','https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'];
 const ETQ_LOTE=50;
-const ETQ_SIT={ready_to_print:['A imprimir','#f59e0b'],printed:['Já impressa','#22c55e'],invoice_pending:['Aguardando NF','#f87171']};
+const ETQ_SIT={ready_to_print:['A imprimir','#f59e0b'],printed:['Já impressa','#22c55e'],invoice_pending:['Aguardando NF','#f87171'],agendado:['Agendada','#60a5fa']};
 const ETQ_IMPRIMIVEL=new Set(['ready_to_print','printed']);
 let ETQ={dados:null,erro:null,carregando:false,em:0,filtro:'ready_to_print',marc:{},imprimindo:false,msg:null,
   qz:null,qzErro:'',impressoras:[],impressora:(function(){try{return localStorage.getItem('etq_impressora')||'';}catch(e){return '';}})(),
@@ -3642,7 +3642,7 @@ async function etqPDF(){
 function etqRender(){
   if(aba!=='ocelot'||ocelotSub!=='etiquetas')return;
   const app=document.getElementById('app'),D=ETQ.dados||{},L=etqLista();
-  const cont={ready_to_print:0,printed:0,invoice_pending:0,outros:0};L.forEach(e=>{if(e.substatus in cont)cont[e.substatus]++;else cont.outros++;});
+  const cont={ready_to_print:0,printed:0,invoice_pending:0,agendado:0,outros:0};L.forEach(e=>{if(e.substatus in cont)cont[e.substatus]++;else cont.outros++;});
   const sel=etqSelecionados(),re=etqReimpressoes();
   let h='<div class="dv">';
   // impressora
@@ -3660,11 +3660,12 @@ function etqRender(){
   h+='<span class="sep"></span><a href="javascript:void(0)" onclick="etqCertificado()" style="font-size:12px;color:var(--muted)" title="Instale uma vez no PC da expedição para o QZ parar de perguntar Permitir a cada impressão">Baixar certificado do QZ (override.crt)</a></div>';
   // filtros
   h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Situação:</span>';
-  [['ready_to_print','A imprimir',cont.ready_to_print],['printed','Já impressas',cont.printed],['invoice_pending','Aguardando NF',cont.invoice_pending],['outros','Outros',cont.outros],['','Todos',L.length]]
+  [['ready_to_print','A imprimir',cont.ready_to_print],['printed','Já impressas',cont.printed],['invoice_pending','Aguardando NF',cont.invoice_pending],['agendado','Agendadas',cont.agendado],['outros','Outros',cont.outros],['','Todos',L.length]]
     .forEach(f=>{h+='<button class="'+(ETQ.filtro===f[0]?'on':'')+'" onclick="etqFiltro(\''+f[0]+'\')">'+f[1]+' <b>'+f[2]+'</b></button>';});
   h+='<span class="sep"></span><button class="pri" onclick="etqCarregar()"'+(ETQ.carregando?' disabled':'')+'>'+(ETQ.carregando?'Atualizando…':'↻ Atualizar')+'</button></div>';
   h+='<div class="dv-sync'+(ETQ.erro?' err':'')+'">'+(ETQ.carregando?'Consultando o Mercado Livre…':ETQ.erro?'Não foi possível atualizar ('+escH(ETQ.erro)+').':(D.atualizado_em?'Status lido no ML em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
   if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
+  if(ETQ.filtro==='agendado'&&cont.agendado)h+='<div class="dv-aviso">Envio agendado: o ML só libera a etiqueta na data indicada (em espera ou prazo de fabricação). Até lá não dá para imprimir; no dia ela passa para "A imprimir".</div>';
   if(ETQ.filtro==='invoice_pending'&&cont.invoice_pending)h+='<div class="dv-aviso">O ML só libera a etiqueta depois que a NF é vinculada à venda. Emita/envie a NF e clique em Atualizar.</div>';
   if(ETQ.msg){const c=ETQ.msg.t==='ok'?'#22c55e':ETQ.msg.t==='aviso'?'#f59e0b':'#f87171';
     h+='<div style="border:1px solid '+c+';color:'+c+';border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13.5px">'+escH(ETQ.msg.x)+(ETQ.msg.d?'<div style="font-size:12px;opacity:.85;margin-top:4px;overflow-wrap:anywhere">'+escH(ETQ.msg.d)+'</div>':'')+'</div>';}
@@ -3684,7 +3685,7 @@ function etqRender(){
       +'<td><input type="checkbox"'+(ETQ.marc[e.shipping_id]&&pode?' checked':'')+(pode?'':' disabled')+' onclick="event.stopPropagation();etqMarca(\''+e.shipping_id+'\')"></td>'
       +'<td class="l" style="white-space:nowrap">#'+escH(e.venda)+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(e.data_venda)+'</div><div style="font-size:11.5px;color:var(--muted)">envio '+escH(e.shipping_id)+'</div>'+(e.comprador?'<div style="font-size:11.5px;color:var(--muted)">'+escH(e.comprador)+'</div>':'')+'</td>'
       +'<td class="l" style="min-width:260px">'+itens+'</td><td>'+dvN(e.quantidade)+'</td><td>'+dvR(e.valor)+'</td>'
-      +'<td class="l" style="white-space:nowrap"><span style="border:1px solid '+s[1]+';color:'+s[1]+';border-radius:999px;padding:2px 9px;font-size:12px" title="'+(e.ao_vivo?'Status lido agora no ML':'Último status gravado (o ML não respondeu agora)')+'">'+escH(s[0])+(e.ao_vivo?'':' *')+'</span>'+(AE_LOG[e.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[e.logistic_type]+'</div>':'')+'</td></tr>';
+      +'<td class="l" style="white-space:nowrap"><span style="border:1px solid '+s[1]+';color:'+s[1]+';border-radius:999px;padding:2px 9px;font-size:12px" title="'+(e.ao_vivo?'Status lido agora no ML':'Último status gravado (o ML não respondeu agora)')+'">'+escH(s[0])+(e.ao_vivo?'':' *')+'</span>'+(e.substatus==='agendado'?'<div style="font-size:11.5px;color:var(--muted)">'+(e.libera_em?'libera '+aeDataBr(e.libera_em):'sem data do ML')+(e.motivo_agenda==='manufacturing'?' · fabricação':'')+'</div>':'')+(AE_LOG[e.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[e.logistic_type]+'</div>':'')+'</td></tr>';
   });
   h+='</tbody></table></div><div class="foot" style="text-align:left;margin-top:8px">* status ainda não confirmado ao vivo no ML. Reimprimir pede confirmação.</div></div></div>';
   app.innerHTML=h;

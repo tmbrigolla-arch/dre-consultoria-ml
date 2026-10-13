@@ -404,6 +404,7 @@
   <div class="navsub" id="navsubOcelot" style="display:none">
     <button id="ocnDashboard" onclick="ocelotSubTab('dashboard')">Dashboard de Vendas</button>
     <button id="ocnAEntregar" onclick="ocelotSubTab('aentregar')">Vendas a entregar</button>
+    <button id="ocnEtiquetas" onclick="ocelotSubTab('etiquetas')">Etiquetas de Envio</button>
     <button id="ocnAtendimento" onclick="ocelotSubTab('atendimento')">Perguntas e Mensagens <span id="ocnAtendBadge" class="dv-badge" style="font-size:10.5px"></span></button>
     <button id="ocnSintetica" onclick="ocelotSubTab('sintetica')">DRE sintética</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
@@ -601,16 +602,16 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",aentregar:"Vendas a entregar",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
+function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",aentregar:"Vendas a entregar",etiquetas:"Etiquetas de Envio",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
 function sincOcelotNav(){
-  var ids={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+  var ids={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
 // v4 (09/09/2026): o botao do header era um so e sempre chamava o coletor das 9 contas, mesmo
 // estando dentro da Gestao Ocelot. Agora ele muda com a aba: em Consultoria roda o ml-coletor
 // (metricas das contas); em Gestao Ocelot roda o ml-ocelot-vendas (vendas da conta propria).
-function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="aentregar")return aeCarregar(); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
+function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="aentregar")return aeCarregar(); if(aba==="ocelot"&&ocelotSub==="etiquetas")return etqCarregar(); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
 function sincBtnAtualizar(a){
   var b=document.getElementById("btnAtualizar"); if(!b)return;
   b.textContent=(a==="ocelot")?"Atualizar vendas":"Atualizar métricas";
@@ -637,17 +638,17 @@ function sincNav(a){
 }
 function trocaAba(a){
   if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
-  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","aentregar","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","aentregar","etiquetas","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=(a==="mensal"&&pode("fechar_mes"))?"":"none";
   document.getElementById("subtitulo").textContent=(a==="usuarios"||a==="permissoes")?"Quem acessa o painel e o que cada um pode ver e fazer":a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
-    :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, atendimento, DRE e cadastro (conta própria)"
+    :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, etiquetas, atendimento, DRE e cadastro (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="aentregar")renderAEntregar();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="aentregar")renderAEntregar();else if(ocelotSub==="etiquetas")renderEtiquetas();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -1393,6 +1394,7 @@ function ocelotSubTab(s){
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
   if(s==='dashboard'){renderDashML();return;}
   if(s==='aentregar'){renderAEntregar();return;}
+  if(s==='etiquetas'){renderEtiquetas();return;}
   if(s==='atendimento'){renderAtendML();return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
@@ -1402,6 +1404,7 @@ function ocelotSubBtn(k,label){return '';}
 function renderOcelotBody(){
   if(ocelotSub==='dashboard'){renderDashML();return;}
   if(ocelotSub==='aentregar'){renderAEntregar();return;}
+  if(ocelotSub==='etiquetas'){renderEtiquetas();return;}
   if(ocelotSub==='atendimento'){renderAtendML();return;}
   // DRE sintetica e sempre de um mes fechado de competencia (a fatura do ML e mensal): se a tela
   // estiver em "Ultimos 30 dias", escolhe o mes mais recente e recarrega os pedidos so dele.
@@ -3433,6 +3436,260 @@ function aeRender(){
   app.innerHTML=h;
 }
 
+/* ===== Etiquetas de Envio (13/10/2026) =====
+   Etiqueta OFICIAL do ML direto na termica (Elgin), sem Labelary. Copia do que ja roda no antoninho-comissoes.
+   Servidor (ml-ocelot-etiquetas): lista os envios com status AO VIVO no ML, baixa a etiqueta (ZPL ou PDF) e assina
+   as mensagens do QZ Tray. Aqui: QZ Tray (programa instalado no PC da expedicao) manda para a impressora.
+   Modos (por PC, localStorage):
+     zpl    - PADRAO. ZPL cru na impressora: mais rapido e nitido. Exige a Elgin em PPLZ (emulacao ZPL).
+     driver - PDF do ML pelo driver do Windows, 100x150 mm, sem janela. Funciona com a Elgin em qualquer linguagem.
+   O PDF do ML mistura etiqueta e DANFE lado a lado, paginas giradas e o "relatorio de controle": etqSepararPDF
+   separa cada parte numa 10x15 (recorte sobre o vetor, sem rasterizar) e descarta o relatorio.
+   QZ, pdf-lib e pdf.js so carregam quando a aba abre. */
+const ETQ_API=SB_URL+'/functions/v1/ml-ocelot-etiquetas';
+const ETQ_LIBS=['https://cdn.jsdelivr.net/npm/qz-tray@2.2.6/qz-tray.js','https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js','https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'];
+const ETQ_LOTE=50;
+const ETQ_SIT={ready_to_print:['A imprimir','#f59e0b'],printed:['Já impressa','#22c55e'],invoice_pending:['Aguardando NF','#f87171']};
+const ETQ_IMPRIMIVEL=new Set(['ready_to_print','printed']);
+let ETQ={dados:null,erro:null,carregando:false,em:0,filtro:'ready_to_print',marc:{},imprimindo:false,msg:null,
+  qz:null,qzErro:'',impressoras:[],impressora:(function(){try{return localStorage.getItem('etq_impressora')||'';}catch(e){return '';}})(),
+  modo:(function(){try{return localStorage.getItem('etq_modo')||'zpl';}catch(e){return 'zpl';}})(),libs:null,seg:false};
+function etqLs(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function etqLibs(){
+  if(!ETQ.libs)ETQ.libs=Promise.all(ETQ_LIBS.map(src=>new Promise((ok,falha)=>{
+    if(document.querySelector('script[src="'+src+'"]'))return ok();
+    const s=document.createElement('script');s.src=src;s.onload=()=>ok();s.onerror=()=>falha(new Error('não carregou '+src));document.head.appendChild(s);
+  }))).then(()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';})
+    .catch(e=>{ETQ.libs=null;throw e;});
+  return ETQ.libs;
+}
+// POST que devolve tambem o corpo do erro (falhas por envio), diferente do dvPost
+async function etqPost(body){
+  const r=await fetch(ETQ_API,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
+  let j={};try{j=await r.json();}catch(e){}
+  if(r.status===401){mostrarLogin();throw new Error('sessão expirada');}
+  if(!r.ok||j.ok===false){const e=new Error(j.erro||j.error||('erro '+r.status));e.falhas=j.falhas||[];throw e;}
+  return j;
+}
+// ---------- QZ Tray ----------
+function etqSeguranca(){
+  if(ETQ.seg)return;ETQ.seg=true;
+  qz.security.setCertificatePromise(resolve=>{etqPost({acao:'qz_certificado'}).then(r=>resolve(r.certificado||''),()=>resolve(''));});
+  qz.security.setSignatureAlgorithm('SHA512');
+  qz.security.setSignaturePromise(texto=>resolve=>{etqPost({acao:'qz_assinar',texto}).then(r=>resolve(r.assinatura||''),()=>resolve(''));});
+}
+async function etqConectar(){
+  await etqLibs();etqSeguranca();
+  if(qz.websocket.isActive())return;
+  try{await qz.websocket.connect({retries:1,delay:1});}
+  catch(e){if(!qz.websocket.isActive())throw new Error('QZ Tray não encontrado neste computador. Abra o QZ Tray (ou instale) e tente de novo.');}
+}
+async function etqLigarQZ(){
+  ETQ.qz=null;ETQ.qzErro='';etqRender();
+  try{
+    await etqConectar();
+    let l=await qz.printers.find();l=Array.isArray(l)?l:[l];ETQ.impressoras=l;
+    if(!ETQ.impressora||!l.includes(ETQ.impressora)){ETQ.impressora=l.find(n=>/elgin|l42|zebra|zpl|t[eé]rmica/i.test(n))||'';if(ETQ.impressora)etqLs('etq_impressora',ETQ.impressora);}
+    ETQ.qz=true;
+  }catch(e){ETQ.qz=false;ETQ.qzErro=e.message;}
+  etqRender();
+}
+async function etqZPL(zpl){await etqConectar();await qz.print(qz.configs.create(ETQ.impressora),[{type:'raw',format:'command',flavor:'plain',data:zpl}]);}
+async function etqPDFDriver(b64){
+  await etqConectar();
+  const cfg=qz.configs.create(ETQ.impressora,{size:{width:100,height:150},units:'mm',margins:0,scaleContent:true,rasterize:false,colorType:'blackwhite',orientation:'portrait',jobName:'Etiquetas Mercado Livre'});
+  await qz.print(cfg,[{type:'pixel',format:'pdf',flavor:'base64',data:b64}]);
+}
+const ETQ_ZPL_TESTE=['^XA^CI28','^FO40,40^A0N,40,40^FDTESTE OCELOT^FS','^FO40,100^A0N,28,28^FDSe esta linha saiu, a impressora entende ZPL.^FS','^FO40,160^BY3^BCN,120,Y,N,N^FD1234567890^FS','^FO20,20^GB760,1150,3^FS','^XZ'].join('\n');
+// mesmo teste em PPLA (linguagem de fabrica da Elgin): se ESTE sai e o de ZPL nao, a Elgin esta em PPLA
+const ETQ_PPLA_TESTE=['\x02L','D11','H14','121100000800020IMPRESSORA EM PPLA','121100000500020TROCAR PARA PPLZ (ZPL)','E',''].join('\r\n');
+async function etqTeste(ppla){
+  if(!ETQ.impressora){toast('Escolha a impressora primeiro.');return;}
+  try{await etqZPL(ppla?ETQ_PPLA_TESTE:ETQ_ZPL_TESTE);
+    ETQ.msg=ppla?{t:'aviso',x:'Teste PPLA enviado.',d:'Se saiu "IMPRESSORA EM PPLA", a Elgin está na linguagem de fábrica e ignora o ZPL do ML: troque para PPLZ ou use o modo PDF pelo driver. Se não saiu nada nos dois testes, é driver/porta USB no Windows.'}
+      :{t:'ok',x:'Teste ZPL enviado.',d:'Saiu texto, código de barras e moldura nítidos = pronto. Trabalho entrou na fila e nada saiu = Elgin em PPLA: clique em "Não saiu? Teste PPLA".'};
+  }catch(e){ETQ.msg={t:'erro',x:'Falha no teste.',d:e.message};}
+  etqRender();
+}
+async function etqCertificado(){
+  try{const r=await etqPost({acao:'qz_certificado'});
+    const u=URL.createObjectURL(new Blob([r.certificado],{type:'application/x-x509-ca-cert'}));
+    const a=document.createElement('a');a.href=u;a.download='override.crt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),60000);
+    ETQ.msg={t:'ok',x:'Certificado baixado (override.crt).',d:'Copie para C:\\Program Files\\QZ Tray e reinicie o QZ (ícone perto do relógio → Exit e abra de novo). Na próxima impressão marque "Lembrar esta decisão" e clique Permitir.'};
+  }catch(e){ETQ.msg={t:'erro',x:'Não consegui baixar o certificado.',d:e.message};}
+  etqRender();
+}
+// ---------- PDF: separa etiqueta e DANFE, recorta no conteudo, tira o relatorio de controle ----------
+async function etqMedir(pag){
+  const texto=(await pag.getTextContent()).items.map(i=>i.str).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  const vp=pag.getViewport({scale:2});
+  const c=document.createElement('canvas');c.width=Math.ceil(vp.width);c.height=Math.ceil(vp.height);
+  const ctx=c.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+  await pag.render({canvasContext:ctx,viewport:vp}).promise;
+  const d=ctx.getImageData(0,0,c.width,c.height).data,W=c.width,H=c.height;
+  const esc=(x,y)=>{const i=(y*W+x)*4;return d[i]*.3+d[i+1]*.59+d[i+2]*.11<200;};
+  const col=new Uint8Array(W);for(let x=0;x<W;x++){for(let y=0;y<H;y++)if(esc(x,y)){col[x]=1;break;}}
+  const faixas=[];
+  if(W>H){ // pagina deitada: corta no meio da maior faixa vazia entre 30% e 70% da largura
+    let ini=-1,m=null;const fim=Math.ceil(W*.7);
+    for(let x=Math.floor(W*.3);x<=fim;x++){if(!col[x]&&ini<0)ini=x;if((col[x]||x===fim)&&ini>=0){if(!m||x-ini>m[1]-m[0])m=[ini,x];ini=-1;}}
+    const corte=m?Math.round((m[0]+m[1])/2):Math.round(W/2);faixas.push([0,corte],[corte,W]);
+  }else faixas.push([0,W]);
+  const caixas=[];
+  for(const [x0,x1] of faixas){
+    let a=Infinity,b=-1,cc=Infinity,dd=-1;
+    for(let x=x0;x<x1;x++){if(!col[x])continue;for(let y=0;y<H;y++){if(!esc(x,y))continue;if(x<a)a=x;if(x>b)b=x;if(y<cc)cc=y;if(y>dd)dd=y;}}
+    if(b<0)continue;
+    const p1=vp.convertToPdfPoint(Math.max(0,a-6),Math.max(0,cc-6)),p2=vp.convertToPdfPoint(Math.min(W,b+7),Math.min(H,dd+7));
+    caixas.push({left:Math.min(p1[0],p2[0]),right:Math.max(p1[0],p2[0]),bottom:Math.min(p1[1],p2[1]),top:Math.max(p1[1],p2[1])});
+  }
+  return {texto,caixas,deitada:W>H};
+}
+async function etqSepararPDF(b64){
+  await etqLibs();
+  const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  const src=await PDFLib.PDFDocument.load(bytes),doc=await pdfjsLib.getDocument({data:bytes.slice()}).promise,out=await PDFLib.PDFDocument.create();
+  const pags=src.getPages(),resumo=[];
+  for(let i=0;i<pags.length;i++){
+    const p=pags[i],rot=p.getRotation().angle,m=await etqMedir(await doc.getPage(i+1));
+    const rot_=('p'+(i+1))+(rot?' girada '+rot+'°':'')+(m.deitada?' deitada':'');
+    if(/relatorio/.test(m.texto)){resumo.push(rot_+': relatório (não impresso)');continue;}
+    if(!m.caixas.length){resumo.push(rot_+': em branco');continue;}
+    resumo.push(rot_+': '+m.caixas.length+' parte(s)');
+    for(const c of m.caixas){
+      const w=c.right-c.left,h=c.top-c.bottom,emb=await out.embedPage(p,c),n=out.addPage([w,h]);
+      n.drawPage(emb,{x:0,y:0,width:w,height:h});if(rot)n.setRotation(PDFLib.degrees(rot));
+    }
+  }
+  if(!out.getPageCount())throw new Error('o PDF do ML veio sem etiqueta ('+resumo.join('; ')+')');
+  return {b64:await out.saveAsBase64(),resumo:resumo.join('; ')};
+}
+// aba aberta NO CLIQUE (antes de qualquer await), senao o bloqueador de pop-up barra; sem aba = download
+function etqAbrirPDF(b64,janela){
+  const u=URL.createObjectURL(new Blob([Uint8Array.from(atob(b64),c=>c.charCodeAt(0))],{type:'application/pdf'}));
+  if(janela&&!janela.closed)janela.location.href=u;
+  else{const a=document.createElement('a');a.href=u;a.download='etiquetas-ml-'+new Date().toISOString().slice(0,16).replace(/[:T]/g,'-')+'.pdf';document.body.appendChild(a);a.click();a.remove();}
+  setTimeout(()=>URL.revokeObjectURL(u),600000);
+}
+// ---------- lista ----------
+async function renderEtiquetas(){
+  const app=document.getElementById('app');app.style.maxWidth='none';sincOcelotNav();
+  if(!ETQ.dados)app.innerHTML='<div class="empty">Carregando envios (consultando o status no Mercado Livre)…</div>';
+  if(ETQ.qz!==true)etqLigarQZ();
+  etqCarregar();
+}
+async function etqCarregar(){
+  if(ETQ.carregando)return;
+  ETQ.carregando=true;ETQ.em=Date.now();etqRender();
+  try{ETQ.dados=await etqPost({acao:'listar'});ETQ.erro=null;}catch(e){ETQ.erro=e.message;}
+  ETQ.carregando=false;etqRender();
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&aba==='ocelot'&&ocelotSub==='etiquetas'&&Date.now()-ETQ.em>60000)etqCarregar();
+});
+function etqLista(){return (ETQ.dados||{}).envios||[];}
+function etqFiltrados(){const f=ETQ.filtro;return etqLista().filter(e=>!f?true:f==='outros'?!ETQ_SIT[e.substatus]:e.substatus===f);}
+function etqSelecionados(){return etqLista().filter(e=>ETQ.marc[e.shipping_id]&&ETQ_IMPRIMIVEL.has(e.substatus));}
+function etqFiltro(f){ETQ.filtro=f;etqRender();}
+function etqMarca(id){ETQ.marc[id]=!ETQ.marc[id];etqRender();}
+function etqMarcaTodos(){const l=etqFiltrados().filter(e=>ETQ_IMPRIMIVEL.has(e.substatus));const todos=l.length&&l.every(e=>ETQ.marc[e.shipping_id]);l.forEach(e=>{ETQ.marc[e.shipping_id]=!todos;});etqRender();}
+function etqImpressora(v){ETQ.impressora=v;etqLs('etq_impressora',v);}
+function etqModo(v){ETQ.modo=v;etqLs('etq_modo',v);}
+async function etqBaixar(acao,cada){
+  const ids=etqSelecionados().map(e=>String(e.shipping_id)),impressos=[],falhas=[];
+  for(let i=0;i<ids.length;i+=ETQ_LOTE){
+    const lote=ids.slice(i,i+ETQ_LOTE);
+    try{const r=await etqPost({acao,shipment_ids:lote});await cada(r);impressos.push(...(r.impressos||lote));falhas.push(...(r.falhas||[]));}
+    catch(e){if(e.falhas&&e.falhas.length)falhas.push(...e.falhas);else lote.forEach(id=>falhas.push({shipment_id:id,motivo:e.message}));}
+  }
+  return {impressos,falhas};
+}
+function etqConcluir(r,verbo,resumos){
+  const feitos=new Set(r.impressos.map(String));
+  etqLista().forEach(e=>{if(feitos.has(String(e.shipping_id)))e.substatus='printed';});
+  ETQ.marc={};
+  const fmt=resumos&&resumos.length?'PDF do ML: '+resumos.join(' | '):'';
+  ETQ.msg=!r.falhas.length?{t:'ok',x:r.impressos.length+' etiqueta(s) '+verbo+'.',d:fmt}
+    :{t:r.impressos.length?'aviso':'erro',x:r.impressos.length+' etiqueta(s) '+verbo+'. '+r.falhas.length+' recusada(s) pelo ML.',d:[r.falhas.map(f=>'envio '+f.shipment_id+': '+f.motivo).join(' · '),fmt].filter(Boolean).join(' — ')};
+}
+function etqReimpressoes(){return etqSelecionados().filter(e=>e.substatus==='printed').length;}
+async function etqImprimir(){
+  const sel=etqSelecionados();if(!sel.length||ETQ.imprimindo)return;
+  if(!ETQ.impressora){toast('Escolha a impressora térmica antes de imprimir.');return;}
+  const re=etqReimpressoes();if(re&&!confirm(re+' etiqueta(s) já foram impressas antes. Imprimir de novo?'))return;
+  ETQ.imprimindo=true;ETQ.msg=null;etqRender();
+  try{
+    await etqConectar();const resumos=[];
+    const r=ETQ.modo==='zpl'?await etqBaixar('zpl',x=>etqZPL(x.zpl))
+      :await etqBaixar('pdf',async x=>{const p=await etqSepararPDF(x.pdf_base64);resumos.push(p.resumo);await etqPDFDriver(p.b64);});
+    etqConcluir(r,'enviada(s) para a impressora',resumos);
+  }catch(e){ETQ.msg={t:'erro',x:'Falha ao imprimir.',d:e.message};}
+  ETQ.imprimindo=false;etqRender();
+}
+async function etqPDF(){
+  const sel=etqSelecionados();if(!sel.length||ETQ.imprimindo)return;
+  const re=etqReimpressoes();if(re&&!confirm(re+' etiqueta(s) já foram impressas antes. Gerar de novo?'))return;
+  let jan=window.open('','_blank');if(jan)jan.document.write('<p style="font-family:sans-serif">Gerando etiquetas do Mercado Livre…</p>');
+  ETQ.imprimindo=true;ETQ.msg=null;etqRender();
+  const resumos=[];
+  try{
+    const r=await etqBaixar('pdf',async x=>{const p=await etqSepararPDF(x.pdf_base64);resumos.push(p.resumo);etqAbrirPDF(p.b64,jan);jan=null;});
+    etqConcluir(r,'gerada(s) em PDF',resumos);
+  }catch(e){ETQ.msg={t:'erro',x:'Falha ao gerar o PDF.',d:e.message};}
+  if(jan&&!jan.closed)jan.close();
+  ETQ.imprimindo=false;etqRender();
+}
+function etqRender(){
+  if(aba!=='ocelot'||ocelotSub!=='etiquetas')return;
+  const app=document.getElementById('app'),D=ETQ.dados||{},L=etqLista();
+  const cont={ready_to_print:0,printed:0,invoice_pending:0,outros:0};L.forEach(e=>{if(e.substatus in cont)cont[e.substatus]++;else cont.outros++;});
+  const sel=etqSelecionados(),re=etqReimpressoes();
+  let h='<div class="dv">';
+  // impressora
+  const cor=ETQ.qz===null?'#f59e0b':ETQ.qz?'#22c55e':'#f87171';
+  h+='<div class="dv-bar"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+cor+'"></span>';
+  if(ETQ.qz===null)h+='<span style="font-size:13px;color:var(--muted)">Procurando o QZ Tray…</span>';
+  else if(ETQ.qz===false)h+='<span style="font-size:13px;color:var(--muted)">'+escH(ETQ.qzErro)+'</span><button onclick="etqLigarQZ()">Tentar de novo</button><a href="https://qz.io/download/" target="_blank" rel="noopener" style="font-size:13px">Baixar QZ Tray</a>';
+  else{
+    h+='<span style="font-size:13px;color:var(--muted)">Impressora:</span><select onchange="etqImpressora(this.value)" style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px"><option value="">— escolha —</option>'
+      +ETQ.impressoras.map(n=>'<option'+(n===ETQ.impressora?' selected':'')+'>'+escH(n)+'</option>').join('')+'</select>';
+    h+='<select onchange="etqModo(this.value)" title="ZPL direto: Elgin em PPLZ, mais rápido e nítido. PDF pelo driver: funciona com a Elgin em qualquer linguagem." style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px">'
+      +'<option value="zpl"'+(ETQ.modo==='zpl'?' selected':'')+'>Modo: ZPL direto (padrão)</option><option value="driver"'+(ETQ.modo==='driver'?' selected':'')+'>Modo: PDF pelo driver</option></select>';
+    h+='<button onclick="etqTeste(false)">Teste ZPL</button><button onclick="etqTeste(true)" title="Diagnóstico: descobre se a Elgin está em PPLA (linguagem de fábrica), que ignora o ZPL do ML">Não saiu? Teste PPLA</button>';
+  }
+  h+='<span class="sep"></span><a href="javascript:void(0)" onclick="etqCertificado()" style="font-size:12px;color:var(--muted)" title="Instale uma vez no PC da expedição para o QZ parar de perguntar Permitir a cada impressão">Baixar certificado do QZ (override.crt)</a></div>';
+  // filtros
+  h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Situação:</span>';
+  [['ready_to_print','A imprimir',cont.ready_to_print],['printed','Já impressas',cont.printed],['invoice_pending','Aguardando NF',cont.invoice_pending],['outros','Outros',cont.outros],['','Todos',L.length]]
+    .forEach(f=>{h+='<button class="'+(ETQ.filtro===f[0]?'on':'')+'" onclick="etqFiltro(\''+f[0]+'\')">'+f[1]+' <b>'+f[2]+'</b></button>';});
+  h+='<span class="sep"></span><button class="pri" onclick="etqCarregar()"'+(ETQ.carregando?' disabled':'')+'>'+(ETQ.carregando?'Atualizando…':'↻ Atualizar')+'</button></div>';
+  h+='<div class="dv-sync'+(ETQ.erro?' err':'')+'">'+(ETQ.carregando?'Consultando o Mercado Livre…':ETQ.erro?'Não foi possível atualizar ('+escH(ETQ.erro)+').':(D.atualizado_em?'Status lido no ML em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
+  if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
+  if(ETQ.filtro==='invoice_pending'&&cont.invoice_pending)h+='<div class="dv-aviso">O ML só libera a etiqueta depois que a NF é vinculada à venda. Emita/envie a NF e clique em Atualizar.</div>';
+  if(ETQ.msg){const c=ETQ.msg.t==='ok'?'#22c55e':ETQ.msg.t==='aviso'?'#f59e0b':'#f87171';
+    h+='<div style="border:1px solid '+c+';color:'+c+';border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13.5px">'+escH(ETQ.msg.x)+(ETQ.msg.d?'<div style="font-size:12px;opacity:.85;margin-top:4px;overflow-wrap:anywhere">'+escH(ETQ.msg.d)+'</div>':'')+'</div>';}
+  // acoes
+  const off=!sel.length||ETQ.imprimindo;
+  h+='<div class="dv-bar"><a href="javascript:void(0)" onclick="etqMarcaTodos()" style="font-size:12.5px">Marcar/desmarcar todos da lista</a><span style="font-size:12.5px;color:var(--muted)">'+sel.length+' selecionada(s)'+(re?' · '+re+' reimpressão(ões)':'')+'</span><span class="sep"></span>'
+    +'<button onclick="etqPDF()"'+(off?' disabled':'')+' title="PDF oficial do ML (etiqueta e DANFE separadas), numa aba nova">Baixar PDF</button>'
+    +'<button class="pri" onclick="etqImprimir()"'+(off||ETQ.qz!==true?' disabled':'')+'>'+(ETQ.imprimindo?'Imprimindo…':'🖨️ Imprimir '+(sel.length||''))+'</button></div>';
+  if(!ETQ.dados){app.innerHTML=h+'<div class="empty">'+(ETQ.erro?'':'Carregando…')+'</div></div>';return;}
+  const F=etqFiltrados();
+  if(!F.length){app.innerHTML=h+'<div class="empty">Nenhum envio nesta situação.</div></div>';return;}
+  h+='<div class="dv-sec"><div style="overflow-x:auto"><table><thead><tr><th></th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th class="l">Situação</th></tr></thead><tbody>';
+  F.forEach(e=>{
+    const s=ETQ_SIT[e.substatus]||[e.substatus||'sem status','var(--muted)'],pode=ETQ_IMPRIMIVEL.has(e.substatus);
+    const itens=e.itens.map(it=>'<div style="margin:2px 0">'+escH(it.titulo)+(e.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
+    h+='<tr style="'+(pode?'cursor:pointer':'opacity:.6')+'"'+(pode?' onclick="etqMarca(\''+e.shipping_id+'\')"':'')+'>'
+      +'<td><input type="checkbox"'+(ETQ.marc[e.shipping_id]&&pode?' checked':'')+(pode?'':' disabled')+' onclick="event.stopPropagation();etqMarca(\''+e.shipping_id+'\')"></td>'
+      +'<td class="l" style="white-space:nowrap">#'+escH(e.venda)+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(e.data_venda)+'</div><div style="font-size:11.5px;color:var(--muted)">envio '+escH(e.shipping_id)+'</div>'+(e.comprador?'<div style="font-size:11.5px;color:var(--muted)">'+escH(e.comprador)+'</div>':'')+'</td>'
+      +'<td class="l" style="min-width:260px">'+itens+'</td><td>'+dvN(e.quantidade)+'</td><td>'+dvR(e.valor)+'</td>'
+      +'<td class="l" style="white-space:nowrap"><span style="border:1px solid '+s[1]+';color:'+s[1]+';border-radius:999px;padding:2px 9px;font-size:12px" title="'+(e.ao_vivo?'Status lido agora no ML':'Último status gravado (o ML não respondeu agora)')+'">'+escH(s[0])+(e.ao_vivo?'':' *')+'</span>'+(AE_LOG[e.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[e.logistic_type]+'</div>':'')+'</td></tr>';
+  });
+  h+='</tbody></table></div><div class="foot" style="text-align:left;margin-top:8px">* status ainda não confirmado ao vivo no ML. Reimprimir pede confirmação.</div></div></div>';
+  app.innerHTML=h;
+}
+
 async function renderDashML(){
   const app=document.getElementById('app');app.style.maxWidth='';sincOcelotNav();
   // atalho (Hoje, 7 dias...) recalculado a cada entrada: aba aberta de um dia para o outro nao fica presa na data velha
@@ -3678,18 +3935,18 @@ function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta 
    A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
 const USR_API=SB_URL+"/functions/v1/app-usuarios";
 let EU=null, ADM=null, admSel=null;
-const OCN_PERM={dashboard:"ocelot_dashboard",aentregar:"ocelot_entregas",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
-const OCN_IDS={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+const OCN_PERM={dashboard:"ocelot_dashboard",aentregar:"ocelot_entregas",etiquetas:"ocelot_etiquetas",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
+const OCN_IDS={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
 const ACOES_INFO=[
   ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
   ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
   ["exportar_pdf","Exportar PDF",""],
   ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
   ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU, ativar/pausar, estoque e preço no Cadastro — escreve direto no ML"]];
-const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"],["ocelot_entregas","Ocelot Vendas a entregar"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"],["ocelot_entregas","Ocelot Vendas a entregar"],["ocelot_etiquetas","Ocelot Etiquetas de Envio"]];
 const PRESETS={
   "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
-  "p:ocelot":{menus:["ocelot_dashboard","ocelot_entregas","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
+  "p:ocelot":{menus:["ocelot_dashboard","ocelot_entregas","ocelot_etiquetas","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
 
 function pode(k){
   if(!EU||!EU.ativo)return false; if(EU.admin)return true;
@@ -3887,7 +4144,7 @@ function htmlPermissoes(){
   h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
   h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
   h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
-    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_entregas","Vendas a entregar","Prazo de envio, itens, valor e repasse estimado. Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_entregas","Vendas a entregar","Prazo de envio, itens, valor e repasse estimado. Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_etiquetas","Etiquetas de Envio","Imprime a etiqueta do ML na térmica (QZ Tray). Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
   h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
   h+='<div class="adm-box"><h3>Contas</h3><div class="adm-hint-i" style="margin-bottom:6px">Valem para a Consultoria e para o Dashboard de Vendas e Perguntas da Ocelot</div>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'

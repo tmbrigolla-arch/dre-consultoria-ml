@@ -4234,7 +4234,18 @@ async function salvarPermissoes(){
   var body={acao:"salvar",user_id:admSel,perms:{menus:menus,acoes:acoes,contas:contas}};
   if(!adminCk.disabled) body.admin=isAdmin;
   msg.className="adm-msg"; msg.textContent="Salvando…";
-  try{ await usrApi(body); await renderPermissoes('<span class="adm-okm">Permissões salvas.</span>'); }
+  try{
+    var alvo=admSel; await usrApi(body); await renderPermissoes('');
+    // confere o que o servidor gravou: item que ele nao conhece e descartado em silencio
+    // (ja aconteceu com Repasse e com Etiquetas de Envio) -- avisa em vez de dizer "salvas"
+    var u=(ADM.usuarios||[]).find(function(x){return x.user_id===alvo;}), g=(u&&u.perms)||{}, nomes={};
+    MENUS_INFO.concat(ACOES_INFO).forEach(function(x){ nomes[x[0]]=x[1]; });
+    var perdeu=(u&&u.admin)?[]:menus.filter(function(k){return (g.menus||[]).indexOf(k)<0;}).concat(acoes.filter(function(k){return (g.acoes||[]).indexOf(k)<0;}));
+    var m2=document.getElementById("pMsg");
+    if(m2) m2.innerHTML=perdeu.length
+      ?'<span class="adm-err">O servidor NÃO gravou: '+escH(perdeu.map(function(k){return nomes[k]||k;}).join(", "))+'. O resto foi salvo. Avise o suporte do painel.</span>'
+      :'<span class="adm-okm">Permissões salvas.</span>';
+  }
   catch(e){ msg.textContent=e.message; msg.className="adm-msg adm-err"; }
 }
 

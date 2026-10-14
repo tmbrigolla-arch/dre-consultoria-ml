@@ -4,6 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DRE · Acompanhamento Mercado Livre</title>
+<script>
+/* Guarda de inicializacao (ES5 de proposito, para rodar ate em navegador velho).
+   #login e #appRoot nascem escondidos; se o script principal ou a biblioteca do Supabase
+   nao carregarem (navegador desatualizado, WebView velho do Android, rede), a pagina ficava
+   so com o fundo escuro. Agora aparece um aviso dizendo o que fazer. */
+window.__bootErro=null;
+window.onerror=function(m){ if(!window.__appOk&&!window.__bootErro) window.__bootErro=String(m); };
+function __bootFalhou(){
+  if(window.__appOk) return;
+  var ua=navigator.userAgent||"", v=(ua.match(/Chrome\/(\d+)/)||[])[1], div=document.getElementById("bootFalha");
+  if(!div||!document.body) return;
+  var l=document.getElementById("login"); if(l) l.style.display="none";
+  var dica=(v&&+v<85)?("Seu navegador (Chrome "+v+") está desatualizado. Atualize o <b>Google Chrome</b> e o <b>Android System WebView</b> na Play Store e abra o link de novo pelo Chrome."):
+    "Não foi possível carregar o painel. Abra o link direto no <b>Google Chrome</b> (se veio pelo WhatsApp, toque nos 3 pontinhos e em \"Abrir no Chrome\"), confira a internet e recarregue.";
+  div.innerHTML='<div style="max-width:420px;margin:60px auto;padding:20px;background:#131f36;border:1px solid #243250;border-radius:12px;color:#e2e8f0;font:15px/1.5 system-ui,sans-serif">'+
+    '<b style="font-size:17px">O painel não abriu</b><p>'+dica+'</p>'+
+    '<button onclick="location.reload()" style="padding:10px 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:15px">Tentar de novo</button>'+
+    '<p style="font-size:11px;color:#8ca0bd;word-break:break-all;margin-top:16px">'+(window.__bootErro?("Erro: "+window.__bootErro.replace(/</g,"&lt;")+"<br>"):"")+ua.replace(/</g,"&lt;")+'</p></div>';
+  div.style.display="block";
+}
+window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb;--up:#16a34a;--down:#dc2626}
@@ -375,6 +397,7 @@
 </head>
 <body>
 
+<div id="bootFalha" style="display:none"></div>
 <div id="login">
   <div class="card">
     <h2 id="loginTitulo">Entrar</h2>
@@ -554,8 +577,8 @@ function render(){
   const periodos=periodosAtivos();
   if(!periodos.length){app.innerHTML=`<div class="empty">Sem dados ${aba==='mensal'?'mensais':'semanais'} ainda.</div>`;return;}
   const clientes={};
-  for(const r of D.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:{}};clientes[r.cliente_id].contas[r.conta]??={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
-  const cliMap={};for(const r of D.cliente){cliMap[r.cliente_id]??={};cliMap[r.cliente_id][r.periodo_fim]=r;}
+  for(const r of D.conta){if(!clientes[r.cliente_id])clientes[r.cliente_id]={nome:r.cliente,contas:{}};if(!clientes[r.cliente_id].contas[r.conta])clientes[r.cliente_id].contas[r.conta]={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
+  const cliMap={};for(const r of D.cliente){if(!cliMap[r.cliente_id])cliMap[r.cliente_id]={};cliMap[r.cliente_id][r.periodo_fim]=r;}
   const totMap={};for(const r of D.total)totMap[r.periodo_fim]=r;
   let html="";
   for(const cid in clientes){
@@ -4206,7 +4229,8 @@ async function salvaMinhaSenha(){
 }
 
 /* ---------- INIT ---------- */
-(async()=>{ const {data:{session}}=await sb.auth.getSession(); if(session) mostrarApp(); else mostrarLogin(); })();
+window.__appOk=true;
+(async()=>{ let session=null; try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){} if(session) mostrarApp(); else mostrarLogin(); })();
 </script>
 </body>
 </html>

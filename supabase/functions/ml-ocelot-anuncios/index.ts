@@ -9,7 +9,7 @@
 //   Antes a tela mostrava preco/situacao da coleta semanal (item_metrics), entao anuncio apagado ficava no cadastro com "—" e o SKU dava "ML respondeu 400".
 // POST { acao:"status", item_id, ativo:true|false }            (permissao alterar_ml)
 //   Ativa ou pausa o anuncio no ML. Encerrado (closed) nao volta por aqui: so republicando no ML.
-// POST { acao:"estoque", item_id, quantidade, variacao_id? }    (permissao alterar_ml)
+// POST { acao:"estoque", item_id, quantidade|somar, variacao_id?, esperado? }  (permissao alterar_ml)
 //   Grava o estoque disponivel. Anuncio com variacoes: estoque e por variacao, e o PUT leva TODAS as
 //   variacoes (o ML apaga a variacao que nao vier no corpo) -- so a escolhida muda. Full: estoque e do ML.
 // Preco: a tela usa o ml-ocelot-preco (acao efetivar), que ja tem a trava de faixa segura e o log.
@@ -25,11 +25,16 @@
 //   de um SKU (uma gravacao por produto).
 // v4 (13/10/2026): edicao de estoque DESLIGADA a pedido do Tiago -- o painel nao grava estoque no ML
 //   (acoes estoque e estoque_lote recusadas). Ler estoque e ativar/pausar continuam. Religar: ESTOQUE_LIGADO.
+// v5 (14/10/2026): edicao de estoque RELIGADA a pedido do Tiago. O ML continua sendo a fonte da verdade: se o
+//   estoque mudar no ML (venda, ajuste feito direto la), a tela rele sozinha e mostra o saldo novo. Trava contra
+//   sobrescrever: a tela manda "esperado" (o saldo que ela mostrava) e, se o ML ja estiver diferente, a gravacao
+//   e recusada (409) com o saldo atual -- a pessoa revisa e confirma de novo. "+N"/"-N" vai como somar:N e e
+//   aplicado sobre o saldo LIDO NA HORA no ML (nao sobre o da tela).
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
-const ESTOQUE_LIGADO = false; // v4: o painel nao mexe no estoque do ML por enquanto
+const ESTOQUE_LIGADO = true; // v5: religado (v4 tinha desligado)
 const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
 async function contaOk(admin: any, uid: string) {
@@ -64,21 +69,28 @@ async function log(admin: any, linha: Record<string, unknown>) {
 }
 
 // Grava o estoque de UM anuncio (ja lido em "antes"), confere relendo e registra no log.
-async function gravarEstoque(admin: any, itemId: string, antes: any, quantidade: any, variacaoId: any, uid: string) {
-  const q = Number(quantidade);
-  if (!Number.isInteger(q) || q < 0 || q > 99999) return { http: 400, corpo: { ok: false, erro: "quantidade invalida (inteiro de 0 a 99999)" } };
+// v5: somar (inteiro, pode ser negativo) e aplicado sobre o saldo lido agora; esperado (saldo que a tela mostrava)
+// recusa a gravacao se o ML ja mudou nesse meio tempo (venda, ajuste direto no ML).
+async function gravarEstoque(admin: any, itemId: string, antes: any, quantidade: any, variacaoId: any, uid: string, somar: any = null, esperado: any = null) {
   if (antes.full) return { http: 409, corpo: { ok: false, erro: "anúncio no Full: o estoque é o que está no armazém do ML, não dá para alterar aqui", antes } };
-  let corpo: any, vid: number | null = null, qAntes: number;
+  let vid: number | null = null, qAntes: number;
   if (antes.variacoes.length) {
     vid = Number(variacaoId);
     const alvo = antes.variacoes.find((v: any) => v.id === vid);
     if (!alvo) return { http: 400, corpo: { ok: false, erro: "anúncio com variações: escolha a variação", antes } };
     qAntes = alvo.estoque;
-    corpo = { variations: antes.variacoes.map((v: any) => ({ id: v.id, available_quantity: v.id === vid ? q : v.estoque })) };
   } else {
     qAntes = antes.estoque;
-    corpo = { available_quantity: q };
   }
+  const temSomar = somar !== null && somar !== undefined && somar !== "";
+  if (!temSomar && esperado !== null && esperado !== undefined && esperado !== "" && Number(esperado) !== qAntes)
+    return { http: 409, corpo: { ok: false, mudou_no_ml: true, atual: qAntes, erro: `o estoque mudou no ML (agora ${qAntes}, a tela mostrava ${esperado}): confira e grave de novo`, antes } };
+  const q = temSomar ? qAntes + Number(somar) : Number(quantidade);
+  if (temSomar && !Number.isInteger(Number(somar))) return { http: 400, corpo: { ok: false, erro: "somar invalido (inteiro)" } };
+  if (!Number.isInteger(q) || q < 0 || q > 99999) return { http: 400, corpo: { ok: false, erro: temSomar ? `resultado invalido: ${qAntes} ${Number(somar) >= 0 ? "+" : ""}${somar} = ${q}` : "quantidade invalida (inteiro de 0 a 99999)" } };
+  const corpo: any = vid != null
+    ? { variations: antes.variacoes.map((v: any) => ({ id: v.id, available_quantity: v.id === vid ? q : v.estoque })) }
+    : { available_quantity: q };
   if (qAntes === q) return { http: 200, corpo: { ok: true, antes, depois: antes } };
   const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify(corpo) });
   const depois: any = r.ok ? await lerItem(admin, itemId) : null;
@@ -194,7 +206,7 @@ Deno.serve(async (req) => {
     }
 
     // estoque
-    const x = await gravarEstoque(admin, itemId, antes, body.quantidade, body.variacao_id, u.id);
+    const x = await gravarEstoque(admin, itemId, antes, body.quantidade, body.variacao_id, u.id, body.somar, body.esperado);
     return json(x.corpo, x.http);
   }
 

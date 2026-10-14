@@ -1895,8 +1895,8 @@ function ocelotLiveAplica(){
   D.itens_sem_sku=(D.itens_sem_sku||[]).filter(function(x){return !ex[x.item_id];});
   D.itens_sem_sku.forEach(function(x){const v=L[x.item_id];if(v){x.preco=v.preco;x.status=v.status;}});
 }
-function ocelotLiveGarante(){
-  if(OCELOT_LIVE.lidoEm&&Date.now()-OCELOT_LIVE.lidoEm<300000){ocelotLiveAplica();return;}
+function ocelotLiveGarante(forcar){
+  if(!forcar&&OCELOT_LIVE.lidoEm&&Date.now()-OCELOT_LIVE.lidoEm<300000){ocelotLiveAplica();return;}
   if(OCELOT_LIVE.carregando)return;
   OCELOT_LIVE.carregando=true; OCELOT_LIVE.erro=null;
   (async function(){
@@ -1913,9 +1913,19 @@ function ocelotLiveGarante(){
       }
     }catch(e){OCELOT_LIVE.erro=String(e);}
     OCELOT_LIVE.carregando=false;
-    if(aba==='ocelot'&&ocelotSub==='config')renderOcelotBodyMantendoTela();
+    if(aba==='ocelot'&&ocelotSub==='config'&&!ocelotEditando())renderOcelotBodyMantendoTela();
   })();
 }
+// Estoque mudou direto no ML (venda, ajuste la)? A aba Cadastro rele sozinha: a cada 2 min com a tela aberta e
+// ao voltar para a aba do navegador. Nao repinta enquanto alguem digita num campo (nao perde o que foi digitado).
+function ocelotEditando(){const a=document.activeElement;return !!(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT')&&a.closest&&a.closest('#ocelotBody'));}
+function ocelotLiveAuto(){
+  if(document.hidden||aba!=='ocelot'||ocelotSub!=='config'||OCELOT_LIVE.carregando||!OCELOT_LIVE.lidoEm)return;
+  if(Date.now()-OCELOT_LIVE.lidoEm<60000||ocelotEditando())return;
+  ocelotLiveGarante(true);
+}
+setInterval(function(){if(OCELOT_LIVE.lidoEm&&Date.now()-OCELOT_LIVE.lidoEm>=120000)ocelotLiveAuto();},30000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)ocelotLiveAuto();});
 function ocelotLiveInfo(){
   if(OCELOT_LIVE.carregando)return '<span style="color:var(--muted)">consultando o Mercado Livre…</span>';
   if(OCELOT_LIVE.erro&&!OCELOT_LIVE.lidoEm)return '<span style="color:#f87171">ML: '+escH(OCELOT_LIVE.erro)+'</span>';
@@ -1924,7 +1934,7 @@ function ocelotLiveInfo(){
   const n=OCELOT_LIVE.excluidos.length;
   const P=OCELOT_LIVE.pendentes;
   const pend=P.length?'<div style="margin:6px 0;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5)"><b>Trava:</b> o ML diz que <b>'+P.length+' anúncios</b> foram excluídos de uma vez. Por segurança <b>nada foi tirado do cadastro</b> — confira no Mercado Livre antes de confirmar.<div style="font-size:11.5px;color:var(--muted);margin:4px 0">'+P.slice(0,30).map(function(x){return escH(x.item_id);}).join(', ')+(P.length>30?' …':'')+'</div>'+(pode('alterar_ml')?'<button onclick="ocelotConfirmaExclusoes()" style="padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;background:transparent;color:#fbbf24;cursor:pointer;font-size:12px">Confirmo: tirar estes '+P.length+' do cadastro</button>':'')+'</div>':'';
-  return pend+'Situação, estoque e preço <b>ao vivo do ML</b> (lido às '+h+')'+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
+  return pend+'Situação, estoque e preço <b>ao vivo do ML</b> (lido às '+h+', relê sozinho a cada 2 min)'+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
 }
 // estoque somado dos anuncios de uma linha do cadastro (null = ainda sem leitura do ML)
 function ocelotEstoqueLinha(l){
@@ -1944,14 +1954,14 @@ function ocelotStatusCell(id){
   return '<button '+(pd?'onclick="event.stopPropagation();ocelotTrocaStatus(\''+id+'\')"':'disabled')+' title="'+(pd?(at?'Clique para pausar no ML':'Clique para ativar no ML'):'Sem permissão para alterar o anúncio no ML')+'" style="border:none;border-radius:10px;padding:2px 10px;font-size:11.5px;font-weight:700;cursor:'+(pd?'pointer':'default')+';background:'+(at?'#14532d':'#3f3f46')+';color:'+(at?'#bbf7d0':'#d4d4d8')+'">'+(at?'● Ativo':'❚❚ Pausado')+'</button>'+sub
     +'<div id="anst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
 }
-const OCELOT_ESTOQUE_EDITAVEL=false; // painel nao grava estoque no ML por enquanto (servidor tambem recusa)
+const OCELOT_ESTOQUE_EDITAVEL=true; // 14/10/2026: religado (o ML continua a fonte da verdade; a tela rele sozinha)
 function ocelotEstoqueCell(id){
   const v=OCELOT_LIVE.itens[id];
   if(!v)return '<span style="color:var(--muted)">'+(OCELOT_LIVE.carregando?'…':'—')+'</span>';
   if(v.full)return '<span title="Anúncio no Full: o estoque é o do armazém do ML">'+v.estoque+' <span style="font-size:10px;background:#1e3a8a;color:#bfdbfe;padding:1px 5px;border-radius:4px">Full</span></span>';
   if(v.status==='closed')return '<span style="color:var(--muted)">'+v.estoque+'</span>';
   const ro=pode('alterar_ml')&&OCELOT_ESTOQUE_EDITAVEL?'':' disabled';
-  const inp=!OCELOT_ESTOQUE_EDITAVEL?function(vid,q,rot){return '<div style="white-space:nowrap" title="Estoque no ML (só leitura: altere direto no Mercado Livre)">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+q+'</div>';}:function(vid,q,rot){return '<div style="white-space:nowrap">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+'<input type="number" min="0" step="1" value="'+q+'" data-q="'+q+'"'+ro+' onclick="event.stopPropagation()" onchange="ocelotSalvaEstoque(this,\''+id+'\','+(vid==null?'null':vid)+')" title="Estoque disponível no ML. Digite o total, ou +N para somar." style="width:64px;text-align:right;padding:2px 5px;font-size:12px"></div>';};
+  const inp=!OCELOT_ESTOQUE_EDITAVEL?function(vid,q,rot){return '<div style="white-space:nowrap" title="Estoque no ML (só leitura: altere direto no Mercado Livre)">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+q+'</div>';}:function(vid,q,rot){return '<div style="white-space:nowrap">'+(rot?'<span style="font-size:10.5px;color:var(--muted)">'+escH(rot)+'</span> ':'')+'<input type="number" min="0" step="1" value="'+q+'" data-q="'+q+'"'+ro+' onclick="event.stopPropagation()" onchange="ocelotSalvaEstoque(this,\''+id+'\','+(vid==null?'null':vid)+')" title="Estoque disponível no ML. Digite o total, ou +N / -N para somar/tirar do saldo atual do ML." style="width:64px;text-align:right;padding:2px 5px;font-size:12px"></div>';};
   let h='';
   if(v.variacoes&&v.variacoes.length)v.variacoes.forEach(function(x){h+=inp(x.id,x.estoque,String(x.nome).slice(0,18));});
   else h=inp(null,v.estoque,'');
@@ -2016,9 +2026,11 @@ async function ocelotTrocaStatus(id){
   }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}}
 }
 async function ocelotSalvaEstoque(inp,id,vid){
-  const ant=Number(inp.getAttribute('data-q')), bruto=String(inp.value||'').trim();
-  let q=/^\+\d+$/.test(bruto)?ant+Number(bruto.slice(1)):Number(bruto);
-  if(!Number.isInteger(q)||q<0){alert('Estoque inválido: use um número inteiro (ou +N para somar).');inp.value=ant;return;}
+  const ant=Number(inp.getAttribute('data-q')), bruto=String(inp.value||'').trim().replace(/\s/g,'');
+  // +N / -N: soma ou tira do saldo ATUAL do ML (o servidor aplica sobre o que ler na hora)
+  const rel=/^[+-]\d+$/.test(bruto)?Number(bruto):null;
+  const q=rel!=null?ant+rel:Number(bruto);
+  if(!Number.isInteger(q)||q<0){alert('Estoque inválido: use um número inteiro (ou +N / -N para somar/tirar).');inp.value=ant;return;}
   if(q===ant){inp.value=ant;return;}
   const v=OCELOT_LIVE.itens[id]||{};
   let msg='Alterar o estoque do anúncio '+id+' no Mercado Livre?\n\n'+String(v.titulo||'')+'\n\nHoje: '+ant+'\nNovo: '+q+' ('+(q>ant?'+':'')+(q-ant)+')';
@@ -2027,10 +2039,20 @@ async function ocelotSalvaEstoque(inp,id,vid){
   const st=document.getElementById('esst_'+id); inp.disabled=true;
   if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
   try{
-    const x=await ocelotAnunciosPost({acao:'estoque',item_id:id,quantidade:q,variacao_id:vid});
+    const corpo={acao:'estoque',item_id:id,variacao_id:vid};
+    if(rel!=null)corpo.somar=rel; else{corpo.quantidade=q;corpo.esperado=ant;}
+    const x=await ocelotAnunciosPost(corpo);
+    if(x.j.mudou_no_ml){
+      // o ML mudou desde a ultima leitura (venda ou ajuste direto la): mostra o saldo novo e nao grava
+      inp.value=x.j.atual; inp.setAttribute('data-q',x.j.atual); inp.disabled=false;
+      if(st){st.textContent='mudou no ML: agora '+x.j.atual+'. Confira e digite de novo';st.style.color='#fbbf24';}
+      if(x.j.antes){OCELOT_LIVE.itens[id]=x.j.antes;OCELOT_LIVE.aplicadoEm=null;ocelotLiveAplica();}
+      return;
+    }
     if(!x.r.ok||(!x.j.ok&&!x.j.depois)){if(st){st.textContent=x.j.erro||('erro '+x.r.status);st.style.color='#f87171';}inp.value=ant;inp.disabled=false;return;}
-    if(st){st.textContent=x.j.ok?'gravado no ML':(x.j.aviso||'enviado');st.style.color=x.j.ok?'#34d399':'#fbbf24';}
-    inp.setAttribute('data-q',q); inp.disabled=false;
+    const gravado=x.j.depois&&!x.j.depois.erro?(vid!=null?((x.j.depois.variacoes||[]).find(function(o){return o.id===vid;})||{}).estoque:x.j.depois.estoque):q;
+    if(st){st.textContent=x.j.ok?('gravado no ML'+(gravado!=null&&gravado!==q?' ('+gravado+')':'')):(x.j.aviso||'enviado');st.style.color=x.j.ok?'#34d399':'#fbbf24';}
+    inp.value=gravado!=null?gravado:q; inp.setAttribute('data-q',inp.value); inp.disabled=false;
     ocelotLiveAtualiza(id,x.j.depois);
   }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}inp.value=ant;inp.disabled=false;}
 }

@@ -4,7 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>DRE · Acompanhamento Mercado Livre</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* Guarda de inicializacao (ES5 de proposito, para rodar ate em navegador velho).
+   #login e #appRoot nascem escondidos; se o script principal ou a biblioteca do Supabase
+   nao carregarem (navegador desatualizado, WebView velho do Android, rede), a pagina ficava
+   so com o fundo escuro. Agora aparece um aviso dizendo o que fazer. */
+if(typeof globalThis==="undefined") window.globalThis=window;
+if(!Object.fromEntries) Object.fromEntries=function(it){ var o={}; Array.from(it).forEach(function(kv){ o[kv[0]]=kv[1]; }); return o; };
+window.__bootErro=null;
+window.onerror=function(m){ if(!window.__appOk&&!window.__bootErro) window.__bootErro=String(m); };
+function __bootFalhou(){
+  if(window.__appOk) return;
+  var ua=navigator.userAgent||"", v=(ua.match(/Chrome\/(\d+)/)||[])[1], div=document.getElementById("bootFalha");
+  if(!div||!document.body) return;
+  var l=document.getElementById("login"); if(l) l.style.display="none";
+  var dica=(v&&+v<58)?("Seu navegador (Chrome "+v+") está desatualizado. Atualize o <b>Google Chrome</b> e o <b>Android System WebView</b> na Play Store e abra o link de novo pelo Chrome."):
+    "Não foi possível carregar o painel. Abra o link direto no <b>Google Chrome</b> (se veio pelo WhatsApp, toque nos 3 pontinhos e em \"Abrir no Chrome\"), confira a internet e recarregue.";
+  div.innerHTML='<div style="max-width:420px;margin:60px auto;padding:20px;background:#131f36;border:1px solid #243250;border-radius:12px;color:#e2e8f0;font:15px/1.5 system-ui,sans-serif">'+
+    '<b style="font-size:17px">O painel não abriu</b><p>'+dica+'</p>'+
+    '<button onclick="location.reload()" style="padding:10px 16px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-size:15px">Tentar de novo</button>'+
+    '<p style="font-size:11px;color:#8ca0bd;word-break:break-all;margin-top:16px">'+(window.__bootErro?("Erro: "+window.__bootErro.replace(/</g,"&lt;")+"<br>"):"")+ua.replace(/</g,"&lt;")+'</p></div>';
+  div.style.display="block";
+}
+window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
+</script>
+<!-- supabase-js fixado em 2.85.0: ultima versao com sintaxe ES2017; da 2.86 em diante exige Chrome 85+ (celular Android antigo ficava com tela preta) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.85.0/dist/umd/supabase.js"></script>
 <style>
   :root{--bg:#0f172a;--panel:#ffffff;--line:#e5e8ee;--ink:#1f2733;--muted:#64748b;--accent:#2563eb;--head:#0f172a;--conta:#fff4d6;--cliente:#d9f0dd;--total:#cfe2fb;--up:#16a34a;--down:#dc2626}
   *{box-sizing:border-box}
@@ -375,6 +400,7 @@
 </head>
 <body>
 
+<div id="bootFalha" style="display:none"></div>
 <div id="login">
   <div class="card">
     <h2 id="loginTitulo">Entrar</h2>
@@ -538,11 +564,11 @@ function repMedCell(r){if(!r)return'—';if(r.medalha)return medalPretty(r.medal
 function toggleKids(td){const tr=td.parentElement;const open=tr.classList.toggle('open');const cr=td.querySelector('.caret');if(cr)cr.textContent=open?'▾':'▸';let n=tr.nextElementSibling;while(n&&n.classList.contains('subrow')){n.style.display=open?'table-row':'none';n=n.nextElementSibling;}}
 function tabela(tag,cls,periodos,byPeriodo){
   let h=`<div class="tag ${cls}">${tag}</div><table><thead><tr><th class="m">Métrica</th>`;
-  periodos.forEach(p=>{const api=byPeriodo[p]?.fonte==='api'?'<span class="api">API</span>':'';h+=`<th>${labelPeriodo(p)}${api}</th>`;});
+  periodos.forEach(p=>{const api=(byPeriodo[p]||{}).fonte==='api'?'<span class="api">API</span>':'';h+=`<th>${labelPeriodo(p)}${api}</th>`;});
   h+=`</tr></thead><tbody>`;
   const _MA=metricas();const _hideRep=(cls==='cliente'||cls==='total');for(let _j=0;_j<_MA.length;_j++){const[k,label,t,sub]=_MA[_j];if(_hideRep&&(k==='_rep_medalha'||k==='rep_reclamacoes_rate'||k==='rep_cancel_rate'||k==='rep_atraso_rate'))continue;const _kids=_MA[_j+1]&&_MA[_j+1][3]==='sub';
     h+=`<tr${sub?' class="subrow" style="display:none"':''}>`+(t==='repmed'?`<td class="m">${label}</td>`:sub?`<td class="m sub2">${label}</td>`:_kids?`<td class="m parent" style="cursor:pointer" onclick="toggleKids(this)"><span class="caret">▸</span> ${label}</td>`:`<td class="m">${label}</td>`);
-    periodos.forEach((p,i)=>{ h+=`<td>${t==='repmed'?repMedCell(byPeriodo[p]):celula(byPeriodo[p]?.[k], i>0?byPeriodo[periodos[i-1]]?.[k]:null, t)}</td>`; });
+    periodos.forEach((p,i)=>{ h+=`<td>${t==='repmed'?repMedCell(byPeriodo[p]):celula((byPeriodo[p]||{})[k], i>0?(byPeriodo[periodos[i-1]]||{})[k]:null, t)}</td>`; });
     h+=`</tr>`;
   }
   return h+`</tbody></table>`;
@@ -554,8 +580,8 @@ function render(){
   const periodos=periodosAtivos();
   if(!periodos.length){app.innerHTML=`<div class="empty">Sem dados ${aba==='mensal'?'mensais':'semanais'} ainda.</div>`;return;}
   const clientes={};
-  for(const r of D.conta){clientes[r.cliente_id]??={nome:r.cliente,contas:{}};clientes[r.cliente_id].contas[r.conta]??={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
-  const cliMap={};for(const r of D.cliente){cliMap[r.cliente_id]??={};cliMap[r.cliente_id][r.periodo_fim]=r;}
+  for(const r of D.conta){if(!clientes[r.cliente_id])clientes[r.cliente_id]={nome:r.cliente,contas:{}};if(!clientes[r.cliente_id].contas[r.conta])clientes[r.cliente_id].contas[r.conta]={};clientes[r.cliente_id].contas[r.conta][r.periodo_fim]=r;}
+  const cliMap={};for(const r of D.cliente){if(!cliMap[r.cliente_id])cliMap[r.cliente_id]={};cliMap[r.cliente_id][r.periodo_fim]=r;}
   const totMap={};for(const r of D.total)totMap[r.periodo_fim]=r;
   let html="";
   for(const cid in clientes){
@@ -2788,7 +2814,7 @@ function qualItemVal(it,campo){
   if(campo==='titulo')return (it.titulo||it.item_id||'').toLowerCase();
   if(campo==='empresa')return (it.cliente_nome+' / '+it.conta_apelido).toLowerCase();
   if(campo==='status')return (it.status||'').toLowerCase();
-  if(campo==='faixa'){const rank={excelente:0,boa:1,regular:2,critica:3,sem_dado:4};return rank[it.faixa]??5;}
+  if(campo==='faixa'){const rank={excelente:0,boa:1,regular:2,critica:3,sem_dado:4};return rank[it.faixa]!=null?rank[it.faixa]:5;}
   if(campo==='estoque')return it.estoque||0;
   if(campo==='vendidos')return it.vendidos||0;
   if(campo==='date_created')return it.date_created||'';
@@ -3276,7 +3302,7 @@ async function load(){
   document.getElementById("app").innerHTML=`<div class="empty">Carregando…</div>`;
   try{
     const {data:{session}}=await sb.auth.getSession();
-    const r=await fetch(API,{cache:"no-store",headers:{Authorization:"Bearer "+(session?.access_token||"")}});
+    const r=await fetch(API,{cache:"no-store",headers:{Authorization:"Bearer "+((session&&session.access_token)||"")}});
     if(r.status===401){ mostrarLogin(); return; }
     DADOS=await r.json();
     montaFiltro();trocaAba(aba);
@@ -3286,7 +3312,7 @@ async function load(){
 async function atualizar(){
   const btn=document.getElementById("btnAtualizar");btn.disabled=true;const txt=btn.textContent;btn.textContent="Atualizando…";
   document.getElementById("app").innerHTML=`<div class="empty">Buscando dados novos direto do Mercado Livre…<br>Isso pode levar até ~30s por conta. Não feche a página.</div>`;
-  try{const {data:{session:_s}}=await sb.auth.getSession();await fetch(COLETOR,{cache:"no-store",headers:{Authorization:"Bearer "+(_s?.access_token||"")}});}catch(e){}
+  try{const {data:{session:_s}}=await sb.auth.getSession();await fetch(COLETOR,{cache:"no-store",headers:{Authorization:"Bearer "+((_s&&_s.access_token)||"")}});}catch(e){}
   await load();
   btn.disabled=false;btn.textContent=txt;
 }
@@ -4206,7 +4232,8 @@ async function salvaMinhaSenha(){
 }
 
 /* ---------- INIT ---------- */
-(async()=>{ const {data:{session}}=await sb.auth.getSession(); if(session) mostrarApp(); else mostrarLogin(); })();
+window.__appOk=true;
+(async()=>{ let session=null; try{ ({data:{session}}=await sb.auth.getSession()); }catch(e){} if(session) mostrarApp(); else mostrarLogin(); })();
 </script>
 </body>
 </html>

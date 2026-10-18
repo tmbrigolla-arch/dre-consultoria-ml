@@ -1286,7 +1286,7 @@ async function ocelotAdiantDel(id){
   if(!confirm('Remover este adiantamento?'))return;
   if(await ocelotFornSet({tipo:'del_adiantamento',id:id}))ocelotRepasseRecarrega();
 }
-function ocelotSintMes(v){if(!v)return;ocelotMesFiltro=v;ocelotPagina=1;renderOcelot();}
+function ocelotSintMes(v){if(!v)return;ocelotMesFiltro=v;if(ocelotSub==='repasse'){try{sessionStorage.setItem('ocelot_rep_mes',v);}catch(e){}}ocelotPagina=1;renderOcelot();}
 function htmlOcelotSintetica(){
   const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
   const mes=ocelotMesFiltro;
@@ -1443,6 +1443,8 @@ function htmlOcelotSintetica(){
 }
 function ocelotSubTab(s){
   if(EU&&!pode(OCN_PERM[s]))return;
+  // entrando no Repasse vindo de outra aba: mes escolhido no Repasse nesta sessao, senao o corrente (nao herda o da DRE)
+  if(s==='repasse'&&ocelotSub!=='repasse'){let _sel=null;try{_sel=sessionStorage.getItem('ocelot_rep_mes');}catch(e){}ocelotMesFiltro=_sel||null;}
   ocelotSub=s;localStorage.setItem('ocelot_sub',s);sincOcelotNav();
   if(s==='dashboard'){renderDashML();return;}
   if(s==='aentregar'){renderAEntregar();return;}
@@ -1466,7 +1468,9 @@ function renderOcelotBody(){
     if(!OCELOT_DRE_CACHE){renderOcelotDre();return;}
   }
   if(ocelotSub==='repasse'){
-    if(!ocelotMesFiltro){const _ms=(OCELOT_CACHE&&OCELOT_CACHE.meses_disponiveis)||[];const _ant=ocelotMesAnterior(ocelotMesAtual());ocelotMesFiltro=_ms.indexOf(_ant)>=0?_ant:(_ms[0]||_ant);renderOcelot();return;}
+    // 18/10/2026: abre no mes corrente; recarregar a pagina (F5) mantem o mes escolhido (sessionStorage = so esta aba)
+    if(!ocelotMesFiltro){const _ms=(OCELOT_CACHE&&OCELOT_CACHE.meses_disponiveis)||[];let _sel=null;try{_sel=sessionStorage.getItem('ocelot_rep_mes');}catch(e){}
+      const _atu=ocelotMesAtual();ocelotMesFiltro=(_sel&&_ms.indexOf(_sel)>=0)?_sel:(_ms.indexOf(_atu)>=0?_atu:(_ms[0]||_atu));renderOcelot();return;}
     if(!OCELOT_CACHE||OCELOT_CACHE.mes_filtro!==ocelotMesFiltro){renderOcelot();return;}
     if(!OCELOT_ALT_CACHE||OCELOT_ALT_CACHE.chave!==ocelotAltChave(ocelotMesFiltro)){carregaOcelotAlt(ocelotMesFiltro);return;}
   }

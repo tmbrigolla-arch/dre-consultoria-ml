@@ -1,6 +1,9 @@
-// ml-ocelot-a-entregar v2 (18/10/2026) - aba "A entregar" da Gestao Ocelot.
-// v2: venda em fabricacao (pending/manufacturing) ficava sem data de envio e fora dos filtros Hoje/7 dias/Atrasadas;
-//     agora usa o fim do prazo de fabricacao do pedido como data de referencia.
+// ml-ocelot-a-entregar v1 (09/10/2026) - aba "A entregar" da Gestao Ocelot.
+// v2 (09/10/2026): so o que ainda depende da Ocelot. Saiu da lista: postado/coletado (o ML mostra "A caminho"
+// mesmo com status ready_to_ship + substatus dropped_off/picked_up/in_hub), shipped, nao entregue e Full.
+// v3 (18/10/2026): venda em fabricacao (pending/manufacturing) ficava sem data de envio e fora dos filtros
+// Hoje/7 dias/Atrasadas (o /sla do ML vem vazio ate a fabricacao acabar); agora usa o fim do prazo de
+// fabricacao do pedido (manufacturing_ending_date) como data de referencia.
 //
 // POST { }  -> vendas pagas que ainda nao foram entregues, agrupadas por venda (pacote = pack_id),
 //              com prazo de despacho, previsao de entrega, itens (MLB + link), valor e repasse estimado.
@@ -19,7 +22,11 @@ const DIAS = 30;                 // venda paga ha mais de 30 dias e ainda nao en
 const CACHE_MIN = 3;             // envio consultado ha menos de 3 min nao vai ao ML de novo
 const PARALELO = 8;
 const SYNC_PULA_MIN = 2, JANELA_MIN_H = 2, JANELA_MAX_H = 48;
-const FINAIS = new Set(["delivered", "cancelled"]);
+const FINAIS = new Set(["delivered", "cancelled", "shipped", "not_delivered"]);
+// ready_to_ship com estes substatus = pacote ja entregue na agencia ou coletado pela transportadora
+const ENTREGUE_AGENCIA = new Set(["dropped_off", "picked_up", "in_hub", "in_transit", "in_warehouse"]);
+const saiuDaOcelot = (e: any) => !!e && (FINAIS.has(e.shipping_status) || ENTREGUE_AGENCIA.has(e.shipping_substatus)
+  || !!e.data_envio || e.logistic_type === "fulfillment");
 
 const dia = (s: string | null | undefined) => (s ? String(s).slice(0, 10) : null);
 
@@ -82,7 +89,7 @@ Deno.serve(async (req) => {
     const consultar = Object.keys(porShip).filter((sid) => {
       const e = cache[String(porShip[sid][0])];
       if (!e) return true;
-      if (FINAIS.has(e.shipping_status)) return false;
+      if (saiuDaOcelot(e)) return false;
       return agora - new Date(e.atualizado_em || 0).getTime() > CACHE_MIN * 60_000;
     });
     let falhasML = 0;
@@ -91,15 +98,14 @@ Deno.serve(async (req) => {
       if (!s.ok || !s.json) { falhasML++; return; }
       const j = s.json, so = j.shipping_option || {}, sh = j.status_history || {};
       let limite: string | null = null, slaStatus: string | null = null;
-      if (!FINAIS.has(j.status) && j.status !== "shipped" && !sh.date_shipped) {
+      if (!FINAIS.has(j.status) && !ENTREGUE_AGENCIA.has(j.substatus) && !sh.date_shipped) {
         const sla = await ml(admin, OCELOT_CONTA, `/shipments/${sid}/sla`);
         if (sla.ok && sla.json) { limite = dia(sla.json.expected_date); slaStatus = sla.json.status ?? null; }
       } else {
         limite = cache[String(porShip[sid][0])]?.data_limite_envio ?? null;
       }
       if (!limite) limite = dia(so.estimated_handling_limit?.date) || dia(so.buffering?.date);
-      // v2: em fabricacao (pending/manufacturing) o ML ainda nao tem prazo de despacho (/sla vazio):
-      // usa o fim do prazo de fabricacao do pedido (manufacturing_ending_date; no pacote, o maior).
+      // v3: em fabricacao o ML ainda nao tem prazo de despacho: usa o fim do prazo de fabricacao (no pacote, o maior)
       if (!limite && j.status === "pending" && j.substatus === "manufacturing") {
         for (const oid of porShip[sid]) {
           const o = await ml(admin, OCELOT_CONTA, `/orders/${oid}`);
@@ -148,7 +154,7 @@ Deno.serve(async (req) => {
     const grupos: Record<string, any> = {};
     for (const v of vs) {
       const e = cache[String(v.order_id)] || {};
-      if (FINAIS.has(e.shipping_status)) continue;
+      if (saiuDaOcelot(e)) continue;
       const k = String(v.pack_id || v.order_id);
       const g = (grupos[k] ||= {
         venda: k, pacote: !!v.pack_id, order_ids: [], data_venda: v.data_venda, data_venda_ts: v.data_venda_ts,

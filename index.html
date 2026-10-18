@@ -4380,10 +4380,27 @@ function ordPrepara(){
     tb.dataset.ord='1';
     [...hd.cells].forEach(c=>{if(!c.textContent.trim())return;c.classList.add('ord-th');c.title='Clique para ordenar';
       const s=document.createElement('span');s.className='ord-seta';c.appendChild(s);});
-    const e=ORD.estado[ordChave(tb,hd)];
-    if(e&&e.col<hd.cells.length)ordAplica(tb,hd,L,e.col,e.dir);
+    ordReaplica(tb,hd,L);
   });
 }
+// No celular as tabelas .mcards viram cartoes, sem titulo para clicar: ordem fixa por data, a mais proxima
+// de hoje primeiro. Envio (a fazer): crescente, atrasadas no topo e sem data no fim. Data (vendas ja feitas,
+// Repasse): mais recente primeiro. No computador vale a escolha do clique.
+const ORD_CEL=window.matchMedia('(max-width:680px)');
+function ordReaplica(tb,hd,L){
+  if(ORD_CEL.matches&&tb.classList.contains('mcards')){
+    const nomes=[...hd.cells].map(c=>c.textContent.replace(/[▲▼]/g,'').trim());
+    let col=nomes.indexOf('Envio'),dir=1;
+    if(col<0){col=nomes.indexOf('Data');dir=-1;}
+    if(col>=0)ordAplica(tb,hd,L,col,dir);
+    return;
+  }
+  const e=ORD.estado[ordChave(tb,hd)];
+  ordAplica(tb,hd,L,e&&e.col<hd.cells.length?e.col:0,e&&e.col<hd.cells.length?e.dir:0);
+}
+ORD_CEL.addEventListener('change',()=>document.querySelectorAll('table[data-ord="1"]').forEach(tb=>{
+  const hd=ordCabecalho(tb),L=hd&&ordLinhas(tb,hd);if(L)ordReaplica(tb,hd,L);
+}));
 document.addEventListener('click',ev=>{
   const th=ev.target.closest&&ev.target.closest('th.ord-th');if(!th||ev.target.closest('a,button,input,select,label'))return;
   const tb=th.closest('table');if(!tb||tb.dataset.ord!=='1')return;

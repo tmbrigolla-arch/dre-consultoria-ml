@@ -3425,7 +3425,7 @@ const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
 const AE_API=SB_URL+'/functions/v1/ml-ocelot-a-entregar';
 let AE={dados:null,erro:null,carregando:false,em:0,atalho:'todas',de:'',ate:'',status:'todos'};
 const AE_ST={pending:'Aguardando',handling:'Em preparação',ready_to_ship:'Pronto p/ envio',shipped:'A caminho',not_delivered:'Não entregue'};
-const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada',manufacturing:'em fabricação'};
+const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada',manufacturing:'em fabricação',invoice_pending:'aguardando NF'};
 const AE_LOG={self_service:'Flex',xd_drop_off:'Agência',drop_off:'Agência',cross_docking:'Coleta',fulfillment:'Full'};
 function aeAtalhos(){
   const h=dvDe(dvHoje()),d=n=>{const x=new Date(h);x.setDate(x.getDate()+n);return dvIso(x);};

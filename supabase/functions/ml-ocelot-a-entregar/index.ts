@@ -6,6 +6,7 @@
 // fabricacao do pedido (manufacturing_ending_date) como data de referencia.
 // v4 (18/10/2026): custos por venda (taxa ML, frete, imposto, ads, custo fixo) e gestao, da mesma ocelot_vendas_calc
 // da DRE por venda: valor - custos - gestao = repasse estimado.
+// v5 (18/10/2026): SKU de cada item (para a busca da tela por MLB, SKU ou numero da venda).
 //
 // POST { }  -> vendas pagas que ainda nao foram entregues, agrupadas por venda (pacote = pack_id),
 //              com prazo de despacho, previsao de entrega, itens (MLB + link), valor e repasse estimado.
@@ -137,10 +138,12 @@ Deno.serve(async (req) => {
     const { data: calc } = await admin.rpc("ocelot_vendas_calc", { p_conta: OCELOT_CONTA, p_de: desde, p_ate: new Date().toISOString().slice(0, 10) });
     const cmv: Record<string, number | null> = {};
     const custos: Record<string, any> = {};
+    const skuDe: Record<string, string | null> = {};
     const num = (x: any) => (x == null ? 0 : Number(x));
     for (const c of calc || []) {
       const k = `${c.order_id}|${c.item_id}`;
       cmv[k] = c.cmv == null ? null : Number(c.cmv);
+      skuDe[k] = c.sku ?? null;
       // gestao = resultado da DRE por venda (o que fica com a Ocelot depois do repasse)
       custos[k] = { taxa: num(c.taxa_ml), frete: num(c.frete), imposto: num(c.imposto), ads: num(c.ads), custo_fixo: num(c.custo_fixo),
         gestao: c.resultado == null ? null : Number(c.resultado) };
@@ -178,7 +181,7 @@ Deno.serve(async (req) => {
       if (!g.order_ids.includes(v.order_id)) g.order_ids.push(v.order_id);
       const rp = cmv[`${v.order_id}|${v.item_id}`];
       g.itens.push({ item_id: v.item_id, titulo: v.titulo || info[v.item_id]?.titulo || v.item_id, link: linkAnuncio(v.item_id),
-        thumbnail: info[v.item_id]?.thumbnail || null, quantidade: Number(v.quantidade || 0), valor: Number(v.valor_venda || 0), repasse: rp ?? null });
+        sku: skuDe[`${v.order_id}|${v.item_id}`] ?? null, thumbnail: info[v.item_id]?.thumbnail || null, quantidade: Number(v.quantidade || 0), valor: Number(v.valor_venda || 0), repasse: rp ?? null });
       g.quantidade += Number(v.quantidade || 0);
       g.valor += Number(v.valor_venda || 0);
       if (rp == null) g.repasse_incompleto = true; else g.repasse += rp;

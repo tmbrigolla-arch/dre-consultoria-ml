@@ -7,6 +7,10 @@
 // v4 (18/10/2026): custos por venda (taxa ML, frete, imposto, ads, custo fixo) e gestao, da mesma ocelot_vendas_calc
 // da DRE por venda: valor - custos - gestao = repasse estimado.
 // v5 (18/10/2026): SKU de cada item (para a busca da tela por MLB, SKU ou numero da venda).
+// v6 (18/10/2026): separacao por fornecedor. Dono do item = ocelot_item_fornecedor, senao a palavra-chave
+//   (ocelot_fornecedor_sugerido). Usuario em ocelot_usuario_fornecedor (Miguel, Alan) so recebe os itens do proprio
+//   fornecedor + envios_extra (Miguel despacha os do Tiago), e o repasse so dos itens dele. Pacote misto mostra de
+//   quem sao os outros itens; item sem dono aparece para todos com aviso. Saem da resposta os custos/gestao da v4.
 //
 // POST { }  -> vendas pagas que ainda nao foram entregues, agrupadas por venda (pacote = pack_id),
 //              com prazo de despacho, previsao de entrega, itens (MLB + link), valor e repasse estimado.
@@ -45,6 +49,10 @@ Deno.serve(async (req) => {
   if (u instanceof Response) return u;
   const { data: contasUsr } = await admin.rpc("app_contas", { p_uid: u.id });
   if (contasUsr !== null && !(contasUsr || []).includes(OCELOT_CONTA)) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+  // escopo do usuario: sem linha = ve tudo (admin, expedicao)
+  const { data: uf } = await admin.from("ocelot_usuario_fornecedor").select("fornecedor_id, envios_extra").eq("user_id", u.id).maybeSingle();
+  const veEnvio = uf ? new Set<string>([uf.fornecedor_id, ...(uf.envios_extra || [])]) : null;
+  const veRepasse = (f: string | null) => !uf || f === uf.fornecedor_id;
 
   try {
     // 1. vendas novas
@@ -137,18 +145,25 @@ Deno.serve(async (req) => {
     // 4. repasse estimado e links dos anuncios
     const { data: calc } = await admin.rpc("ocelot_vendas_calc", { p_conta: OCELOT_CONTA, p_de: desde, p_ate: new Date().toISOString().slice(0, 10) });
     const cmv: Record<string, number | null> = {};
-    const custos: Record<string, any> = {};
     const skuDe: Record<string, string | null> = {};
-    const num = (x: any) => (x == null ? 0 : Number(x));
     for (const c of calc || []) {
       const k = `${c.order_id}|${c.item_id}`;
       cmv[k] = c.cmv == null ? null : Number(c.cmv);
       skuDe[k] = c.sku ?? null;
-      // gestao = resultado da DRE por venda (o que fica com a Ocelot depois do repasse)
-      custos[k] = { taxa: num(c.taxa_ml), frete: num(c.frete), imposto: num(c.imposto), ads: num(c.ads), custo_fixo: num(c.custo_fixo),
-        gestao: c.resultado == null ? null : Number(c.resultado) };
     }
     const itemIds = [...new Set(vs.map((v: any) => v.item_id))];
+    // v6: dono de cada anuncio
+    const { data: forns } = await admin.from("ocelot_fornecedores").select("id, nome").eq("conta_id", OCELOT_CONTA);
+    const nomeForn: Record<string, string> = {};
+    for (const f of forns || []) nomeForn[f.id] = f.nome;
+    const { data: mapa } = await admin.from("ocelot_item_fornecedor").select("item_id, fornecedor_id").eq("conta_id", OCELOT_CONTA).in("item_id", itemIds);
+    const fornDe: Record<string, string | null> = {};
+    for (const m of mapa || []) if (m.fornecedor_id) fornDe[m.item_id] = m.fornecedor_id;
+    for (const id of itemIds.filter((i) => !fornDe[i])) {
+      const tit = vs.find((v: any) => v.item_id === id)?.titulo;
+      const { data: sug } = await admin.rpc("ocelot_fornecedor_sugerido", { p_titulo: tit || "" });
+      fornDe[id] = (sug as string) || null;
+    }
     const { data: infos } = await admin.from("ocelot_itens_info").select("item_id, titulo, thumbnail, permalink").in("item_id", itemIds);
     const info: Record<string, any> = {};
     for (const i of infos || []) info[i.item_id] = i;
@@ -163,42 +178,44 @@ Deno.serve(async (req) => {
     }
     const linkAnuncio = (id: string) => info[id]?.permalink || `https://produto.mercadolivre.com.br/${id.replace(/^MLB/, "MLB-")}`;
 
-    // 5. agrupa por venda (pacote)
+    // 5. agrupa por venda (pacote); item de outro fornecedor nao vai para a tela, so o nome dele no pacote
     const grupos: Record<string, any> = {};
+    const outros: Record<string, Set<string>> = {};
     for (const v of vs) {
       const e = cache[String(v.order_id)] || {};
       if (saiuDaOcelot(e)) continue;
       const k = String(v.pack_id || v.order_id);
+      const fid = fornDe[v.item_id] || null;
+      if (veEnvio && fid && !veEnvio.has(fid)) { (outros[k] ||= new Set()).add(nomeForn[fid] || "outro fornecedor"); continue; }
       const g = (grupos[k] ||= {
         venda: k, pacote: !!v.pack_id, order_ids: [], data_venda: v.data_venda, data_venda_ts: v.data_venda_ts,
         shipping_status: e.shipping_status ?? null, shipping_substatus: e.shipping_substatus ?? null,
         logistic_type: e.logistic_type ?? null, sla_status: e.sla_status ?? null,
         data_limite_envio: e.data_limite_envio ?? null, data_envio: e.data_envio ?? null,
         data_entrega_estimada: e.data_entrega_estimada ?? null,
-        itens: [], quantidade: 0, valor: 0, repasse: 0, repasse_incompleto: false,
-        taxa: 0, frete: 0, imposto: 0, ads: 0, custo_fixo: 0, gestao: 0,
+        itens: [], quantidade: 0, valor: 0, repasse: 0, repasse_incompleto: false, repasse_visivel: false, sem_dono: false,
       });
       if (!g.order_ids.includes(v.order_id)) g.order_ids.push(v.order_id);
-      const rp = cmv[`${v.order_id}|${v.item_id}`];
-      g.itens.push({ item_id: v.item_id, titulo: v.titulo || info[v.item_id]?.titulo || v.item_id, link: linkAnuncio(v.item_id),
+      const mostraRep = veRepasse(fid);
+      const rp = mostraRep ? cmv[`${v.order_id}|${v.item_id}`] : null;
+      if (!fid) g.sem_dono = true;
+      g.itens.push({ fornecedor: fid ? (nomeForn[fid] || null) : null, item_id: v.item_id, titulo: v.titulo || info[v.item_id]?.titulo || v.item_id, link: linkAnuncio(v.item_id),
         sku: skuDe[`${v.order_id}|${v.item_id}`] ?? null, thumbnail: info[v.item_id]?.thumbnail || null, quantidade: Number(v.quantidade || 0), valor: Number(v.valor_venda || 0), repasse: rp ?? null });
       g.quantidade += Number(v.quantidade || 0);
       g.valor += Number(v.valor_venda || 0);
-      if (rp == null) g.repasse_incompleto = true; else g.repasse += rp;
-      const cu = custos[`${v.order_id}|${v.item_id}`];
-      if (cu) for (const f of ["taxa", "frete", "imposto", "ads", "custo_fixo"]) g[f] += cu[f];
-      if (cu?.gestao != null) g.gestao += cu.gestao;
+      if (mostraRep) { g.repasse_visivel = true; if (rp == null) g.repasse_incompleto = true; else g.repasse += rp; }
     }
     const r2 = (x: number) => Math.round(x * 100) / 100;
     const pedidos = Object.values(grupos).map((g: any) => ({
-      ...g, valor: r2(g.valor), repasse: r2(g.repasse),
-      taxa: r2(g.taxa), frete: r2(g.frete), imposto: r2(g.imposto), ads: r2(g.ads), custo_fixo: r2(g.custo_fixo), gestao: r2(g.gestao),
-      custos: r2(g.taxa + g.frete + g.imposto + g.ads + g.custo_fixo),
+      ...g, valor: r2(g.valor), repasse: g.repasse_visivel ? r2(g.repasse) : null,
+      outros_fornecedores: [...(outros[g.venda] || [])].sort(),
       data_ref_envio: g.data_envio || g.data_limite_envio,
       link: `https://www.mercadolivre.com.br/vendas/${g.venda}/detalhe`,
     }));
     pedidos.sort((a: any, b: any) => (a.data_ref_envio || "9999").localeCompare(b.data_ref_envio || "9999") || String(a.data_venda_ts).localeCompare(String(b.data_venda_ts)));
-    return json({ ok: true, pedidos, aviso, consultados_ml: consultar.length, atualizado_em: new Date().toISOString() });
+    const semDono = pedidos.filter((p: any) => p.sem_dono).length;
+    return json({ ok: true, pedidos, aviso, sem_dono: semDono, escopo: uf ? (nomeForn[uf.fornecedor_id] || null) : null,
+      consultados_ml: consultar.length, atualizado_em: new Date().toISOString() });
   } catch (e) {
     return json({ ok: false, erro: (e as Error).message }, 500);
   }

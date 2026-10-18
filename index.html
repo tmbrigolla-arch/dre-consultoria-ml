@@ -949,9 +949,13 @@ function ocelotMesSeguinte(m){const d=new Date(m+'T00:00:00Z');return new Date(D
 // Setembro/2026 foi importado dos PDFs de fechamento (Miguel/Alan). Ajustes valem para vendas pagas a
 // partir de OCN_ESTORNO_DESDE (antes disso o acerto foi na planilha).
 const OCN_ESTORNO_DESDE='2026-09-01';
-const OCN_FORN_ID={miguel:'9e88add9-8405-46db-8bd4-e128ee9ce65a',alan:'e7e5a84c-9294-4d80-a251-d3f36dc83d46'};
-const OCN_FORN_NOME={miguel:'Miguel',alan:'Alan'};
-let ocelotRepForn=(function(){try{var f=localStorage.getItem('ocelot_rep_forn');return f==='alan'?'alan':'miguel';}catch(e){return 'miguel';}})();
+const OCN_FORN_ID={miguel:'9e88add9-8405-46db-8bd4-e128ee9ce65a',alan:'e7e5a84c-9294-4d80-a251-d3f36dc83d46',tiago:'91c31303-ab54-43c0-9b36-88b7bd8d5c54'};
+const OCN_FORN_NOME={miguel:'Miguel',alan:'Alan',tiago:'Tiago'};
+// 18/10/2026: Tiago tem o proprio repasse (so ele ve); na DRE os itens dele tem responsavel 'ocelot'
+const OCN_FORN_RESP={miguel:'miguel',alan:'alan',tiago:'ocelot'};
+// fornecedor logado (Miguel/Alan): o servidor so manda os dados dele e a tela so mostra o botao dele
+function ocelotRepFornLista(){const e=OCELOT_CACHE&&OCELOT_CACHE.escopo;return e&&e.fornecedor?[e.fornecedor]:['miguel','alan','tiago'];}
+let ocelotRepForn=(function(){try{var f=localStorage.getItem('ocelot_rep_forn');return (f==='alan'||f==='tiago')?f:'miguel';}catch(e){return 'miguel';}})();
 function ocelotRepFornSel(f){ocelotRepForn=f;try{localStorage.setItem('ocelot_rep_forn',f);}catch(e){}renderOcelotBody();}
 function ocelotAltChave(mes){return OCN_ESTORNO_DESDE+'|'+mes;}
 async function carregaOcelotAlt(mes){
@@ -982,8 +986,8 @@ function ocelotRepasseDados(forn,mes){
     let fora=false;
     if(reg){
       if(it.cmv_pago_fornecedor_id){if(it.cmv_pago_fornecedor_id!==fid)return;}
-      else{if(it.responsavel_cmv!==forn||!ativo)return;fora=true;}
-    }else{if(it.responsavel_cmv!==forn||!ativo)return;}
+      else{if(it.responsavel_cmv!==OCN_FORN_RESP[forn]||!ativo)return;fora=true;}
+    }else{if(it.responsavel_cmv!==OCN_FORN_RESP[forn]||!ativo)return;}
     const num=String(it.pack_id||it.order_id)+(fora?'*':'');
     const g=grupos[num]=grupos[num]||{num:String(it.pack_id||it.order_id),order_id:it.order_id,data:it.data_venda,itens:[],un:0,venda:0,liq:0,rep:0,tx:0,fr:0,imp:0,ads:0,fixo:0,neg:false,fora:fora};
     const rep=(reg&&it.cmv_pago_registrado!=null)?Number(it.cmv_pago_registrado):Number(it.cmv_total||0);
@@ -1005,7 +1009,7 @@ function ocelotRepasseDados(forn,mes){
   }else{
     (A.itens||[]).forEach(function(it){
       if(it.mes_competencia>=mes)return;
-      if(it.nao_incluida?(it.responsavel_cmv!==forn):(it.cmv_pago_fornecedor_id!==fid))return;
+      if(it.nao_incluida?(it.responsavel_cmv!==OCN_FORN_RESP[forn]):(it.cmv_pago_fornecedor_id!==fid))return;
       if(aplicados.some(function(a){return a.fornecedor_id===fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;}))return;
       const pago=Number(it.cmv_pago_registrado||0),atual=Number(it.cmv_total||0),dif=Math.round((pago-atual)*100)/100;
       if(Math.abs(dif)<0.01)return;
@@ -1030,9 +1034,10 @@ function ocelotRepasseDados(forn,mes){
 }
 function htmlOcelotRepasseAba(){
   const D=OCELOT_CACHE; if(!D||!D.pedidos)return '<div class="empty">Sem dados.</div>';
+  const _fl=ocelotRepFornLista();if(_fl.indexOf(ocelotRepForn)<0)ocelotRepForn=_fl[0];
   const mes=ocelotMesFiltro, forn=ocelotRepForn, nome=OCN_FORN_NOME[forn];
   const R=ocelotRepasseDados(forn,mes);
-  const podeEd=pode('editar_cadastro');
+  const podeEd=pode('editar_cadastro')&&forn!=='tiago';   // repasse do Tiago e so consulta (nao se registra pagamento)
   const mesFechadoPar=!!((D.parametros||[]).find(function(p){return p.mes_competencia===mes&&p.fechado;}));
   const mesNome=ocelotMesExtenso(mes);
   const fimMes=new Date(new Date(ocelotMesSeguinte(mes)+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10);
@@ -1049,7 +1054,7 @@ function htmlOcelotRepasseAba(){
   (D.meses_disponiveis||[]).forEach(function(m){h+='<option value="'+m+'"'+(m===mes?' selected':'')+'>'+dreMesLabel(m)+'</option>';});
   h+='</select></label>';
   h+='<span style="font-size:12.5px;color:var(--muted)">Fornecedor</span><div style="display:flex;gap:6px">';
-  ['miguel','alan'].forEach(function(f){h+='<button onclick="ocelotRepFornSel(\''+f+'\')" style="padding:6px 14px;border-radius:8px;border:1px solid '+(f===forn?'var(--accent)':'var(--line)')+';background:'+(f===forn?'var(--accent)':'transparent')+';color:'+(f===forn?'#fff':'inherit')+';font-weight:600;cursor:pointer">'+OCN_FORN_NOME[f]+'</button>';});
+  ocelotRepFornLista().forEach(function(f){h+='<button onclick="ocelotRepFornSel(\''+f+'\')" style="padding:6px 14px;border-radius:8px;border:1px solid '+(f===forn?'var(--accent)':'var(--line)')+';background:'+(f===forn?'var(--accent)':'transparent')+';color:'+(f===forn?'#fff':'inherit')+';font-weight:600;cursor:pointer">'+OCN_FORN_NOME[f]+'</button>';});
   h+='</div><span style="flex:1"></span><button onclick="ocelotRepasseExcel()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Baixar Excel</button><button onclick="window.print()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer">Imprimir / PDF</button></div>';
   // cabecalho
   h+='<div style="margin-bottom:12px"><div style="font-size:12px;color:var(--muted);letter-spacing:.5px">OCELOT · MERCADO LIVRE</div>';
@@ -3481,6 +3486,13 @@ function aeFiltrados(){
     return true;
   });
 }
+// 18/10/2026: de quem e o produto. Fornecedor logado so ve a etiqueta nos itens que nao sao dele (Tiago, no
+// caso do Miguel); quem ve tudo (expedicao, admin) ve em todos.
+function aeFornTag(it,D){
+  if(!it.fornecedor)return ' <span style="font-size:11.5px;color:#f87171;font-weight:600">· sem fornecedor — avisar o Tiago</span>';
+  if(D.escopo&&it.fornecedor===D.escopo)return '';
+  return ' <span style="font-size:11.5px;color:var(--muted)">· '+escH(it.fornecedor)+'</span>';
+}
 function aeDataBr(s){return s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';}
 // a tela e redesenhada a cada tecla: devolve o foco e o cursor ao campo de busca
 function aeFocoBusca(){
@@ -3502,6 +3514,7 @@ function aeRender(){
   if(AE.busca.trim())h+='<div class="dv-sync">Buscando "'+escH(AE.busca.trim())+'" em todas as vendas a entregar (os filtros de data e status ficam de lado). <a href="javascript:void(0)" onclick="aeBusca(\'\')">limpar busca</a></div>';
   h+='<div class="dv-sync'+(AE.erro?' err':'')+'">'+(AE.carregando?'Consultando o Mercado Livre…':AE.erro?'Não foi possível atualizar ('+escH(AE.erro)+').':(D.atualizado_em?'Atualizado em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
   if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
+  if(D.sem_dono)h+='<div class="dv-alerta"><b>⚠ '+D.sem_dono+' venda'+(D.sem_dono>1?'s':'')+' de produto sem indicação de fornecedor — avisar o Tiago.</b> Elas aparecem para todos até o anúncio ser classificado.</div>';
   if(!AE.dados){app.innerHTML=h+'<div class="empty">'+(AE.erro?'':'Carregando…')+'</div></div>';return;}
   const L=aeFiltrados();
   const tot=L.reduce((t,p)=>{t.q+=p.quantidade;t.v+=p.valor;t.r+=p.repasse;if(p.repasse_incompleto)t.inc++;if(!aeDespachado(p)&&p.data_ref_envio&&p.data_ref_envio<hoje)t.atr++;return t;},{q:0,v:0,r:0,inc:0,atr:0});
@@ -3517,12 +3530,12 @@ function aeRender(){
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
     if(!desp&&d){const n=Math.round((dvDe(d)-dvDe(hoje))/86400000);prazo=n<0?'<span class="dv-neg"><b>atrasada '+(-n)+'d</b></span>':n===0?'<b style="color:#f59e0b">hoje</b>':n===1?'amanhã':'em '+n+' dias';}
     else if(desp)prazo='<span style="color:var(--muted)">despachada</span>';
-    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(it.sku?' <span style="font-size:11.5px;color:var(--muted)">SKU '+escH(it.sku)+'</span>':'')+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
+    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(it.sku?' <span style="font-size:11.5px;color:var(--muted)">SKU '+escH(it.sku)+'</span>':'')+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+aeFornTag(it,D)+'</div>').join('');
     h+='<tr><td class="l" data-l="Envio" style="white-space:nowrap">'+(fab&&d?'<div style="font-size:11px;color:var(--muted)" title="Em fabricação: o ML só dá o prazo de despacho quando o prazo de fabricação termina">fabricação até</div>':'')+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
-      +'<td class="l" data-l="Venda" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
+      +'<td class="l" data-l="Venda" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+((p.outros_fornecedores||[]).length?'<div style="font-size:11.5px;color:#f59e0b;white-space:normal">pacote com itens do '+p.outros_fornecedores.map(escH).join(' e do ')+'</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
       +'<td class="l mc-top" style="min-width:260px">'+itens+'</td>'
       +'<td data-l="Qtd">'+dvN(p.quantidade)+'</td>'
-      +'<td data-l="Repasse est.">'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
+      +'<td data-l="Repasse est.">'+(p.repasse==null||(p.repasse_incompleto&&!p.repasse)?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
       +'<td class="l" data-l="Status" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td class="l mc-top" colspan="3"><b>Total ('+L.length+' vendas)</b></td><td data-l="Qtd"><b>'+dvN(tot.q)+'</b></td><td data-l="Repasse est."><b>'+dvR(tot.r)+'</b></td><td class="mc-vazio"></td></tr></tfoot></table></div></div></div>';

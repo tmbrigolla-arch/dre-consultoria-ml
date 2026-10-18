@@ -3455,6 +3455,10 @@ function aeFiltrados(){
     return true;
   });
 }
+function aeCustosDet(p){
+  const l=[['taxa ML',p.taxa],['frete',p.frete],['imposto',p.imposto],['ads',p.ads],['custo fixo',p.custo_fixo]].filter(x=>x[1]);
+  return l.length?'<div style="font-size:11px;color:var(--muted);line-height:1.45">'+l.map(x=>x[0]+' '+dvR(x[1])).join('<br>')+'</div>':'';
+}
 function aeDataBr(s){return s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';}
 function aeRender(){
   if(aba!=='ocelot'||ocelotSub!=='aentregar')return;
@@ -3470,13 +3474,13 @@ function aeRender(){
   if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
   if(!AE.dados){app.innerHTML=h+'<div class="empty">'+(AE.erro?'':'Carregando…')+'</div></div>';return;}
   const L=aeFiltrados();
-  const tot=L.reduce((t,p)=>{t.q+=p.quantidade;t.v+=p.valor;t.r+=p.repasse;if(p.repasse_incompleto)t.inc++;if(!aeDespachado(p)&&p.data_ref_envio&&p.data_ref_envio<hoje)t.atr++;return t;},{q:0,v:0,r:0,inc:0,atr:0});
+  const tot=L.reduce((t,p)=>{t.q+=p.quantidade;t.v+=p.valor;t.r+=p.repasse;t.c+=p.custos||0;t.g+=p.gestao||0;if(p.repasse_incompleto)t.inc++;if(!aeDespachado(p)&&p.data_ref_envio&&p.data_ref_envio<hoje)t.atr++;return t;},{q:0,v:0,r:0,c:0,g:0,inc:0,atr:0});
   const card=(l,v,s)=>'<div class="curva-card"><div class="lbl">'+l+'</div><div class="val">'+v+'</div><div class="sub">'+(s||'&nbsp;')+'</div></div>';
   h+='<div class="dv-cards">'+card('Vendas',dvN(L.length),dvN(tot.q)+' unidades')+card('Valor',dvR(tot.v),'vendido')+card('Repasse estimado',dvR(tot.r),tot.inc?tot.inc+' venda(s) sem custo cadastrado':'aos fornecedores')
     +card('Atrasadas',dvN(tot.atr),'prazo de envio vencido')+'</div>';
-  h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou; em fabricação, o fim do prazo de fabricação). Repasse estimado pela mesma regra da DRE por venda.</div>';
+  h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou; em fabricação, o fim do prazo de fabricação). Custos, gestão e repasse estimados pela mesma regra da DRE por venda: valor − custos − gestão = repasse.</div>';
   if(!L.length){app.innerHTML=h+'<div class="empty">Nenhuma venda neste filtro.</div></div></div>';return;}
-  h+='<div style="overflow-x:auto"><table class="mcards"><thead><tr><th class="l">Envio</th><th class="l">Previsão de entrega</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table class="mcards"><thead><tr><th class="l">Envio</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th title="Taxa do ML, frete, imposto, Ads e custo fixo">Custos</th><th>Gestão</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
   L.forEach(p=>{
     const desp=aeDespachado(p),d=p.data_ref_envio,fab=!desp&&p.shipping_substatus==='manufacturing';
     let prazo='';
@@ -3485,14 +3489,15 @@ function aeRender(){
     const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
     h+='<tr><td class="l" data-l="Envio" style="white-space:nowrap">'+(fab&&d?'<div style="font-size:11px;color:var(--muted)" title="Em fabricação: o ML só dá o prazo de despacho quando o prazo de fabricação termina">fabricação até</div>':'')+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
-      +'<td class="l" data-l="Previsão de entrega" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'
       +'<td class="l" data-l="Venda" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
       +'<td class="l mc-top" style="min-width:260px">'+itens+'</td>'
       +'<td data-l="Qtd">'+dvN(p.quantidade)+'</td><td data-l="Valor">'+dvR(p.valor)+'</td>'
+      +'<td data-l="Custos">'+(p.custos==null?'—':'−'+dvR(p.custos)+aeCustosDet(p))+'</td>'
+      +'<td data-l="Gestão">'+(p.gestao==null?'—':'−'+dvR(p.gestao))+'</td>'
       +'<td data-l="Repasse est.">'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
       +'<td class="l" data-l="Status" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
   });
-  h+='</tbody><tfoot><tr><td class="l mc-top" colspan="4"><b>Total ('+L.length+' vendas)</b></td><td data-l="Qtd"><b>'+dvN(tot.q)+'</b></td><td data-l="Valor"><b>'+dvR(tot.v)+'</b></td><td data-l="Repasse est."><b>'+dvR(tot.r)+'</b></td><td class="mc-vazio"></td></tr></tfoot></table></div></div></div>';
+  h+='</tbody><tfoot><tr><td class="l mc-top" colspan="3"><b>Total ('+L.length+' vendas)</b></td><td data-l="Qtd"><b>'+dvN(tot.q)+'</b></td><td data-l="Valor"><b>'+dvR(tot.v)+'</b></td><td data-l="Custos"><b>−'+dvR(tot.c)+'</b></td><td data-l="Gestão"><b>−'+dvR(tot.g)+'</b></td><td data-l="Repasse est."><b>'+dvR(tot.r)+'</b></td><td class="mc-vazio"></td></tr></tfoot></table></div></div></div>';
   app.innerHTML=h;
 }
 

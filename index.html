@@ -388,6 +388,17 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
   .at-msg.eu{background:#1e3a8a;margin-left:auto}
   .at-msg small{display:block;color:var(--muted);font-size:11px}
   .at-conv{display:flex;flex-direction:column}
+  /* 18/10/2026: no celular as tabelas largas (Vendas a entregar, Repasse) viram um cartao por linha:
+     a tabela de 8 colunas nao cabia e o iPhone nao deixava ver as colunas da direita. */
+  @media screen and (max-width:680px){
+    table.mcards,table.mcards tbody,table.mcards tfoot{display:block;width:100%!important;min-width:0!important}
+    table.mcards thead,table.mcards tr.mc-h{display:none}
+    table.mcards tr{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 10px;background:var(--panel2)}
+    table.mcards td{display:block;width:auto!important;max-width:none!important;min-width:0!important;padding:3px 0!important;border:0!important;text-align:right!important;white-space:normal!important;font-size:13px}
+    table.mcards td[data-l]::before{content:attr(data-l);float:left;margin-right:12px;color:var(--muted);font-size:12px;font-weight:400}
+    table.mcards td.mc-top{order:-1;text-align:left!important;padding:2px 0 6px!important;margin-bottom:4px;border-bottom:1px solid var(--line)!important}
+    table.mcards td.mc-vazio{display:none}
+  }
   @media (max-width:640px){.dv-bar{padding:8px}.dv-cards{grid-template-columns:repeat(2,1fr)}.curva-card .val{font-size:17px}}
   .rep-piso td{background:rgba(8,145,178,.10)}
   .rep-piso td:first-child{box-shadow:inset 3px 0 0 #0891b2}
@@ -1022,7 +1033,7 @@ function htmlOcelotRepasseAba(){
   const mesNome=ocelotMesExtenso(mes);
   const fimMes=new Date(new Date(ocelotMesSeguinte(mes)+'T00:00:00Z').getTime()-86400000).toISOString().slice(0,10);
   const dBR=function(d){return d?new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';};
-  const cardSt='border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:14px;overflow:hidden';
+  const cardSt='border:1px solid var(--line);border-radius:10px;background:var(--panel);margin-bottom:14px;overflow-x:auto';
   const th='padding:7px 10px;border-bottom:2px solid var(--line);text-align:left;font-size:12px;color:var(--muted);font-weight:600;white-space:normal;overflow:visible;text-overflow:clip;width:auto';
   const td='padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left;white-space:normal;overflow:visible;text-overflow:clip;width:auto;max-width:none';
   const tdn=td+';text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;width:1%';
@@ -1062,9 +1073,9 @@ function htmlOcelotRepasseAba(){
   h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Vendas que entraram (e foram pagas) num fechamento anterior e mudaram depois. O desconto é o repasse já pago menos o repasse que valeria hoje: devolução desconta o que foi pago (e o frete que o Mercado Livre cobrou); mediação coberta pelo Mercado Livre volta a valer o repasse normal (valor negativo = a pagar).</div>';
   if(!R.ajustes.length)h+='<div style="padding:8px 12px 12px;color:var(--muted);font-size:13px">Nenhuma venda anterior ajustada.</div>';
   else{
-    h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+'">Situação no Mercado Livre</th><th style="'+th+';text-align:right">Desconto</th></tr>';
-    R.ajustes.forEach(function(a){h+='<tr><td style="'+td+'">'+dBR(a.data)+'</td><td style="'+td+'">'+link(a.num,a.order_id)+'</td><td style="'+td+'">'+escH(a.produto||'')+'</td><td style="'+td+';font-size:12px">'+escH(a.situacao||'')+'</td><td style="'+tdn+';color:'+(a.valor<0?'var(--up)':'inherit')+'">'+dreBRL(a.valor)+'</td></tr>';});
-    h+='<tr><td colspan="4" style="'+td+';text-align:right;font-weight:700">TOTAL DESCONTADO</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totAj)+'</td></tr></table>';
+    h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+'">Situação no Mercado Livre</th><th style="'+th+';text-align:right">Desconto</th></tr>';
+    R.ajustes.forEach(function(a){h+='<tr><td data-l="Data" style="'+td+'">'+dBR(a.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(a.num,a.order_id)+'</td><td class="mc-top" style="'+td+'">'+escH(a.produto||'')+'</td><td data-l="Situação no ML" style="'+td+';font-size:12px">'+escH(a.situacao||'')+'</td><td data-l="Desconto" style="'+tdn+';color:'+(a.valor<0?'var(--up)':'inherit')+'">'+dreBRL(a.valor)+'</td></tr>';});
+    h+='<tr><td colspan="4" class="mc-top" style="'+td+';text-align:right;font-weight:700">TOTAL DESCONTADO</td><td data-l="Desconto" style="'+tdn+';font-weight:700">'+dreBRL(R.totAj)+'</td></tr></table>';
   }
   h+='</div>';
   // 3. vendas do mes
@@ -1077,7 +1088,7 @@ function htmlOcelotRepasseAba(){
   let nPiso=0,extraPiso=0;
   R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
   if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
-  h+='<table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th></tr>';
+  h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right">Líquido ML</th><th style="'+th+';text-align:right">Repasse</th></tr>';
   let tv=0,tl=0;
   R.vendas.forEach(function(g){
     tv+=g.venda;tl+=g.liq;
@@ -1087,12 +1098,12 @@ function htmlOcelotRepasseAba(){
     const temPiso=g.itens.some(function(x){return !!pisoDe(x.it);});
     const prod=g.itens.length>1?('Pacote de '+g.itens.length+' produtos (compra conjunta)<div style="font-size:11.5px;color:var(--muted)">'+g.itens.map(function(x){return escH(String(x.it.titulo||'').slice(0,50))+' · '+dreBRL(x.rep)+tagPiso(x.it);}).join('<br>')+'</div>'):(escH(g.itens[0].it.titulo||'')+tagPiso(g.itens[0].it));
     const cor=g.rep<0?'color:var(--down)':'';
-    h+='<tr'+(temPiso?' class="rep-piso"':'')+'><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+prod+'</td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
+    h+='<tr'+(temPiso?' class="rep-piso"':'')+'><td data-l="Data" style="'+td+'">'+dBR(g.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(g.num,g.order_id)+'</td><td class="mc-top" style="'+td+'">'+prod+'</td><td data-l="Un." style="'+tdn+'">'+g.un+'</td><td data-l="Venda" style="'+tdn+'">'+dreBRL(g.venda)+'</td><td data-l="Líquido ML" style="'+tdn+';'+cor+'">'+dreBRL(g.liq)+'</td><td data-l="Repasse" style="'+tdn+';font-weight:600;'+cor+'">'+dreBRL(g.rep)+'</td></tr>';
   });
   R.foraFech.forEach(function(g){
-    h+='<tr style="opacity:.55"><td style="'+td+'">'+dBR(g.data)+'</td><td style="'+td+'">'+link(g.num,g.order_id)+'</td><td style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td style="'+tdn+'">'+g.un+'</td><td style="'+tdn+'">'+dreBRL(g.venda)+'</td><td style="'+tdn+'">'+dreBRL(g.liq)+'</td><td style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
+    h+='<tr style="opacity:.55"><td data-l="Data" style="'+td+'">'+dBR(g.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(g.num,g.order_id)+'</td><td class="mc-top" style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td data-l="Un." style="'+tdn+'">'+g.un+'</td><td data-l="Venda" style="'+tdn+'">'+dreBRL(g.venda)+'</td><td data-l="Líquido ML" style="'+tdn+'">'+dreBRL(g.liq)+'</td><td data-l="Repasse" style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
   });
-  h+='<tr><td colspan="3" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td style="'+tdn+';font-weight:700">'+R.un+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
+  h+='<tr><td colspan="3" class="mc-top" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td data-l="Un." style="'+tdn+';font-weight:700">'+R.un+'</td><td data-l="Venda" style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td data-l="Líquido ML" style="'+tdn+';font-weight:700">'+dreBRL(tl)+'</td><td data-l="Repasse" style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
   const _fonte=(D.tacos_fonte_por_mes&&D.tacos_fonte_por_mes[mes])||'';
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'
@@ -3465,7 +3476,7 @@ function aeRender(){
     +card('Atrasadas',dvN(tot.atr),'prazo de envio vencido')+'</div>';
   h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou; em fabricação, o fim do prazo de fabricação). Repasse estimado pela mesma regra da DRE por venda.</div>';
   if(!L.length){app.innerHTML=h+'<div class="empty">Nenhuma venda neste filtro.</div></div></div>';return;}
-  h+='<div style="overflow-x:auto"><table><thead><tr><th class="l">Envio</th><th class="l">Previsão de entrega</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table class="mcards"><thead><tr><th class="l">Envio</th><th class="l">Previsão de entrega</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Valor</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
   L.forEach(p=>{
     const desp=aeDespachado(p),d=p.data_ref_envio,fab=!desp&&p.shipping_substatus==='manufacturing';
     let prazo='';
@@ -3473,15 +3484,15 @@ function aeRender(){
     else if(desp)prazo='<span style="color:var(--muted)">despachada</span>';
     const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
-    h+='<tr><td class="l" style="white-space:nowrap">'+(fab&&d?'<div style="font-size:11px;color:var(--muted)" title="Em fabricação: o ML só dá o prazo de despacho quando o prazo de fabricação termina">fabricação até</div>':'')+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
-      +'<td class="l" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'
-      +'<td class="l" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
-      +'<td class="l" style="min-width:260px">'+itens+'</td>'
-      +'<td>'+dvN(p.quantidade)+'</td><td>'+dvR(p.valor)+'</td>'
-      +'<td>'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
-      +'<td class="l" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
+    h+='<tr><td class="l" data-l="Envio" style="white-space:nowrap">'+(fab&&d?'<div style="font-size:11px;color:var(--muted)" title="Em fabricação: o ML só dá o prazo de despacho quando o prazo de fabricação termina">fabricação até</div>':'')+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
+      +'<td class="l" data-l="Previsão de entrega" style="white-space:nowrap">'+aeDataBr(p.data_entrega_estimada)+'</td>'
+      +'<td class="l" data-l="Venda" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
+      +'<td class="l mc-top" style="min-width:260px">'+itens+'</td>'
+      +'<td data-l="Qtd">'+dvN(p.quantidade)+'</td><td data-l="Valor">'+dvR(p.valor)+'</td>'
+      +'<td data-l="Repasse est.">'+(p.repasse_incompleto&&!p.repasse?'—':dvR(p.repasse))+(p.repasse_incompleto?'<div style="font-size:11px;color:#f59e0b">sem custo de algum item</div>':'')+'</td>'
+      +'<td class="l" data-l="Status" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
   });
-  h+='</tbody><tfoot><tr><td class="l" colspan="4"><b>Total ('+L.length+' vendas)</b></td><td><b>'+dvN(tot.q)+'</b></td><td><b>'+dvR(tot.v)+'</b></td><td><b>'+dvR(tot.r)+'</b></td><td></td></tr></tfoot></table></div></div></div>';
+  h+='</tbody><tfoot><tr><td class="l mc-top" colspan="4"><b>Total ('+L.length+' vendas)</b></td><td data-l="Qtd"><b>'+dvN(tot.q)+'</b></td><td data-l="Valor"><b>'+dvR(tot.v)+'</b></td><td data-l="Repasse est."><b>'+dvR(tot.r)+'</b></td><td class="mc-vazio"></td></tr></tfoot></table></div></div></div>';
   app.innerHTML=h;
 }
 

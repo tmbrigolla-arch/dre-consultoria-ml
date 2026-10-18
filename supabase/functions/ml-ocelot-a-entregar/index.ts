@@ -1,4 +1,6 @@
-// ml-ocelot-a-entregar v1 (09/10/2026) - aba "A entregar" da Gestao Ocelot.
+// ml-ocelot-a-entregar v2 (18/10/2026) - aba "A entregar" da Gestao Ocelot.
+// v2: venda em fabricacao (pending/manufacturing) ficava sem data de envio e fora dos filtros Hoje/7 dias/Atrasadas;
+//     agora usa o fim do prazo de fabricacao do pedido como data de referencia.
 //
 // POST { }  -> vendas pagas que ainda nao foram entregues, agrupadas por venda (pacote = pack_id),
 //              com prazo de despacho, previsao de entrega, itens (MLB + link), valor e repasse estimado.
@@ -96,6 +98,15 @@ Deno.serve(async (req) => {
         limite = cache[String(porShip[sid][0])]?.data_limite_envio ?? null;
       }
       if (!limite) limite = dia(so.estimated_handling_limit?.date) || dia(so.buffering?.date);
+      // v2: em fabricacao (pending/manufacturing) o ML ainda nao tem prazo de despacho (/sla vazio):
+      // usa o fim do prazo de fabricacao do pedido (manufacturing_ending_date; no pacote, o maior).
+      if (!limite && j.status === "pending" && j.substatus === "manufacturing") {
+        for (const oid of porShip[sid]) {
+          const o = await ml(admin, OCELOT_CONTA, `/orders/${oid}`);
+          const d = o.ok ? dia(o.json?.manufacturing_ending_date) : null;
+          if (d && (!limite || d > limite)) limite = d;
+        }
+      }
       const linha = {
         conta_id: OCELOT_CONTA, shipping_id: Number(sid),
         shipping_status: j.status ?? null, shipping_substatus: j.substatus ?? null,

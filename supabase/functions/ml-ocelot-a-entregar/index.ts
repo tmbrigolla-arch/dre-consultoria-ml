@@ -4,6 +4,8 @@
 // v3 (18/10/2026): venda em fabricacao (pending/manufacturing) ficava sem data de envio e fora dos filtros
 // Hoje/7 dias/Atrasadas (o /sla do ML vem vazio ate a fabricacao acabar); agora usa o fim do prazo de
 // fabricacao do pedido (manufacturing_ending_date) como data de referencia.
+// v4 (18/10/2026): custos por venda (taxa ML, frete, imposto, ads, custo fixo) e gestao, da mesma ocelot_vendas_calc
+// da DRE por venda: valor - custos - gestao = repasse estimado.
 //
 // POST { }  -> vendas pagas que ainda nao foram entregues, agrupadas por venda (pacote = pack_id),
 //              com prazo de despacho, previsao de entrega, itens (MLB + link), valor e repasse estimado.
@@ -134,7 +136,15 @@ Deno.serve(async (req) => {
     // 4. repasse estimado e links dos anuncios
     const { data: calc } = await admin.rpc("ocelot_vendas_calc", { p_conta: OCELOT_CONTA, p_de: desde, p_ate: new Date().toISOString().slice(0, 10) });
     const cmv: Record<string, number | null> = {};
-    for (const c of calc || []) cmv[`${c.order_id}|${c.item_id}`] = c.cmv == null ? null : Number(c.cmv);
+    const custos: Record<string, any> = {};
+    const num = (x: any) => (x == null ? 0 : Number(x));
+    for (const c of calc || []) {
+      const k = `${c.order_id}|${c.item_id}`;
+      cmv[k] = c.cmv == null ? null : Number(c.cmv);
+      // gestao = resultado da DRE por venda (o que fica com a Ocelot depois do repasse)
+      custos[k] = { taxa: num(c.taxa_ml), frete: num(c.frete), imposto: num(c.imposto), ads: num(c.ads), custo_fixo: num(c.custo_fixo),
+        gestao: c.resultado == null ? null : Number(c.resultado) };
+    }
     const itemIds = [...new Set(vs.map((v: any) => v.item_id))];
     const { data: infos } = await admin.from("ocelot_itens_info").select("item_id, titulo, thumbnail, permalink").in("item_id", itemIds);
     const info: Record<string, any> = {};
@@ -163,6 +173,7 @@ Deno.serve(async (req) => {
         data_limite_envio: e.data_limite_envio ?? null, data_envio: e.data_envio ?? null,
         data_entrega_estimada: e.data_entrega_estimada ?? null,
         itens: [], quantidade: 0, valor: 0, repasse: 0, repasse_incompleto: false,
+        taxa: 0, frete: 0, imposto: 0, ads: 0, custo_fixo: 0, gestao: 0,
       });
       if (!g.order_ids.includes(v.order_id)) g.order_ids.push(v.order_id);
       const rp = cmv[`${v.order_id}|${v.item_id}`];
@@ -171,9 +182,15 @@ Deno.serve(async (req) => {
       g.quantidade += Number(v.quantidade || 0);
       g.valor += Number(v.valor_venda || 0);
       if (rp == null) g.repasse_incompleto = true; else g.repasse += rp;
+      const cu = custos[`${v.order_id}|${v.item_id}`];
+      if (cu) for (const f of ["taxa", "frete", "imposto", "ads", "custo_fixo"]) g[f] += cu[f];
+      if (cu?.gestao != null) g.gestao += cu.gestao;
     }
+    const r2 = (x: number) => Math.round(x * 100) / 100;
     const pedidos = Object.values(grupos).map((g: any) => ({
-      ...g, valor: Math.round(g.valor * 100) / 100, repasse: Math.round(g.repasse * 100) / 100,
+      ...g, valor: r2(g.valor), repasse: r2(g.repasse),
+      taxa: r2(g.taxa), frete: r2(g.frete), imposto: r2(g.imposto), ads: r2(g.ads), custo_fixo: r2(g.custo_fixo), gestao: r2(g.gestao),
+      custos: r2(g.taxa + g.frete + g.imposto + g.ads + g.custo_fixo),
       data_ref_envio: g.data_envio || g.data_limite_envio,
       link: `https://www.mercadolivre.com.br/vendas/${g.venda}/detalhe`,
     }));

@@ -2,6 +2,13 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const OCELOT_CONTA="30fa53d4-60c0-40f6-9832-63b4cb313797";
 const MIGUEL_ID="9e88add9-8405-46db-8bd4-e128ee9ce65a";
 const ALAN_ID="e7e5a84c-9294-4d80-a251-d3f36dc83d46";
+const TIAGO_ID="91c31303-ab54-43c0-9b36-88b7bd8d5c54";
+// v29 (18/10/2026): separacao por fornecedor (pedido do Tiago).
+//  - o dono gravado no anuncio (ocelot_item_fornecedor) vem antes da palavra-chave do titulo;
+//  - Tiago e fornecedor (codigo "ocelot" na DRE, como ja era);
+//  - quem nao tem "ocelot" (DRE) mas tem "ocelot_repasse" e esta em ocelot_usuario_fornecedor (Miguel, Alan) recebe
+//    so o necessario para a aba Repasse, e so do proprio fornecedor: nada de DRE, custo fixo, outros fornecedores.
+const COD_FORN:Record<string,string>={[MIGUEL_ID]:"miguel",[ALAN_ID]:"alan",[TIAGO_ID]:"ocelot"};
 const CMV_PISO=40, CMV_TETO=90;
 // v20 (04/10/2026): regra de repasse ao fornecedor igual a planilha do Tiago.
 // A partir de 2026-09 (ou em qualquer mes com ocelot_parametros.repasse_pct preenchido), item sem
@@ -78,8 +85,15 @@ Deno.serve(async(req)=>{
   const jwt=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
   const {data:{user}}=await supabase.auth.getUser(jwt);
   if(!user)return json({error:"unauthorized"},401);
+  let escopo:{fid:string,cod:string}|null=null;
   { const { data: _pode } = await supabase.rpc("app_pode", { p_uid: user.id, p_chave: "ocelot" });
-    if (!_pode) return json({ error: "sem permissao" }, 403); }
+    if (!_pode) {
+      const { data: _rep } = await supabase.rpc("app_pode", { p_uid: user.id, p_chave: "ocelot_repasse" });
+      if (!_rep) return json({ error: "sem permissao" }, 403);
+      const { data: uf } = await supabase.from("ocelot_usuario_fornecedor").select("fornecedor_id").eq("user_id", user.id).maybeSingle();
+      if (!uf || !COD_FORN[uf.fornecedor_id]) return json({ error: "usuario sem fornecedor vinculado" }, 403);
+      escopo = { fid: uf.fornecedor_id, cod: COD_FORN[uf.fornecedor_id] };
+    } }
   const url=new URL(req.url);
   const mesParam=url.searchParams.get("mes");
   const deParam=url.searchParams.get("de"), ateParam=url.searchParams.get("ate");
@@ -334,7 +348,7 @@ Deno.serve(async(req)=>{
     let cmv_chave:string|null=null;
     if(skuItem!=null&&custoSkuMap[skuItem+"|"+mes]!=null){custoManual=custoSkuMap[skuItem+"|"+mes];cmv_chave="sku:"+skuItem;}
     else if(custoMlbMap[v.item_id+"|"+mes]!=null){custoManual=custoMlbMap[v.item_id+"|"+mes];cmv_chave="mlb:"+v.item_id;}
-    const responsavel_cmv=v.responsavel_cmv||classifyResponsavel(v.titulo);
+    const responsavel_cmv=v.responsavel_cmv||COD_FORN[fornecedorPorItem[v.item_id]||""]||classifyResponsavel(v.titulo);
     let cmv_origem:string,cmv_unitario:number,cmv_total:number,ads_pct_usado:number|null=null;
     let imposto_valor:number|null=null,ads_valor:number|null=null,custofixo_valor:number|null=null,resultado:number;
     let pisoPacote:any=null;
@@ -502,7 +516,7 @@ Deno.serve(async(req)=>{
   const {data:adiantamentos}=await supabase.from("ocelot_adiantamentos").select("id,fornecedor_id,mes_competencia,valor,data,observacao").eq("conta_id",OCELOT_CONTA).range(0,9999);
   if(soAlterados){
     // (a) venda paga num fechamento que mudou depois; (b) venda que ficou FORA de um fechamento registrado
-    const FID:Record<string,string>={miguel:MIGUEL_ID,alan:ALAN_ID};
+    const FID:Record<string,string>={miguel:MIGUEL_ID,alan:ALAN_ID,ocelot:TIAGO_ID};
     const mesReg=new Set((repasses||[]).filter((r:any)=>r.pago).map((r:any)=>r.fornecedor_id+"|"+r.mes_competencia));
     for(const v of vendasCalc){
       if(v.cmv_pago_registrado==null&&FID[v.responsavel_cmv]&&mesReg.has(FID[v.responsavel_cmv]+"|"+v.mes_competencia)
@@ -513,11 +527,28 @@ Deno.serve(async(req)=>{
         quantidade:v.quantidade,valor_venda:v.valor_venda,valor_liquido:v.valor_liquido,status:v.status,ml_cobriu:!!v.ml_cobriu,
         devolucao_com_custo:!!v.devolucao_com_custo,cmv_total:v.cmv_total,cmv_pago_registrado:v.cmv_pago_registrado,
         cmv_pago_fornecedor_id:v.cmv_pago_fornecedor_id,nao_incluida:!!v.nao_incluida,responsavel_cmv:v.responsavel_cmv}));
+    if(escopo){
+      const e=escopo,doFid=(r:any)=>r.fornecedor_id===e.fid;
+      return json({itens:itens.filter((v:any)=>v.cmv_pago_fornecedor_id?v.cmv_pago_fornecedor_id===e.fid:v.responsavel_cmv===e.cod),de:desde,ate:ateExclusive,
+        repasses:(repasses||[]).filter(doFid),estornos_aplicados:(estornosAplicados||[]).filter(doFid),adiantamentos:(adiantamentos||[]).filter(doFid)});
+    }
     return json({itens,de:desde,ate:ateExclusive,repasses:repasses||[],estornos_aplicados:estornosAplicados||[],adiantamentos:adiantamentos||[]});
   }
   if(soDevolucoes){
+    if(escopo)return json({error:"sem permissao"},403);
     const peds=(pedidos as any[]).map((p:any)=>({...p,itens:p.itens.filter((it:any)=>it.devolucao_com_custo)})).filter((p:any)=>p.itens.length);
     return json({pedidos:peds,de:desde,ate:ateExclusive,repasses:repasses||[],estornos_aplicados:estornosAplicados||[]});
+  }
+  if(escopo){
+    // so os itens do fornecedor (pagos a ele no fechamento, ou dele pela classificacao) e o que a aba Repasse usa
+    const e=escopo,doFid=(r:any)=>r.fornecedor_id===e.fid;
+    const meu=(it:any)=>it.cmv_pago_fornecedor_id?it.cmv_pago_fornecedor_id===e.fid:it.responsavel_cmv===e.cod;
+    const peds=(pedidos as any[]).map((p:any)=>({order_id:p.order_id,pack_id:p.pack_id,data_venda:p.data_venda,status:p.status,itens:p.itens.filter(meu)})).filter((p:any)=>p.itens.length);
+    return json({pedidos:peds,escopo:{fornecedor:e.cod==="ocelot"?"tiago":e.cod},
+      parametros:(parametros||[]).map((p:any)=>({mes_competencia:p.mes_competencia,fechado:p.fechado})),
+      repasse_pct_por_mes:repassePctMap,tacos_fonte_por_mes:tacosFonteMap,
+      repasses:(repasses||[]).filter(doFid),adiantamentos:(adiantamentos||[]).filter(doFid),estornos_aplicados:(estornosAplicados||[]).filter(doFid),
+      dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});
   }
   const {data:snap}=await supabase.from("snapshots").select("ad_spend,periodo_fim").eq("conta_id",OCELOT_CONTA).order("periodo_fim",{ascending:false}).limit(1).maybeSingle();
   return json({pedidos,resumo,waterfall,por_forma_pagamento:porFormaPagamento,por_responsavel:porResponsavel,cancelados_count:new Set(cancelados.map((v:any)=>String(v.order_id))).size,devolucoes_custo_count:new Set(devolucoesCusto.map((v:any)=>String(v.order_id))).size,custos:custos||[],parametros:parametros||[],skus,itens_sem_sku:itensSemSku,itens_periodo:ultimoPeriodo,fixo_pct_por_mes:fixoPctMap,tacos_pct_por_mes:tacosPctMap,tacos_fonte_por_mes:tacosFonteMap,repasse_pct_por_mes:repassePctMap,ads_referencia:snap||null,repasses:repasses||[],adiantamentos:adiantamentos||[],estornos_aplicados:estornosAplicados||[],dias,mes_filtro:mesParam,meses_disponiveis:mesesDisponiveis});

@@ -445,6 +445,7 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
     <button id="ocnDashboard" onclick="ocelotSubTab('dashboard')">Dashboard de Vendas</button>
     <button id="ocnAEntregar" onclick="ocelotSubTab('aentregar')">Vendas a entregar</button>
     <button id="ocnEtiquetas" onclick="ocelotSubTab('etiquetas')">Etiquetas de Envio</button>
+    <button id="ocnPromocoes" onclick="ocelotSubTab('promocoes')">Promoções</button>
     <button id="ocnAtendimento" onclick="ocelotSubTab('atendimento')">Perguntas e Mensagens <span id="ocnAtendBadge" class="dv-badge" style="font-size:10.5px"></span></button>
     <button id="ocnSintetica" onclick="ocelotSubTab('sintetica')">DRE sintética</button>
     <button id="ocnVendas" onclick="ocelotSubTab('vendas')">DRE por venda</button>
@@ -642,16 +643,16 @@ async function renderMercado(){
 }
 function toggleNav(v){var b=document.body;var o=(v===undefined)?!b.classList.contains("navopen"):!!v;if(o){b.classList.add("navopen");}else{b.classList.remove("navopen");}}
 function abreConsultoria(){var s=localStorage.getItem("cons_sub");trocaAba((s==="mensal")?"mensal":"semanal");}
-function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",aentregar:"Vendas a entregar",etiquetas:"Etiquetas de Envio",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
+function ocelotSubLabel(){var L={dashboard:"Dashboard de Vendas",aentregar:"Vendas a entregar",etiquetas:"Etiquetas de Envio",promocoes:"Promo\u00e7\u00f5es",atendimento:"Perguntas e Mensagens",sintetica:"DRE sint\u00e9tica",vendas:"DRE por venda",repasse:"Repasse a fornecedores",config:"Cadastro"};return L[ocelotSub]||"DRE sint\u00e9tica";}
 function sincOcelotNav(){
-  var ids={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+  var ids={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",promocoes:"ocnPromocoes",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
   for(var k in ids){var e=document.getElementById(ids[k]);if(e)e.className=(ocelotSub===k)?"on":"";}
   var h=document.getElementById("h1sec");if(h&&aba==="ocelot")h.textContent="Gest\u00e3o Ocelot \u00b7 "+ocelotSubLabel();
 }
 // v4 (09/09/2026): o botao do header era um so e sempre chamava o coletor das 9 contas, mesmo
 // estando dentro da Gestao Ocelot. Agora ele muda com a aba: em Consultoria roda o ml-coletor
 // (metricas das contas); em Gestao Ocelot roda o ml-ocelot-vendas (vendas da conta propria).
-function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="aentregar")return aeCarregar(); if(aba==="ocelot"&&ocelotSub==="etiquetas")return etqCarregar(); if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
+function atualizarContexto(){ if(aba==="ocelot"&&ocelotSub==="dashboard")return dvSincronizar(true); if(aba==="ocelot"&&ocelotSub==="aentregar")return aeCarregar(); if(aba==="ocelot"&&ocelotSub==="etiquetas")return etqCarregar(); if(aba==="ocelot"&&ocelotSub==="promocoes"){PRO.camp=null;PRO.aberta=null;return proCarregar();} if(aba==="ocelot"&&ocelotSub==="atendimento")return renderAtendML(); if(aba==="ocelot")return atualizarOcelot(); return atualizar(); }
 function sincBtnAtualizar(a){
   var b=document.getElementById("btnAtualizar"); if(!b)return;
   b.textContent=(a==="ocelot")?"Atualizar vendas":"Atualizar métricas";
@@ -678,17 +679,17 @@ function sincNav(a){
 }
 function trocaAba(a){
   if(EU&&!podeAba(a)){var _f=primeiraAba();if(!_f){semAcesso("Nenhum menu liberado para o seu usuário.");return;}a=_f;}
-  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","aentregar","etiquetas","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
+  if(a==="ocelot"&&EU&&!pode(OCN_PERM[ocelotSub])){var _L=["vendas","sintetica","repasse","config","dashboard","aentregar","etiquetas","promocoes","atendimento"];for(var _i=0;_i<_L.length;_i++){if(pode(OCN_PERM[_L[_i]])){ocelotSub=_L[_i];break;}}}
   aba=a;localStorage.setItem('ocelot_aba',a);periodosSel=null;document.getElementById("app").style.maxWidth="";
   document.getElementById("tabSemanal").className=a==="semanal"?"on":"";
   document.getElementById("tabMensal").className=a==="mensal"?"on":"";var _tm=document.getElementById("tabMercado");if(_tm)_tm.className=a==="mercado"?"on":"";var _merc=a==="mercado"||a==="concorrentes"||a==="ocelot"||a==="consultoria"||a==="usuarios"||a==="permissoes";var _tb=document.getElementById("tagbar");if(_tb)_tb.style.display=_merc?"none":"";var _dp=document.getElementById("ddPeriodos");if(_dp)_dp.style.display=_merc?"none":"";
   document.getElementById("btnFecharMes").style.display=(a==="mensal"&&pode("fechar_mes"))?"":"none";
   document.getElementById("subtitulo").textContent=(a==="usuarios"||a==="permissoes")?"Quem acessa o painel e o que cada um pode ver e fazer":a==="mensal"
     ?"Visão mensal — cada período = mês fechado (1º ao último dia)"
-    :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, etiquetas, atendimento, DRE e cadastro (conta própria)"
+    :a==="ocelot"?"Gestão Ocelot — dashboard de vendas, etiquetas, promoções, atendimento, DRE e cadastro (conta própria)"
     :a==="consultoria"?"Consultoria — análises por cliente"
     :"Análise semanal — cada período = últimos 30 dias · coleta automática toda sexta às 9h (BRT)";
-  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="aentregar")renderAEntregar();else if(ocelotSub==="etiquetas")renderEtiquetas();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
+  var _tc=document.getElementById("tabConcorrentes");if(_tc)_tc.className=a==="concorrentes"?"on":"";var _to=document.getElementById("tabOcelot");if(_to)_to.className=a==="ocelot"?"on":"";var _tk=document.getElementById("tabConsultoria");if(_tk)_tk.className=a==="consultoria"?"on":"";if(a==="usuarios"){renderUsuarios();}else if(a==="permissoes"){renderPermissoes();}else if(a==="mercado"){renderMercado();}else if(a==="concorrentes"){renderConcorrentes();}else if(a==="ocelot"){if(ocelotSub==="dashboard")renderDashML();else if(ocelotSub==="aentregar")renderAEntregar();else if(ocelotSub==="etiquetas")renderEtiquetas();else if(ocelotSub==="promocoes")renderPromocoes();else if(ocelotSub==="atendimento")renderAtendML();else renderOcelot();}else if(a==="consultoria"){renderConsultoria();}else{montaPeriodos();render();}if(a==="semanal"||a==="mensal")localStorage.setItem("cons_sub",a);sincNav(a);if(EU)aplicaPerms();
 }
 let SELT=new Set();
 async function renderConcorrentes(){
@@ -1449,6 +1450,7 @@ function ocelotSubTab(s){
   if(s==='dashboard'){renderDashML();return;}
   if(s==='aentregar'){renderAEntregar();return;}
   if(s==='etiquetas'){renderEtiquetas();return;}
+  if(s==='promocoes'){renderPromocoes();return;}
   if(s==='atendimento'){renderAtendML();return;}
   if(s==='fornecedores'){renderFornecedores();return;}
   if(s==='entregas'){renderEntregas();return;}
@@ -1459,6 +1461,7 @@ function renderOcelotBody(){
   if(ocelotSub==='dashboard'){renderDashML();return;}
   if(ocelotSub==='aentregar'){renderAEntregar();return;}
   if(ocelotSub==='etiquetas'){renderEtiquetas();return;}
+  if(ocelotSub==='promocoes'){renderPromocoes();return;}
   if(ocelotSub==='atendimento'){renderAtendML();return;}
   // DRE sintetica e sempre de um mes fechado de competencia (a fatura do ML e mensal): se a tela
   // estiver em "Ultimos 30 dias", escolhe o mes mais recente e recarrega os pedidos so dele.
@@ -4041,20 +4044,179 @@ function atResponderMensagem(i){const m=AT.dados.mensagens[i],t=(document.getEle
 function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta conversa como lida no Mercado Livre sem responder?'))return;
   atAcao({acao:'marcar_lida',conta_id:m.conta_id,pack_id:m.pack_id},'Conversa marcada como lida.','mensagens',i);}
 
+/* ---------- PROMOCOES DO ML (18/10/2026, pedido do Tiago) ----------
+   Mesma ideia da tela Promocoes do antoninho-comissoes: campanhas da conta Ocelot, resultado de cada item na
+   campanha x no preco cheio, e participar / sair (sempre pelo usuario, item a item ou em lote de ate 50).
+   CMV = repasse ao fornecedor pela regra do MES CORRENTE (ocelot_repasse_pct, provisorio ate o fechamento).
+   Pela formula o resultado da Ocelot e a gestao (5,5%) e o desconto sai do repasse; a Ocelot so perde quando o
+   CMV vem do piso de R$ 40 ou de custo cadastrado. A trava (no servidor) barra prejuizo ou CMV desconhecido. */
+const PRO_API=SB_URL+'/functions/v1/ml-ocelot-promocoes', PRO_LOTE=50;
+const PRO_SO_NO_ML=['LIGHTNING','PRICE_DISCOUNT','DOD','VOLUME','PRE_NEGOTIATED','BANK'];
+const PRO_TIPOS={DEAL:'Campanha tradicional (DEAL)',MARKETPLACE_CAMPAIGN:'Co-participada do ML',SMART:'Automática (SMART)',SMART_LIGHTNING:'Relâmpago co-participada',
+  PRICE_MATCHING:'Preço competitivo',PRICE_MATCHING_MELI_ALL:'Preço competitivo (100% ML)',PRICE_DISCOUNT:'Desconto próprio',LIGHTNING:'Oferta relâmpago',DOD:'Oferta do dia',
+  VOLUME:'Desconto por volume',SELLER_CAMPAIGN:'Campanha do vendedor',SELLER_COUPON_CAMPAIGN:'Cupom do vendedor',UNHEALTHY_STOCK:'Estoque parado (Full)',PRE_NEGOTIATED:'Pré-negociada',BANK:'Desconto no Pix/banco'};
+const PRO_ST={candidate:'Convidado',pending:'Programado',started:'Ativo',finished:'Encerrado'};
+const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso de R$ 40: o desconto sai da parte da Ocelot',custo_cadastrado_ocelot_paga:'CMV é custo cadastrado: o desconto sai da parte da Ocelot',
+  sem_fornecedor:'Anúncio sem fornecedor gravado',abaixo_79_frete_referencia:'Abaixo de R$ 79: frete de referência de R$ 11,05',cupom_so_acima_do_minimo:'Cupom: só vale acima da compra mínima',
+  comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML'};
+const PRO_ERROS={abaixo_margem_minima:'resultado da Ocelot negativo',sem_resultado_calculado:'sem resultado calculado (CMV, comissão ou preço)',item_fora_da_campanha:'o item não está mais na campanha',
+  nao_participa:'o item não está participando',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
+let PRO={camp:null,pct:null,erro:null,carregando:false,aberta:null,itens:[],info:null,carregandoItens:false,marc:{},filtro:'todos',msg:null,conf:null,executando:false};
+async function proPost(body){
+  const r=await fetch(PRO_API,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
+  let j={};try{j=await r.json();}catch(e){}
+  if(r.status===401){mostrarLogin();throw new Error('sessão expirada');}
+  if(!r.ok||j.ok===false)throw new Error(j.erro||j.error||('erro '+r.status));
+  return j;
+}
+function renderPromocoes(){
+  const app=document.getElementById('app');app.style.maxWidth='none';sincOcelotNav();
+  if(!PRO.camp&&!PRO.carregando)proCarregar();else proRender();
+}
+async function proCarregar(){
+  PRO.carregando=true;PRO.erro=null;proRender();
+  try{const r=await proPost({acao:'campanhas'});PRO.camp=r.campanhas||[];PRO.pct=r.pct||null;}catch(e){PRO.erro=e.message;}
+  PRO.carregando=false;proRender();
+}
+async function proAbrir(i){
+  const c=(PRO.camp||[])[i];if(!c)return;
+  if(PRO.aberta&&PRO.aberta.id===c.id&&PRO.aberta.tipo===c.tipo){PRO.aberta=null;proRender();return;}
+  PRO.aberta=c;PRO.itens=[];PRO.info=null;PRO.marc={};PRO.msg=null;PRO.conf=null;
+  if(!c.id){proRender();return;}
+  PRO.carregandoItens=true;proRender();
+  try{const r=await proPost({acao:'itens',promotion_id:c.id,promotion_type:c.tipo});PRO.itens=r.itens||[];PRO.info={total:r.total,cursor:r.cursor};if(r.pct)PRO.pct=r.pct;}
+  catch(e){PRO.msg={t:'erro',x:'Itens da campanha: '+e.message};}
+  PRO.carregandoItens=false;proRender();
+}
+async function proMais(){
+  if(!PRO.aberta||!PRO.info||!PRO.info.cursor)return;
+  PRO.carregandoItens=true;proRender();
+  try{const r=await proPost({acao:'itens',promotion_id:PRO.aberta.id,promotion_type:PRO.aberta.tipo,cursor:PRO.info.cursor});PRO.itens=PRO.itens.concat(r.itens||[]);PRO.info={total:r.total,cursor:r.cursor};}
+  catch(e){PRO.msg={t:'erro',x:'Itens da campanha: '+e.message};}
+  PRO.carregandoItens=false;proRender();
+}
+function proFiltrados(){
+  const f=PRO.filtro;
+  return PRO.itens.filter(i=>f==='todos'?true:f==='prejuizo'?(i.resultado!=null&&i.resultado<0):f==='ocelot_paga'?(i.cmv_origem==='piso'||i.cmv_origem==='custo_cadastrado'):f==='sem_dado'?i.resultado==null:i.status===f)
+    .sort((a,b)=>(a.resultado_pct??1e9)-(b.resultado_pct??1e9));
+}
+function proCor(i){if(i.resultado==null)return 'var(--muted)';if(i.resultado<0)return '#f87171';if(i.cmv_origem==='piso'||i.cmv_origem==='custo_cadastrado')return '#f59e0b';return '#22c55e';}
+function proEditavel(){return pode('alterar_ml')&&PRO.aberta&&PRO_SO_NO_ML.indexOf(PRO.aberta.tipo)<0;}
+function proMarca(id){if(PRO.marc[id])delete PRO.marc[id];else if(Object.keys(PRO.marc).length<PRO_LOTE)PRO.marc[id]=true;else toast('Máximo de '+PRO_LOTE+' itens por vez.');proRender();}
+function proSelBons(){PRO.marc={};proFiltrados().forEach(i=>{if(Object.keys(PRO.marc).length<PRO_LOTE&&i.status==='candidate'&&i.resultado!=null&&i.resultado>=0&&i.cmv_origem==='formula')PRO.marc[i.item_id]=true;});proRender();}
+function proConfirmar(acao,ids){
+  const lista=PRO.itens.filter(i=>ids.indexOf(i.item_id)>=0&&(acao==='participar'?i.status==='candidate':(i.status==='started'||i.status==='pending')));
+  if(!lista.length)return;PRO.conf={acao:acao,itens:lista,forcar:false};proRender();
+}
+function proSel(acao){proConfirmar(acao,Object.keys(PRO.marc));}
+async function proExecutar(){
+  const C=PRO.conf;if(!C||PRO.executando)return;
+  PRO.executando=true;proRender();
+  try{
+    const r=await proPost({acao:C.acao,promotion_id:PRO.aberta.id,promotion_type:PRO.aberta.tipo,item_ids:C.itens.map(i=>i.item_id),forcar:!!C.forcar});
+    const res=r.resultados||[],ok=res.filter(x=>x.ok),okIds=new Set(ok.map(x=>x.item_id)),fal=res.filter(x=>!x.ok);
+    PRO.itens.forEach(i=>{if(okIds.has(i.item_id))i.status=C.acao==='participar'?'pending':'candidate';});
+    PRO.marc={};
+    PRO.msg={t:fal.length?(ok.length?'aviso':'erro'):'ok',x:(C.acao==='participar'?'Entraram: ':'Saíram: ')+ok.length+'.'+(fal.length?' Não foram: '+fal.length+'.':''),
+      d:fal.map(f=>f.item_id+' ('+(PRO_ERROS[f.erro]||f.erro)+')').join(' · ')};
+  }catch(e){PRO.msg={t:'erro',x:'Falha ao enviar ao ML.',d:e.message};}
+  PRO.executando=false;PRO.conf=null;proRender();
+}
+function proRender(){
+  if(aba!=='ocelot'||ocelotSub!=='promocoes')return;
+  const app=document.getElementById('app'),P=PRO.pct;
+  let h='<div class="dv">';
+  h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Campanhas de promoção do Mercado Livre da conta Ocelot. Abra uma campanha para ver o resultado de cada item.</span><span class="sep"></span>'
+    +'<button class="pri" onclick="PRO.camp=null;PRO.aberta=null;proCarregar()"'+(PRO.carregando?' disabled':'')+'>'+(PRO.carregando?'Lendo do ML…':'↻ Atualizar')+'</button></div>';
+  if(P)h+='<div class="dv-aviso">CMV = repasse ao fornecedor pela regra de <b>'+escH(ocelotMesExtenso(P.mes))+'</b>: '+(P.repasse!=null?Number(P.repasse).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'sem %')
+    +' (imposto '+P.imposto+'% + gestão '+P.gestao+'% + Ads '+Number(P.ads).toLocaleString('pt-BR',{maximumFractionDigits:2})+'% + custo fixo '+Number(P.fixo).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%), piso de R$ 40/un em cuba do Miguel e balanço do Alan.'
+    +(P.fechado?'':' <b>Provisório:</b> muda quando o mês for fechado.')+' Pela fórmula o desconto sai do repasse do fornecedor e a Ocelot fica com a gestão; ela só perde quando o repasse cai no piso ou o CMV é custo cadastrado.</div>';
+  if(PRO.erro)h+='<div class="dv-alerta">Não foi possível ler as campanhas: '+escH(PRO.erro)+'</div>';
+  if(!PRO.camp){app.innerHTML=h+'<div class="empty">'+(PRO.carregando?'Consultando o Mercado Livre…':'')+'</div></div>';return;}
+  h+='<div class="dv-sec"><div style="overflow-x:auto"><table><thead><tr><th class="l">Campanha</th><th class="l">Tipo</th><th class="l">Status</th><th class="l">Período</th><th class="l">Aderir até</th><th class="l">Desconto</th></tr></thead><tbody>';
+  if(!PRO.camp.length)h+='<tr><td class="l" colspan="6">Nenhuma campanha.</td></tr>';
+  const dt=s=>s?new Date(s).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'—';
+  PRO.camp.forEach((c,i)=>{
+    const ab=PRO.aberta&&PRO.aberta.id===c.id&&PRO.aberta.tipo===c.tipo;
+    h+='<tr style="cursor:pointer'+(ab?';background:var(--panel2)':'')+'" onclick="proAbrir('+i+')"><td class="l">'+(ab?'▾ ':'▸ ')+escH(c.nome||c.id||'—')+'</td><td class="l">'+escH(PRO_TIPOS[c.tipo]||c.tipo||'')+'</td><td class="l">'+escH(c.status||'—')+'</td>'
+      +'<td class="l">'+dt(c.inicio)+' a '+dt(c.fim)+'</td><td class="l">'+dt(c.prazo_adesao)+'</td><td class="l">'+(c.cupom_pct!=null?'cupom '+c.cupom_pct+'%'+(c.cupom_minimo?' acima de '+dvR(c.cupom_minimo):''):'—')+'</td></tr>';
+    if(ab)h+='<tr><td colspan="6" style="padding:0">'+proHtmlItens()+'</td></tr>';
+  });
+  h+='</tbody></table></div></div>';
+  if(PRO.conf)h+=proHtmlConf();
+  app.innerHTML=h+'</div>';
+}
+function proHtmlItens(){
+  const c=PRO.aberta;let h='<div style="padding:12px 10px 16px;background:rgba(0,0,0,.18)">';
+  if(!c.id)return h+'<div class="dv-aviso">Esta campanha não tem ID no ML; os itens não podem ser listados por ela.</div></div>';
+  if(PRO.msg){const cor=PRO.msg.t==='ok'?'#22c55e':PRO.msg.t==='aviso'?'#f59e0b':'#f87171';
+    h+='<div style="border:1px solid '+cor+';color:'+cor+';border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:13.5px">'+escH(PRO.msg.x)+(PRO.msg.d?'<div style="font-size:12px;opacity:.85;margin-top:4px;overflow-wrap:anywhere">'+escH(PRO.msg.d)+'</div>':'')+'</div>';}
+  if(PRO.carregandoItens&&!PRO.itens.length)return h+'<div class="empty">Lendo itens, comissão e frete no ML…</div></div>';
+  const L=PRO.itens,ed=proEditavel();
+  const cont={bom:0,ocelot:0,prej:0,sem:0};L.forEach(i=>{if(i.resultado==null)cont.sem++;else if(i.resultado<0)cont.prej++;else if(i.cmv_origem!=='formula')cont.ocelot++;else cont.bom++;});
+  h+='<div class="dv-bar" style="margin-bottom:8px"><span style="font-size:12.5px"><span style="color:#22c55e">● '+cont.bom+' desconto no repasse</span> · <span style="color:#f59e0b">● '+cont.ocelot+' Ocelot paga</span> · <span style="color:#f87171">● '+cont.prej+' prejuízo</span> · <span style="color:var(--muted)">● '+cont.sem+' sem dado</span></span><span class="sep"></span>';
+  [['todos','Todos'],['candidate','Convidados'],['started','Ativos'],['ocelot_paga','Ocelot paga'],['prejuizo','Prejuízo'],['sem_dado','Sem dado']].forEach(f=>{h+='<button class="'+(PRO.filtro===f[0]?'on':'')+'" onclick="PRO.filtro=\''+f[0]+'\';proRender()">'+f[1]+'</button>';});
+  h+='</div>';
+  if(pode('alterar_ml')&&PRO_SO_NO_ML.indexOf(c.tipo)>=0)h+='<div class="dv-aviso">Este tipo de campanha pede estoque ou datas: participe pelo próprio Mercado Livre.</div>';
+  if(ed){const sel=Object.keys(PRO.marc),selC=L.filter(i=>PRO.marc[i.item_id]&&i.status==='candidate').length,selA=L.filter(i=>PRO.marc[i.item_id]&&(i.status==='started'||i.status==='pending')).length;
+    h+='<div class="dv-bar" style="margin-bottom:8px"><span style="font-size:12.5px;color:var(--muted)">'+sel.length+' selecionado(s) (máx. '+PRO_LOTE+')</span><button onclick="proSelBons()">Selecionar convidados com desconto no repasse</button>'
+      +(sel.length?'<button onclick="PRO.marc={};proRender()">Limpar</button>':'')+'<span class="sep"></span>'
+      +'<button class="pri" onclick="proSel(\'participar\')"'+(selC?'':' disabled')+'>Participar ('+selC+')</button><button onclick="proSel(\'sair\')"'+(selA?'':' disabled')+' style="border-color:#f87171;color:#fca5a5">Sair ('+selA+')</button></div>';}
+  h+='<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">'+L.length+' de '+(PRO.info&&PRO.info.total!=null?PRO.info.total:L.length)+' itens carregados. Ordenado do pior para o melhor resultado da Ocelot.</div>';
+  const F=proFiltrados();
+  h+='<div style="overflow-x:auto"><table><thead><tr>'+(ed?'<th></th>':'')+'<th class="l">Item</th><th class="l">Fornecedor</th><th class="l">Status</th><th>Preço cheio</th><th>Na campanha</th><th>ML banca</th><th>Comissão</th><th>Frete</th><th>Repasse (CMV)</th><th>Fornecedor perde</th><th>Resultado Ocelot</th><th>Resultado hoje</th>'+(ed?'<th></th>':'')+'</tr></thead><tbody>';
+  if(!F.length)h+='<tr><td class="l" colspan="'+(ed?14:12)+'">Nenhum item neste filtro.</td></tr>';
+  F.forEach(i=>{
+    const pct=v=>v==null?'':'<div style="font-size:11.5px">'+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>';
+    const orig=i.cmv_origem==='piso'?'piso R$ 40':i.cmv_origem==='custo_cadastrado'?'custo cadastrado':i.cmv_origem==='formula'?'fórmula':(i.cmv_origem||'');
+    h+='<tr>'+(ed?'<td><input type="checkbox"'+(PRO.marc[i.item_id]?' checked':'')+' onclick="proMarca(\''+i.item_id+'\')"></td>':'')
+      +'<td class="l" style="min-width:240px">'+(i.permalink?'<a href="'+escH(i.permalink)+'" target="_blank" rel="noopener">'+escH(i.item_id)+'</a>':escH(i.item_id))+' '+escH(i.titulo||'')
+      +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+' · estoque '+(i.estoque==null?'—':dvN(i.estoque))+'</div>'
+      +(i.avisos&&i.avisos.length?'<div style="font-size:11.5px;color:#f59e0b">'+i.avisos.map(a=>escH(PRO_AVISOS[a]||a)).join(' · ')+'</div>':'')+'</td>'
+      +'<td class="l">'+escH(i.fornecedor||'—')+'</td><td class="l">'+escH(PRO_ST[i.status]||i.status||'—')+'</td>'
+      +'<td>'+dvR(i.preco_cheio)+'</td><td>'+dvR(i.preco_campanha)+(i.desconto_pct!=null?'<div style="font-size:11.5px;color:var(--muted)">−'+Number(i.desconto_pct).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>':'')+'</td>'
+      +'<td>'+(i.parte_ml?dvR(i.parte_ml):'—')+'</td><td>'+dvR(i.comissao)+'</td><td>'+dvR(i.frete)+'</td>'
+      +'<td>'+dvR(i.cmv)+'<div style="font-size:11.5px;color:var(--muted)">'+escH(orig)+'</div></td>'
+      +'<td>'+(i.repasse_perde!=null?dvR(i.repasse_perde):'—')+'</td>'
+      +'<td style="color:'+proCor(i)+';font-weight:700">'+dvR(i.resultado)+pct(i.resultado_pct)+'</td>'
+      +'<td style="color:var(--muted)">'+dvR(i.resultado_atual)+pct(i.resultado_atual_pct)+'</td>'
+      +(ed?'<td style="white-space:nowrap">'+(i.status==='candidate'?'<button onclick="proConfirmar(\'participar\',[\''+i.item_id+'\'])" style="font:inherit;font-size:12px;border-radius:7px;border:none;background:var(--accent);color:#fff;padding:5px 10px;cursor:pointer">Participar</button>'
+        :(i.status==='started'||i.status==='pending')?'<button onclick="proConfirmar(\'sair\',[\''+i.item_id+'\'])" style="font:inherit;font-size:12px;border-radius:7px;border:1px solid #f87171;background:transparent;color:#fca5a5;padding:5px 10px;cursor:pointer">Sair</button>':'')+'</td>':'')
+      +'</tr>';
+  });
+  h+='</tbody></table></div>';
+  if(PRO.info&&PRO.info.cursor)h+='<div style="margin-top:10px"><button onclick="proMais()"'+(PRO.carregandoItens?' disabled':'')+' style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 12px;cursor:pointer">'+(PRO.carregandoItens?'Lendo do ML…':'Carregar mais 100')+'</button></div>';
+  return h+'</div>';
+}
+function proHtmlConf(){
+  const C=PRO.conf,ruins=C.itens.filter(i=>i.resultado==null||i.resultado<0),somaRes=C.itens.reduce((s,i)=>s+(Number(i.resultado)||0),0),somaPerde=C.itens.reduce((s,i)=>s+(Number(i.repasse_perde)||0),0);
+  let h='<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:90;padding:16px"><div class="dv-sec" style="max-width:520px;width:100%;margin:0">';
+  h+='<h3>'+(C.acao==='participar'?'Participar':'Sair')+' da campanha: '+C.itens.length+' item(ns)</h3><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">'+escH(PRO.aberta.nome||PRO.aberta.id)+' ('+escH(PRO_TIPOS[PRO.aberta.tipo]||PRO.aberta.tipo)+')</div>';
+  if(C.itens.length===1){const i=C.itens[0];h+='<div style="font-size:13.5px;margin-bottom:8px">'+escH(i.item_id)+' · '+escH(i.titulo||'')+'<br>'+dvR(i.preco_cheio)+' → <b>'+dvR(i.preco_campanha)+'</b> · resultado Ocelot '+dvR(i.resultado)+'</div>';}
+  if(C.acao==='participar'){
+    h+='<div style="font-size:13.5px">Resultado da Ocelot somado (por unidade): <b>'+dvR(somaRes)+'</b><br>O repasse aos fornecedores cai: <b>'+dvR(somaPerde)+'</b> por unidade vendida.</div>';
+    if(ruins.length)h+='<div class="dv-aviso" style="margin-top:10px">'+ruins.length+' item(ns) com prejuízo para a Ocelot ou sem resultado calculado serão barrados.<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox"'+(C.forcar?' checked':'')+' onchange="PRO.conf.forcar=this.checked"> Forçar a entrada mesmo assim (fica registrado)</label></div>';
+    h+='<div style="font-size:12px;color:var(--muted);margin-top:8px">O preço muda no Mercado Livre quando a campanha começar. Na SMART o ML pode ajustar o preço depois; dá para sair por aqui.</div>';
+  }else h+='<div style="font-size:13px;color:var(--muted)">O item volta ao preço cheio nesta campanha.</div>';
+  h+='<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button onclick="PRO.conf=null;proRender()"'+(PRO.executando?' disabled':'')+' style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:7px 14px;cursor:pointer">Cancelar</button>'
+    +'<button onclick="proExecutar()"'+(PRO.executando?' disabled':'')+' style="font:inherit;font-size:13px;border-radius:8px;border:none;background:'+(C.acao==='sair'?'#dc2626':'var(--accent)')+';color:#fff;padding:7px 14px;cursor:pointer;font-weight:600">'+(PRO.executando?'Enviando ao ML…':'Confirmar')+'</button></div>';
+  return h+'</div></div>';
+}
+
 /* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------
    Backend: tabela app_usuarios + function app-usuarios (so admin gerencia).
    A trava real esta no servidor (app_pode/app_contas nas functions); aqui so esconde o que nao pode. */
 const USR_API=SB_URL+"/functions/v1/app-usuarios";
 let EU=null, ADM=null, admSel=null;
-const OCN_PERM={dashboard:"ocelot_dashboard",aentregar:"ocelot_entregas",etiquetas:"ocelot_etiquetas",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
-const OCN_IDS={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
+const OCN_PERM={dashboard:"ocelot_dashboard",aentregar:"ocelot_entregas",etiquetas:"ocelot_etiquetas",promocoes:"ocelot_promocoes",atendimento:"atendimento_ml",sintetica:"ocelot_dre",vendas:"ocelot_vendas",repasse:"ocelot_repasse",config:"ocelot_cadastro"};
+const OCN_IDS={dashboard:"ocnDashboard",aentregar:"ocnAEntregar",etiquetas:"ocnEtiquetas",promocoes:"ocnPromocoes",atendimento:"ocnAtendimento",sintetica:"ocnSintetica",vendas:"ocnVendas",repasse:"ocnRepasse",config:"ocnConfig"};
 const ACOES_INFO=[
   ["atualizar","Atualizar métricas / vendas","Dispara nova coleta no Mercado Livre"],
   ["fechar_mes","Fechar mês","Grava o fechamento mensal das contas"],
   ["exportar_pdf","Exportar PDF",""],
   ["editar_cadastro","Editar cadastro Ocelot","Custos, apelidos e responsável pelo CMV"],
   ["alterar_ml","Alterar anúncios no Mercado Livre","Troca de SKU, ativar/pausar, estoque e preço no Cadastro — escreve direto no ML"]];
-const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"],["ocelot_entregas","Ocelot Vendas a entregar"],["ocelot_etiquetas","Ocelot Etiquetas de Envio"]];
+const MENUS_INFO=[["semanal","Semanal"],["mensal","Mensal"],["ocelot_dre","Ocelot DRE sintética"],["ocelot_vendas","Ocelot DRE p/ venda"],["ocelot_repasse","Ocelot Repasse"],["ocelot_cadastro","Ocelot Cadastro"],["ocelot_dashboard","Ocelot Dashboard de Vendas"],["atendimento_ml","Ocelot Perguntas e Mensagens"],["ocelot_entregas","Ocelot Vendas a entregar"],["ocelot_etiquetas","Ocelot Etiquetas de Envio"],["ocelot_promocoes","Ocelot Promoções"]];
 const PRESETS={
   "p:leitura":{menus:["semanal","mensal"],acoes:["exportar_pdf"],contas:"*"},
   "p:ocelot":{menus:["ocelot_dashboard","ocelot_entregas","ocelot_etiquetas","atendimento_ml","ocelot_dre","ocelot_vendas","ocelot_repasse","ocelot_cadastro"],acoes:["atualizar","exportar_pdf","editar_cadastro"],contas:[OCELOT_CONTA_ID]}};
@@ -4255,7 +4417,7 @@ function htmlPermissoes(){
   h+='<label class="adm-ck adm-big"><input type="checkbox" id="pAdmin"'+(u.admin?' checked':'')+(self?' disabled':'')+' onchange="permAdminToggle()"> <span><b>Administrador</b><span class="adm-hint">Vê tudo, todas as contas, e gerencia usuários e permissões'+(self?' — você não pode tirar o seu próprio acesso':'')+'</span></span></label>';
   h+='<div class="adm-grid'+(u.admin?' adm-dis':'')+'" id="pGrid">';
   h+='<div class="adm-box"><h3>Menus</h3><div class="adm-sub">Consultoria</div>'+ck("m","semanal","Semanal")+ck("m","mensal","Mensal")
-    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_entregas","Vendas a entregar","Prazo de envio, itens, valor e repasse estimado. Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_etiquetas","Etiquetas de Envio","Imprime a etiqueta do ML na térmica (QZ Tray). Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
+    +'<div class="adm-sub">Gestão Ocelot</div>'+ck("m","ocelot_dre","DRE sintética")+ck("m","ocelot_vendas","DRE por venda")+ck("m","ocelot_repasse","Repasse a fornecedores")+ck("m","ocelot_cadastro","Cadastro")+ck("m","ocelot_dashboard","Dashboard de Vendas","Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_entregas","Vendas a entregar","Prazo de envio, itens, valor e repasse estimado. Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_etiquetas","Etiquetas de Envio","Imprime a etiqueta do ML na térmica (QZ Tray). Precisa da conta Ocelot marcada em Contas")+ck("m","ocelot_promocoes","Promoções","Campanhas do ML e o resultado de cada item. Participar/sair exige também a ação Alterar anúncios no ML. Precisa da conta Ocelot marcada em Contas")+ck("m","atendimento_ml","Perguntas e Mensagens","Responde clientes em nome da conta Ocelot no ML. Precisa da conta Ocelot marcada em Contas")+'</div>';
   h+='<div class="adm-box"><h3>Ações</h3>'+ACOES_INFO.map(function(a){return ck("a",a[0],a[1],a[2]);}).join('')+'</div>';
   h+='<div class="adm-box"><h3>Contas</h3><div class="adm-hint-i" style="margin-bottom:6px">Valem para a Consultoria e para o Dashboard de Vendas e Perguntas da Ocelot</div>'
     +'<label class="adm-ck"><input type="radio" name="pContasModo" value="*"'+(todas?' checked':'')+' onchange="permContasModo()"> <span>Todas<span class="adm-hint">Inclui contas que entrarem no futuro</span></span></label>'

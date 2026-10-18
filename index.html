@@ -3423,9 +3423,9 @@ const dvMes=s=>MESES[Number(s.slice(5,7))-1]+'/'+s.slice(2,4);
    itens do pacote (MLB + link do anuncio), valor e repasse estimado ao fornecedor (mesma regra da DRE por venda).
    Toda a busca no ML e feita no servidor (ml-ocelot-a-entregar); aqui so filtra por data de envio e status. */
 const AE_API=SB_URL+'/functions/v1/ml-ocelot-a-entregar';
-let AE={dados:null,erro:null,carregando:false,em:0,atalho:'todas',de:'',ate:'',status:'todos'};
+let AE={dados:null,erro:null,carregando:false,em:0,atalho:'todas',de:'',ate:'',status:'todos',busca:''};
 const AE_ST={pending:'Aguardando',handling:'Em preparação',ready_to_ship:'Pronto p/ envio',shipped:'A caminho',not_delivered:'Não entregue'};
-const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada',manufacturing:'em fabricação'};
+const AE_SUB={buffered:'em espera',printed:'etiqueta impressa',ready_to_print:'imprimir etiqueta',in_hub:'no centro',out_for_delivery:'saiu p/ entrega',in_packing_list:'na lista de coleta',dropped_off:'postado',picked_up:'coletado',waiting_for_withdrawal:'aguardando retirada',manufacturing:'em fabricação',invoice_pending:'aguardando NF'};
 const AE_LOG={self_service:'Flex',xd_drop_off:'Agência',drop_off:'Agência',cross_docking:'Coleta',fulfillment:'Full'};
 function aeAtalhos(){
   const h=dvDe(dvHoje()),d=n=>{const x=new Date(h);x.setDate(x.getDate()+n);return dvIso(x);};
@@ -3449,9 +3449,25 @@ document.addEventListener('visibilitychange',()=>{
 function aeAtalho(id){AE.atalho=id;const a=aeAtalhos().find(x=>x[0]===id);AE.de=a[2]||'';AE.ate=a[3]||'';aeRender();}
 function aeDatas(){const de=document.getElementById('aeDe').value,ate=document.getElementById('aeAte').value;if(de&&ate&&ate<de){toast('A data final é anterior à inicial.');return;}AE.atalho=null;AE.de=de;AE.ate=ate||de;aeRender();}
 function aeStatus(s){AE.status=s;aeRender();}
+// 18/10/2026: busca por MLB (com ou sem "MLB"), SKU ou numero da venda/pedido; ignora os outros filtros
+function aeBusca(v){AE.busca=v;aeRender();}
+function aeCasaBusca(p,q){
+  const n=q.replace(/^#/,''),d=n.replace(/\D/g,'');
+  if(d&&(String(p.venda).indexOf(d)>=0||(p.order_ids||[]).some(o=>String(o).indexOf(d)>=0)))return true;
+  return p.itens.some(it=>String(it.item_id||'').toUpperCase().indexOf(n.toUpperCase())>=0||(d&&String(it.item_id||'').replace(/\D/g,'').indexOf(d)>=0)
+    ||String(it.sku||'').toUpperCase().indexOf(n.toUpperCase())>=0);
+}
 function aeDespachado(p){return p.shipping_status==='shipped'||!!p.data_envio;}
 function aeFiltrados(){
   const hoje=dvHoje();
+  const q=AE.busca.trim();
+  if(q){
+    // SKU e curto e numerico ("00031") e aparece dentro de numero de venda/MLB: se algo bate exato, mostra so isso
+    const P=(AE.dados||{}).pedidos||[],u=q.replace(/^#/,'').toUpperCase(),d=u.replace(/\D/g,'');
+    const exato=P.filter(p=>String(p.venda)===d||(p.order_ids||[]).some(o=>String(o)===d)
+      ||p.itens.some(it=>String(it.sku||'').toUpperCase()===u||String(it.item_id||'').toUpperCase()===u||String(it.item_id||'').replace(/\D/g,'')===u));
+    return exato.length?exato:P.filter(p=>aeCasaBusca(p,q));
+  }
   return ((AE.dados||{}).pedidos||[]).filter(p=>{
     if(AE.status==='despachar'&&aeDespachado(p))return false;
     if(AE.status==='caminho'&&!aeDespachado(p))return false;
@@ -3463,8 +3479,14 @@ function aeFiltrados(){
   });
 }
 function aeDataBr(s){return s?s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4):'—';}
+// a tela e redesenhada a cada tecla: devolve o foco e o cursor ao campo de busca
+function aeFocoBusca(){
+  const c=AE._cursor;AE._cursor=null;if(c==null)return;
+  const el=document.getElementById('aeBusca');if(el){el.focus();try{el.setSelectionRange(c,c);}catch(e){}}
+}
 function aeRender(){
   if(aba!=='ocelot'||ocelotSub!=='aentregar')return;
+  const ae=document.activeElement;AE._cursor=(ae&&ae.id==='aeBusca')?ae.selectionStart:null;
   const app=document.getElementById('app');const D=AE.dados||{};const hoje=dvHoje();
   let h='<div class="dv">';
   h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Data de envio:</span>';
@@ -3472,7 +3494,9 @@ function aeRender(){
   h+='<input type="date" id="aeDe" value="'+escH(AE.de)+'" onchange="aeDatas()"><span style="font-size:12px;color:var(--muted)">até</span><input type="date" id="aeAte" value="'+escH(AE.ate)+'" onchange="aeDatas()">';
   h+='<span class="sep"></span>';
   [['todos','Todos'],['despachar','A despachar'],['caminho','A caminho']].forEach(s=>{h+='<button class="'+(AE.status===s[0]?'on':'')+'" onclick="aeStatus(\''+s[0]+'\')">'+s[1]+'</button>';});
+  h+='<input type="search" id="aeBusca" placeholder="Buscar MLB, SKU ou nº da venda" value="'+escH(AE.busca)+'" oninput="aeBusca(this.value)" style="min-width:220px;flex:1 1 220px;cursor:text">';
   h+='<button class="pri" onclick="aeCarregar()"'+(AE.carregando?' disabled':'')+'>'+(AE.carregando?'Atualizando…':'↻ Atualizar')+'</button></div>';
+  if(AE.busca.trim())h+='<div class="dv-sync">Buscando "'+escH(AE.busca.trim())+'" em todas as vendas a entregar (os filtros de data e status ficam de lado). <a href="javascript:void(0)" onclick="aeBusca(\'\')">limpar busca</a></div>';
   h+='<div class="dv-sync'+(AE.erro?' err':'')+'">'+(AE.carregando?'Consultando o Mercado Livre…':AE.erro?'Não foi possível atualizar ('+escH(AE.erro)+').':(D.atualizado_em?'Atualizado em '+fmtDt(D.atualizado_em)+'.':''))+'</div>';
   if(D.aviso)h+='<div class="dv-aviso">'+escH(D.aviso)+'</div>';
   if(!AE.dados){app.innerHTML=h+'<div class="empty">'+(AE.erro?'':'Carregando…')+'</div></div>';return;}
@@ -3482,7 +3506,7 @@ function aeRender(){
   h+='<div class="dv-cards">'+card('Vendas',dvN(L.length),dvN(tot.q)+' unidades')+card('Repasse estimado',dvR(tot.r),tot.inc?tot.inc+' venda(s) sem custo cadastrado':'aos fornecedores')
     +card('Atrasadas',dvN(tot.atr),'prazo de envio vencido')+'</div>';
   h+='<div class="dv-sec"><h3>Vendas a entregar</h3><div class="sub">Envio = prazo que o ML dá para despachar (ou a data em que saiu, se já despachou; em fabricação, o fim do prazo de fabricação). Repasse estimado pela mesma regra da DRE por venda (detalhe de custos e gestão na aba Repasse a fornecedores).</div>';
-  if(!L.length){app.innerHTML=h+'<div class="empty">Nenhuma venda neste filtro.</div></div></div>';return;}
+  if(!L.length){app.innerHTML=h+'<div class="empty">'+(AE.busca.trim()?'Nenhuma venda a entregar com "'+escH(AE.busca.trim())+'".':'Nenhuma venda neste filtro.')+'</div></div></div>';aeFocoBusca();return;}
   h+='<div style="overflow-x:auto"><table class="mcards"><thead><tr><th class="l">Envio</th><th class="l">Venda</th><th class="l">Produtos</th><th>Qtd</th><th>Repasse est.</th><th class="l">Status</th></tr></thead><tbody>';
   L.forEach(p=>{
     const desp=aeDespachado(p),d=p.data_ref_envio,fab=!desp&&p.shipping_substatus==='manufacturing';
@@ -3490,7 +3514,7 @@ function aeRender(){
     const st=(AE_ST[p.shipping_status]||p.shipping_status||'—')+(AE_SUB[p.shipping_substatus]?' · '+AE_SUB[p.shipping_substatus]:'');
     if(!desp&&d){const n=Math.round((dvDe(d)-dvDe(hoje))/86400000);prazo=n<0?'<span class="dv-neg"><b>atrasada '+(-n)+'d</b></span>':n===0?'<b style="color:#f59e0b">hoje</b>':n===1?'amanhã':'em '+n+' dias';}
     else if(desp)prazo='<span style="color:var(--muted)">despachada</span>';
-    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
+    const itens=p.itens.map(it=>'<div style="margin:2px 0"><a class="ae-prod" href="'+escH(it.link)+'" target="_blank" rel="noopener" title="Abrir o anúncio no Mercado Livre">'+escH(it.titulo)+'</a> <a href="'+escH(it.link)+'" target="_blank" rel="noopener" style="font-size:11.5px;color:var(--muted)">'+escH(it.item_id)+'</a>'+(it.sku?' <span style="font-size:11.5px;color:var(--muted)">SKU '+escH(it.sku)+'</span>':'')+(p.itens.length>1?' <span style="color:var(--muted)">× '+it.quantidade+'</span>':'')+'</div>').join('');
     h+='<tr><td class="l" data-l="Envio" style="white-space:nowrap">'+(fab&&d?'<div style="font-size:11px;color:var(--muted)" title="Em fabricação: o ML só dá o prazo de despacho quando o prazo de fabricação termina">fabricação até</div>':'')+aeDataBr(d)+'<div style="font-size:11.5px">'+prazo+'</div></td>'
       +'<td class="l" data-l="Venda" style="white-space:nowrap">'+(EU&&EU.admin?'<a href="'+escH(p.link)+'" target="_blank" rel="noopener">#'+escH(p.venda)+'</a>':'#'+escH(p.venda))+(p.pacote?'<div style="font-size:11.5px;color:var(--muted)">pacote · '+p.itens.length+' itens</div>':'')+'<div style="font-size:11.5px;color:var(--muted)">vendida '+aeDataBr(p.data_venda)+'</div></td>'
       +'<td class="l mc-top" style="min-width:260px">'+itens+'</td>'
@@ -3499,7 +3523,7 @@ function aeRender(){
       +'<td class="l" data-l="Status" style="white-space:nowrap">'+escH(st)+(AE_LOG[p.logistic_type]?'<div style="font-size:11.5px;color:var(--muted)">'+AE_LOG[p.logistic_type]+'</div>':'')+'</td></tr>';
   });
   h+='</tbody><tfoot><tr><td class="l mc-top" colspan="3"><b>Total ('+L.length+' vendas)</b></td><td data-l="Qtd"><b>'+dvN(tot.q)+'</b></td><td data-l="Repasse est."><b>'+dvR(tot.r)+'</b></td><td class="mc-vazio"></td></tr></tfoot></table></div></div></div>';
-  app.innerHTML=h;
+  app.innerHTML=h;aeFocoBusca();
 }
 
 /* ===== Etiquetas de Envio (13/10/2026) =====

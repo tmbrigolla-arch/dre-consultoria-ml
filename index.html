@@ -92,6 +92,9 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
   .curva-bar{height:100%;background:linear-gradient(90deg,#2563eb,#60a5fa);border-radius:5px}
   .curva-expand{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:2px 0 10px}
   .curva-th{cursor:pointer;user-select:none}
+  th.ord-th{cursor:pointer;user-select:none}
+  th.ord-th:hover{color:var(--accent)}
+  .ord-seta{font-size:.85em}
   .curva-th.active{color:var(--accent)}
   /* login */
   #login{display:none;min-height:100vh;align-items:center;justify-content:center;background:var(--head)}
@@ -4304,6 +4307,112 @@ async function salvaMinhaSenha(){
   try{ await usrApi({acao:"minha_senha",senha:a}); document.getElementById("mSenha").style.display="none"; toast("Senha alterada."); }
   catch(e){ er.textContent=e.message; }
 }
+
+/* ---------- ORDENAR QUALQUER TABELA (18/10/2026, pedido do Tiago) ----------
+   Clique no titulo da coluna: 1o clique crescente, 2o decrescente, 3o volta a ordem original.
+   Vale para toda tabela do painel, menos as que ja ordenam sozinhas (cabecalho com onclick: DRE por venda,
+   Cadastro, Curva ABC, Qualidade...), que ordenam a lista inteira e nao so a pagina na tela.
+   Linhas de total/subtotal (com colspan) ficam onde estao; tabela com linha de grupo no meio nao ordena.
+   Ordena pelo texto da celula: data (dd/mm/aaaa ou dd/mm), numero/R$/% no padrao brasileiro, senao texto
+   (A-Z, com numeros em ordem natural). Celula vazia ou "—" vai sempre para o fim.
+   A escolha fica guardada por tabela e e reaplicada quando a tela e redesenhada (Atualizar, filtros, busca). */
+const ORD={estado:{}};
+function ordCabecalho(tb){
+  const tr=(tb.tHead&&tb.tHead.rows.length)?tb.tHead.rows[tb.tHead.rows.length-1]:[...tb.rows].find(r=>r.cells.length&&[...r.cells].every(c=>c.tagName==='TH'));
+  return tr||null;
+}
+function ordChave(tb,hd){
+  const ctx=(typeof aba!=='undefined'?aba:'')+'|'+(typeof ocelotSub!=='undefined'?ocelotSub:'');
+  return ctx+'|'+[...hd.cells].map(c=>c.textContent.replace(/[▲▼]/g,'').trim()).join('¦');
+}
+// linhas que podem ser ordenadas: mesmo pai, sem colspan, so td, no mesmo numero de colunas do cabecalho
+function ordLinhas(tb,hd){
+  const n=hd.cells.length;
+  const corpo=[...tb.tBodies].flatMap(b=>[...b.rows]).filter(r=>r!==hd);
+  const ok=r=>r.cells.length===n&&[...r.cells].every(c=>c.tagName==='TD'&&c.colSpan===1);
+  const idx=corpo.map((r,i)=>ok(r)?i:-1).filter(i=>i>=0);
+  if(idx.length<2)return null;
+  const de=idx[0],ate=idx[idx.length-1];
+  if(ate-de+1!==idx.length)return null;          // linha de grupo/subtotal no meio
+  const L=corpo.slice(de,ate+1);
+  if(L.some(r=>r.parentNode!==L[0].parentNode))return null;
+  return L;
+}
+function ordValor(td){
+  const campo=td.querySelector('input:not([type=checkbox]),select,textarea');
+  let t=(campo?campo.value:td.textContent).replace(/\s+/g,' ').trim();
+  if(!t||/^[—–-]$/.test(t))return null;
+  // data: no comeco da celula (dd/mm ou dd/mm/aaaa) ou com ano depois de ate 20 letras ("fabricacao ate 20/10/2026");
+  // "Cano 3/4" (sem ano, no meio do texto) e texto
+  let m=t.match(/^(?:[^\d]{0,20}?)(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?!\d)/);
+  if(m&&(m[3]||/^\d/.test(t))&&!/R\$/.test(m[0])&&Number(m[1])<=31&&Number(m[2])<=12){
+    const a=m[3]?(m[3].length===2?2000+Number(m[3]):Number(m[3])):0;
+    return {n:a*10000+Number(m[2])*100+Number(m[1])};
+  }
+  m=t.match(/^([−\-+]?)\s*(?:R\$\s*)?([−\-]?)\s*#?\s*(\d[\d.]*(?:,\d+)?)\s*(%|mil\b|un\b|d\b)?/i);
+  if(m){
+    let v=Number(m[3].replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',','.'));
+    if(!isNaN(v)){if((m[1]&&m[1]!=='+')||m[2])v=-v;if(/mil/i.test(m[4]||''))v*=1000;return {n:v};}
+  }
+  return {t:t};
+}
+function ordCompara(a,b){
+  if(a==null||b==null)return a==null&&b==null?0:(a==null?1:-1);
+  if(a.n!=null&&b.n!=null)return a.n-b.n;
+  if(a.n!=null)return -1;if(b.n!=null)return 1;
+  return a.t.localeCompare(b.t,'pt-BR',{numeric:true,sensitivity:'base'});
+}
+function ordAplica(tb,hd,L,col,dir){
+  L.forEach((r,i)=>{if(r.dataset.ordi==null)r.dataset.ordi=i;});
+  const pai=L[0].parentNode,depois=L[L.length-1].nextSibling;
+  const v=dir?L.map(r=>({r:r,v:ordValor(r.cells[col])})):null;
+  const S=dir?v.sort((x,y)=>{const nul=(x.v==null)-(y.v==null);if(nul)return nul;const c=ordCompara(x.v,y.v)*dir;return c||(x.r.dataset.ordi-y.r.dataset.ordi);}).map(x=>x.r)
+    :L.slice().sort((x,y)=>x.dataset.ordi-y.dataset.ordi);
+  const f=document.createDocumentFragment();S.forEach(r=>f.appendChild(r));pai.insertBefore(f,depois);
+  [...hd.cells].forEach((c,i)=>{const s=c.querySelector('.ord-seta');if(s)s.textContent=(dir&&i===col)?(dir>0?' ▲':' ▼'):'';});
+}
+function ordPrepara(){
+  document.querySelectorAll('table:not([data-ord])').forEach(tb=>{
+    tb.dataset.ord='0';
+    const hd=ordCabecalho(tb);if(!hd)return;
+    if([...hd.cells].some(c=>c.hasAttribute('onclick')||c.colSpan>1))return;   // ja ordena sozinha / cabecalho agrupado
+    const L=ordLinhas(tb,hd);if(!L)return;
+    tb.dataset.ord='1';
+    [...hd.cells].forEach(c=>{if(!c.textContent.trim())return;c.classList.add('ord-th');c.title='Clique para ordenar';
+      const s=document.createElement('span');s.className='ord-seta';c.appendChild(s);});
+    ordReaplica(tb,hd,L);
+  });
+}
+// No celular as tabelas .mcards viram cartoes, sem titulo para clicar: ordem fixa por data, a mais proxima
+// de hoje primeiro. Envio (a fazer): crescente, atrasadas no topo e sem data no fim. Data (vendas ja feitas,
+// Repasse): mais recente primeiro. No computador vale a escolha do clique.
+const ORD_CEL=window.matchMedia('(max-width:680px)');
+function ordReaplica(tb,hd,L){
+  if(ORD_CEL.matches&&tb.classList.contains('mcards')){
+    const nomes=[...hd.cells].map(c=>c.textContent.replace(/[▲▼]/g,'').trim());
+    let col=nomes.indexOf('Envio'),dir=1;
+    if(col<0){col=nomes.indexOf('Data');dir=-1;}
+    if(col>=0)ordAplica(tb,hd,L,col,dir);
+    return;
+  }
+  const e=ORD.estado[ordChave(tb,hd)];
+  ordAplica(tb,hd,L,e&&e.col<hd.cells.length?e.col:0,e&&e.col<hd.cells.length?e.dir:0);
+}
+ORD_CEL.addEventListener('change',()=>document.querySelectorAll('table[data-ord="1"]').forEach(tb=>{
+  const hd=ordCabecalho(tb),L=hd&&ordLinhas(tb,hd);if(L)ordReaplica(tb,hd,L);
+}));
+document.addEventListener('click',ev=>{
+  const th=ev.target.closest&&ev.target.closest('th.ord-th');if(!th||ev.target.closest('a,button,input,select,label'))return;
+  const tb=th.closest('table');if(!tb||tb.dataset.ord!=='1')return;
+  const hd=ordCabecalho(tb),L=ordLinhas(tb,hd);if(!hd||!L)return;
+  const k=ordChave(tb,hd),col=[...hd.cells].indexOf(th),e=ORD.estado[k];
+  const dir=(!e||e.col!==col)?1:(e.dir===1?-1:0);
+  ORD.estado[k]={col:col,dir:dir};
+  ordAplica(tb,hd,L,col,dir);
+});
+let ordAgendado=false;
+new MutationObserver(()=>{if(ordAgendado)return;ordAgendado=true;requestAnimationFrame(()=>{ordAgendado=false;ordPrepara();});})
+  .observe(document.body,{childList:true,subtree:true});
 
 /* ---------- INIT ---------- */
 window.__appOk=true;

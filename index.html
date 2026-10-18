@@ -1081,7 +1081,7 @@ function htmlOcelotRepasseAba(){
   h+='</div>';
   // 3. vendas do mes
   h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">3. Vendas de '+mesNome.split('/')[0]+' — detalhamento</div>';
-  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Venda = valor dos produtos pago pelo comprador. Custos = taxa do ML, frete, imposto, Ads e custo fixo.<span class="noprint"> Gestão = parte da Ocelot. Venda − Custos − Gestão = Repasse.</span> Repasse = valor devido ao fornecedor. Linhas com repasse negativo são vendas do mês reembolsadas ao comprador, com custo de frete/tarifa cobrado pelo Mercado Livre.</div>';
+  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Venda = valor dos produtos pago pelo comprador. Custos = taxa do ML, frete, imposto, Ads e custo fixo. Gestão = parte da Ocelot. Venda − Custos − Gestão = Repasse. Repasse = valor devido ao fornecedor. Linhas com repasse negativo são vendas do mês reembolsadas ao comprador, com custo de frete/tarifa cobrado pelo Mercado Livre.</div>';
   const _rp=Number((D.repasse_pct_por_mes&&D.repasse_pct_por_mes[mes])||17.5), _novo=mes>='2026-10-01';
   // 07/10/2026: vendas pagas pelo piso de R$ 40/un (pela formula o repasse teria ficado abaixo).
   // Formula = liquido do ML - % do repasse x venda efetiva (so da para mostrar o valor a partir de set/2026).
@@ -1089,14 +1089,14 @@ function htmlOcelotRepasseAba(){
   let nPiso=0,extraPiso=0;
   R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
   if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
-  h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right" title="Taxa do ML, frete, imposto, Ads e custo fixo">Custos</th><th class="noprint" style="'+th+';text-align:right" title="Parte da Ocelot">Gestão</th><th style="'+th+';text-align:right">Repasse</th></tr>';
+  h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right" title="Taxa do ML, frete, imposto, Ads e custo fixo">Custos</th><th style="'+th+';text-align:right" title="Parte da Ocelot">Gestão</th><th style="'+th+';text-align:right">Repasse</th></tr>';
   let tv=0,tl=0,tc=0,tg=0;
   // 18/10/2026 (pedido do Tiago): custos e gestao por venda; venda - custos - gestao = repasse. So na tela:
-  // o documento impresso (vai para o fornecedor) mostra os custos, mas nao a gestao.
+  // aparecem tambem no documento impresso que vai para o fornecedor.
   const cus=function(g){return g.tx+g.fr+g.imp+g.ads+g.fixo;}, ges=function(g){return g.liq-g.imp-g.ads-g.fixo-g.rep;};
   const cusDet=function(g){const l=[['taxa ML',g.tx],['frete',g.fr],['imposto',g.imp],['ads',g.ads],['custo fixo',g.fixo]].filter(function(x){return Math.abs(x[1])>=0.005;});
     return l.length?'<div style="font-size:11px;color:var(--muted);line-height:1.45;font-weight:400">'+l.map(function(x){return x[0]+' '+dreBRL(x[1]);}).join('<br>')+'</div>':'';};
-  const tdCG=function(g,b){return '<td data-l="Custos" style="'+tdn+(b?';font-weight:700':'')+'">'+dreBRL(-cus(g))+(b?'':cusDet(g))+'</td><td class="noprint" data-l="Gestão" style="'+tdn+(b?';font-weight:700':'')+'">'+dreBRL(-ges(g))+'</td>';};
+  const tdCG=function(g,b){return '<td data-l="Custos" style="'+tdn+(b?';font-weight:700':'')+'">'+dreBRL(-cus(g))+(b?'':cusDet(g))+'</td><td data-l="Gestão" style="'+tdn+(b?';font-weight:700':'')+'">'+dreBRL(-ges(g))+'</td>';};
   R.vendas.forEach(function(g){
     tv+=g.venda;tl+=g.liq;tc+=cus(g);tg+=ges(g);
     const tagPiso=function(it){const pz=pisoDe(it);if(!pz)return '';
@@ -1110,7 +1110,7 @@ function htmlOcelotRepasseAba(){
   R.foraFech.forEach(function(g){
     h+='<tr style="opacity:.55"><td data-l="Data" style="'+td+'">'+dBR(g.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(g.num,g.order_id)+'</td><td class="mc-top" style="'+td+'">'+escH(g.itens[0].it.titulo||'')+'<div style="font-size:11.5px;color:#b45309">ficou fora deste fechamento — entra como valor a pagar no próximo</div></td><td data-l="Un." style="'+tdn+'">'+g.un+'</td><td data-l="Venda" style="'+tdn+'">'+dreBRL(g.venda)+'</td>'+tdCG(g)+'<td data-l="Repasse" style="'+tdn+'">'+dreBRL(g.rep)+'</td></tr>';
   });
-  h+='<tr><td colspan="3" class="mc-top" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td data-l="Un." style="'+tdn+';font-weight:700">'+R.un+'</td><td data-l="Venda" style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td data-l="Custos" style="'+tdn+';font-weight:700">'+dreBRL(-tc)+'</td><td class="noprint" data-l="Gestão" style="'+tdn+';font-weight:700">'+dreBRL(-tg)+'</td><td data-l="Repasse" style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
+  h+='<tr><td colspan="3" class="mc-top" style="'+td+';font-weight:700">TOTAL ('+R.vendas.length+' vendas)</td><td data-l="Un." style="'+tdn+';font-weight:700">'+R.un+'</td><td data-l="Venda" style="'+tdn+';font-weight:700">'+dreBRL(tv)+'</td><td data-l="Custos" style="'+tdn+';font-weight:700">'+dreBRL(-tc)+'</td><td data-l="Gestão" style="'+tdn+';font-weight:700">'+dreBRL(-tg)+'</td><td data-l="Repasse" style="'+tdn+';font-weight:700">'+dreBRL(R.totRepCalc)+'</td></tr></table></div>';
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
   const _fonte=(D.tacos_fonte_por_mes&&D.tacos_fonte_por_mes[mes])||'';
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'

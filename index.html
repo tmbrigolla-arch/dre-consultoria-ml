@@ -3566,7 +3566,7 @@ const ETQ_SIT={ready_to_print:['A imprimir','#f59e0b'],printed:['Já impressa','
 const ETQ_IMPRIMIVEL=new Set(['ready_to_print','printed']);
 let ETQ={dados:null,erro:null,carregando:false,em:0,filtro:'ready_to_print',marc:{},imprimindo:false,msg:null,
   qz:null,qzErro:'',impressoras:[],impressora:(function(){try{return localStorage.getItem('etq_impressora')||'';}catch(e){return '';}})(),
-  modo:(function(){try{return localStorage.getItem('etq_modo')||'zpl';}catch(e){return 'zpl';}})(),libs:null,seg:false};
+  modo:(function(){try{return localStorage.getItem('etq_modo')||'zpl';}catch(e){return 'zpl';}})(),libs:null,seg:false,ajuste:null,verAjuste:false};
 function etqLs(k,v){try{localStorage.setItem(k,v);}catch(e){}}
 function etqLibs(){
   if(!ETQ.libs)ETQ.libs=Promise.all(ETQ_LIBS.map(src=>new Promise((ok,falha)=>{
@@ -3610,10 +3610,133 @@ async function etqLigarQZ(){
 async function etqZPL(zpl){await etqConectar();await qz.print(qz.configs.create(ETQ.impressora),[{type:'raw',format:'command',flavor:'plain',data:zpl}]);}
 async function etqPDFDriver(b64){
   await etqConectar();
-  const cfg=qz.configs.create(ETQ.impressora,{size:{width:100,height:150},units:'mm',margins:0,scaleContent:true,rasterize:false,colorType:'blackwhite',orientation:'portrait',jobName:'Etiquetas Mercado Livre'});
+  const a=etqNormAjuste(ETQ.ajuste);
+  const cfg=qz.configs.create(ETQ.impressora,{size:{width:a.largura,height:a.altura},units:'mm',margins:0,scaleContent:true,rasterize:false,colorType:'blackwhite',orientation:'portrait',jobName:'Etiquetas Mercado Livre'});
   await qz.print(cfg,[{type:'pixel',format:'pdf',flavor:'base64',data:b64}]);
 }
 const ETQ_ZPL_TESTE=['^XA^CI28','^FO40,40^A0N,40,40^FDTESTE OCELOT^FS','^FO40,100^A0N,28,28^FDSe esta linha saiu, a impressora entende ZPL.^FS','^FO40,160^BY3^BCN,120,Y,N,N^FD1234567890^FS','^FO20,20^GB760,1150,3^FS','^XZ'].join('\n');
+/* Ajuste da medida (19/10/2026): o ZPL do ML vem desenhado para 4x6 pol (101,6 x 152,4 mm) e o rolo e 100 x 150 mm;
+   sem ajuste a etiqueta sai maior e invade a de cima. O ZPL e reescrito antes de ir para a termica: posicoes Y e alturas
+   (texto, caixas, altura das barras) x escala vertical, deslocamento somado nas posicoes, ^LL no tamanho real. A largura
+   das barras nao muda (o codigo continua lendo); QR e imagens (^GF) nao escalam, so andam com o deslocamento.
+   Mesma logica do antoninho-comissoes (src/lib/mlEtiquetas.js). Salvo por PC (localStorage etq_ajuste). */
+const ETQ_AJ_PADRAO={altura:150,largura:100,dpi:203,escalaV:98.4,deslocV:0,deslocH:0};
+const ETQ_ALTURA_ML=152.4;
+function etqAjusteSalvo(){try{return Object.assign({},ETQ_AJ_PADRAO,JSON.parse(localStorage.getItem('etq_ajuste')||'{}'));}catch(e){return Object.assign({},ETQ_AJ_PADRAO);}}
+ETQ.ajuste=etqAjusteSalvo();
+// codigos de barras cujo 2o parametro e a altura (^BCo,h ...) e os que tem a altura no 3o (^B3o,e,h ...)
+const ETQ_BARRAS_ALT2 = new Set(['BC', 'B2', 'BE', 'BU', 'B8', 'B9', 'BA', 'BI', 'BJ', 'BS', 'BZ'])
+const ETQ_BARRAS_ALT3 = new Set(['B3', 'B1', 'BK', 'BM', 'BP'])
+
+// campo vazio/invalido na tela volta ao padrao (nao manda ^LL0 nem escala 0 para a impressora)
+function etqNormAjuste(ajuste) {
+  const a = { ...ETQ_AJ_PADRAO }
+  for (const k of Object.keys(a)) {
+    const v = ajuste && ajuste[k]
+    if (v !== '' && v != null && Number.isFinite(Number(v))) a[k] = Number(v)
+  }
+  if (a.altura <= 0) a.altura = ETQ_AJ_PADRAO.altura
+  if (a.largura <= 0) a.largura = ETQ_AJ_PADRAO.largura
+  if (a.escalaV <= 0) a.escalaV = ETQ_AJ_PADRAO.escalaV
+  return a
+}
+
+function etqAjustarZPL(zpl, ajuste = ETQ_AJ_PADRAO) {
+  const a = etqNormAjuste(ajuste)
+  const dpm = a.dpi / 25.4                        // pontos por mm
+  const s = a.escalaV / 100
+  const dy = Math.round(a.deslocV * dpm)
+  const dx = Math.round(a.deslocH * dpm)
+  const ll = Math.round(a.altura * dpm)
+  const ey = v => Math.round(v * s)
+  const num = t => (t === '' || t == null ? null : Number(t))
+  let girada = false                              // ^FW R/B: a "altura" do campo fica na horizontal
+  const partes = zpl.split('^')
+  for (let i = 1; i < partes.length; i++) {
+    const p = partes[i]
+    const cmd = p.slice(0, 2).toUpperCase()
+    const resto = p.slice(2)
+    const args = () => resto.split(',')
+    if (cmd === 'XA') { girada = false; partes[i] = `XA^LL${ll}` + resto; continue }
+    if (cmd === 'LL') { partes[i] = null; continue }   // o comprimento e o da etiqueta real
+    if (cmd === 'FW') { girada = /^[RB]/i.test(resto); continue }
+    if (cmd === 'FO' || cmd === 'FT') {
+      const m = resto.match(/^(\d*),?(\d*)(.*)$/s)
+      if (!m) continue
+      const x = num(m[1]) || 0, y = num(m[2]) || 0
+      partes[i] = `${cmd}${Math.max(0, x + dx)},${Math.max(0, ey(y) + dy)}${m[3]}`
+      continue
+    }
+    if (cmd === 'LH') {
+      const m = resto.match(/^(\d*),?(\d*)(.*)$/s)
+      if (m && m[2]) partes[i] = `LH${m[1]},${ey(Number(m[2]))}${m[3]}`
+      continue
+    }
+    if (cmd === 'GB') {
+      // ^GBw,h,t,...: so a altura escala (linha horizontal: h <= t, fica como esta)
+      const v = args()
+      const t = num(v[2]) || 1, h = num(v[1])
+      if (h != null && h > t) v[1] = String(Math.max(t, ey(h)))
+      partes[i] = 'GB' + v.join(',')
+      continue
+    }
+    if (p[0] === 'A' || p[0] === 'a') {
+      // ^Afo,h,w  (fonte f, orientacao o) | ^A@o,h,w,arquivo
+      const m = p.match(/^A(.)([NRIBnrib]?),(\d*)(,?)(\d*)(.*)$/s)
+      if (!m) continue
+      const rot = m[2] ? /[RB]/i.test(m[2]) : girada
+      let h = num(m[3]), w = num(m[5])
+      if (!rot && h) h = ey(h)
+      else if (rot) w = ey(w != null ? w : (h || 0))
+      partes[i] = `A${m[1]}${m[2]},${h ?? ''}${w != null ? ',' + w : m[4]}${m[6]}`
+      continue
+    }
+    if (cmd === 'CF') {
+      const v = args()
+      if (num(v[1])) v[1] = String(ey(Number(v[1])))
+      partes[i] = 'CF' + v.join(',')
+      continue
+    }
+    if (cmd === 'BY') {
+      const v = args()
+      if (num(v[2])) v[2] = String(ey(Number(v[2])))
+      partes[i] = 'BY' + v.join(',')
+      continue
+    }
+    if (ETQ_BARRAS_ALT2.has(cmd) || ETQ_BARRAS_ALT3.has(cmd)) {
+      const v = args()
+      const rot = v[0] ? /^[RB]/i.test(v[0]) : girada
+      const k = ETQ_BARRAS_ALT3.has(cmd) ? 2 : 1
+      if (!rot && num(v[k])) v[k] = String(ey(Number(v[k])))
+      partes[i] = cmd + v.join(',')
+    }
+  }
+  return partes.filter(x => x !== null).join('^')
+}
+
+// Regua para calibrar: moldura no tamanho exato da etiqueta e marcas a cada 10 mm. So o
+// deslocamento e aplicado (a regua ja nasce no tamanho real, sem escala).
+function etqRegua(ajuste = ETQ_AJ_PADRAO) {
+  const a = etqNormAjuste(ajuste)
+  const dpm = a.dpi / 25.4
+  const W = Math.round(a.largura * dpm), H = Math.round(a.altura * dpm)
+  const d = v => Math.round(v * dpm)
+  const z = ['^XA^CI28', `^FO0,0^GB${W},${H},4^FS`]
+  for (let mm = 10; mm < a.altura; mm += 10) {
+    const y = d(mm)
+    z.push(`^FO0,${y}^GB${d(mm % 50 ? 6 : 12)},2,2^FS`)
+    z.push(`^FO${W - d(mm % 50 ? 6 : 12)},${y}^GB${d(mm % 50 ? 6 : 12)},2,2^FS`)
+    if (!(mm % 20)) z.push(`^FO${d(14)},${y - d(1.5)}^A0N,${d(3)},${d(3)}^FD${mm}^FS`)
+  }
+  z.push(`^FO${d(30)},${d(8)}^A0N,${d(5)},${d(5)}^FDTOPO DA ETIQUETA^FS`)
+  z.push(`^FO${d(30)},${d(60)}^A0N,${d(4)},${d(4)}^FDREGUA DE AJUSTE ${a.largura}x${a.altura} mm^FS`)
+  z.push(`^FO${d(30)},${d(68)}^A0N,${d(3.2)},${d(3.2)}^FDA moldura tem que cair em cima da borda.^FS`)
+  z.push(`^FO${d(30)},${d(74)}^A0N,${d(3.2)},${d(3.2)}^FDInvadiu a de cima: deslocamento + (desce).^FS`)
+  z.push(`^FO${d(30)},${d(80)}^A0N,${d(3.2)},${d(3.2)}^FDSobrou papel em cima: deslocamento - (sobe).^FS`)
+  z.push(`^FO${d(30)},${H - d(10)}^A0N,${d(5)},${d(5)}^FDBASE DA ETIQUETA^FS`, '^XZ')
+  return etqAjustarZPL(z.join('\n'), { ...a, escalaV: 100 })
+}
+
 // mesmo teste em PPLA (linguagem de fabrica da Elgin): se ESTE sai e o de ZPL nao, a Elgin esta em PPLA
 const ETQ_PPLA_TESTE=['\x02L','D11','H14','121100000800020IMPRESSORA EM PPLA','121100000500020TROCAR PARA PPLZ (ZPL)','E',''].join('\r\n');
 async function etqTeste(ppla){
@@ -3708,6 +3831,17 @@ function etqMarca(id){ETQ.marc[id]=!ETQ.marc[id];etqRender();}
 function etqMarcaTodos(){const l=etqFiltrados().filter(e=>ETQ_IMPRIMIVEL.has(e.substatus));const todos=l.length&&l.every(e=>ETQ.marc[e.shipping_id]);l.forEach(e=>{ETQ.marc[e.shipping_id]=!todos;});etqRender();}
 function etqImpressora(v){ETQ.impressora=v;etqLs('etq_impressora',v);}
 function etqModo(v){ETQ.modo=v;etqLs('etq_modo',v);}
+function etqAjCampo(k,v){ETQ.ajuste[k]=v===''?'':Number(v);etqLs('etq_ajuste',JSON.stringify(ETQ.ajuste));}
+function etqAjPadrao(){ETQ.ajuste=Object.assign({},ETQ_AJ_PADRAO);etqLs('etq_ajuste',JSON.stringify(ETQ.ajuste));etqRender();}
+function etqAjEncaixar(){etqAjCampo('escalaV',Math.round((Number(ETQ.ajuste.altura)||150)/ETQ_ALTURA_ML*1000)/10);etqRender();}
+function etqAjVer(){ETQ.verAjuste=!ETQ.verAjuste;etqRender();}
+async function etqImprimirRegua(){
+  if(!ETQ.impressora){toast('Escolha a impressora primeiro.');return;}
+  try{await etqZPL(etqRegua(ETQ.ajuste));
+    ETQ.msg={t:'ok',x:'Régua de ajuste enviada.',d:'A moldura tem que cair exatamente na borda da etiqueta. Invadiu a etiqueta de cima: aumente o deslocamento vertical (+ desce) pelos mm que passou; sobrou papel em cima: diminua (− sobe). Imprima de novo até encaixar.'};
+  }catch(e){ETQ.msg={t:'erro',x:'Falha ao imprimir a régua.',d:e.message};}
+  etqRender();
+}
 async function etqBaixar(acao,cada){
   const ids=etqSelecionados().map(e=>String(e.shipping_id)),impressos=[],falhas=[];
   for(let i=0;i<ids.length;i+=ETQ_LOTE){
@@ -3733,7 +3867,7 @@ async function etqImprimir(){
   ETQ.imprimindo=true;ETQ.msg=null;etqRender();
   try{
     await etqConectar();const resumos=[];
-    const r=ETQ.modo==='zpl'?await etqBaixar('zpl',x=>etqZPL(x.zpl))
+    const r=ETQ.modo==='zpl'?await etqBaixar('zpl',x=>etqZPL(etqAjustarZPL(x.zpl,ETQ.ajuste)))
       :await etqBaixar('pdf',async x=>{const p=await etqSepararPDF(x.pdf_base64);resumos.push(p.resumo);await etqPDFDriver(p.b64);});
     etqConcluir(r,'enviada(s) para a impressora',resumos);
   }catch(e){ETQ.msg={t:'erro',x:'Falha ao imprimir.',d:e.message};}
@@ -3768,9 +3902,25 @@ function etqRender(){
       +ETQ.impressoras.map(n=>'<option'+(n===ETQ.impressora?' selected':'')+'>'+escH(n)+'</option>').join('')+'</select>';
     h+='<select onchange="etqModo(this.value)" title="ZPL direto: Elgin em PPLZ, mais rápido e nítido. PDF pelo driver: funciona com a Elgin em qualquer linguagem." style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px">'
       +'<option value="zpl"'+(ETQ.modo==='zpl'?' selected':'')+'>Modo: ZPL direto (padrão)</option><option value="driver"'+(ETQ.modo==='driver'?' selected':'')+'>Modo: PDF pelo driver</option></select>';
-    h+='<button onclick="etqTeste(false)">Teste ZPL</button><button onclick="etqTeste(true)" title="Diagnóstico: descobre se a Elgin está em PPLA (linguagem de fábrica), que ignora o ZPL do ML">Não saiu? Teste PPLA</button>';
+    h+='<button onclick="etqTeste(false)">Teste ZPL</button><button class="'+(ETQ.verAjuste?'on':'')+'" onclick="etqAjVer()" title="Tamanho da etiqueta, escala e deslocamento da impressão">📏 Ajuste da medida</button><button onclick="etqTeste(true)" title="Diagnóstico: descobre se a Elgin está em PPLA (linguagem de fábrica), que ignora o ZPL do ML">Não saiu? Teste PPLA</button>';
   }
   h+='<span class="sep"></span><a href="javascript:void(0)" onclick="etqCertificado()" style="font-size:12px;color:var(--muted)" title="Instale uma vez no PC da expedição para o QZ parar de perguntar Permitir a cada impressão">Baixar certificado do QZ (override.crt)</a></div>';
+  if(ETQ.verAjuste){
+    const A=ETQ.ajuste;
+    h+='<div class="dv-bar" style="flex-direction:column;align-items:stretch"><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">';
+    [['largura','Largura (mm)',1,'Largura do papel'],['altura','Altura (mm)',1,'Altura do papel, sem o espaço entre as etiquetas'],
+     ['escalaV','Escala vertical (%)',0.1,'O ML desenha para 152,4 mm: 98,4% encaixa em 150 mm'],
+     ['deslocV','Deslocamento vertical (mm)',0.5,'+ desce a impressão, − sobe. Invadiu a etiqueta de cima: aumente'],
+     ['deslocH','Deslocamento horizontal (mm)',0.5,'+ direita, − esquerda']].forEach(c=>{
+      h+='<label title="'+c[3]+'" style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--muted)">'+c[1]+'</span><input type="number" step="'+c[2]+'" value="'+escH(String(A[c[0]]))+'" onchange="etqAjCampo(\''+c[0]+'\',this.value)" style="cursor:text"></label>';
+    });
+    h+='<label title="Elgin L42/L42 Pro = 203 dpi" style="display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;color:var(--muted)">Resolução</span><select onchange="etqAjCampo(\'dpi\',this.value)" style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px">'
+      +[203,300].map(d=>'<option value="'+d+'"'+(Number(A.dpi)===d?' selected':'')+'>'+d+' dpi</option>').join('')+'</select></label></div>';
+    h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button onclick="etqImprimirRegua()"'+(ETQ.impressora&&ETQ.qz===true?'':' disabled')+'>Imprimir régua de ajuste</button>'
+      +'<button onclick="etqAjEncaixar()" title="Calcula a escala para a etiqueta do ML (152,4 mm) caber na altura informada">Encaixar na altura</button>'
+      +'<a href="javascript:void(0)" onclick="etqAjPadrao()" style="font-size:12px;color:var(--muted)">Restaurar padrão</a></div>';
+    h+='<div style="font-size:12px;color:var(--muted);line-height:1.5">Fica salvo neste computador. No modo ZPL valem todos os campos; no modo PDF pelo driver, largura e altura (o driver já encaixa o PDF no papel). Como acertar: imprima a régua, veja quantos mm a moldura passou da borda e corrija o deslocamento. A largura das barras não muda com a escala: o código continua lendo.</div></div>';
+  }
   // filtros
   h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Situação:</span>';
   [['ready_to_print','A imprimir',cont.ready_to_print],['printed','Já impressas',cont.printed],['invoice_pending','Aguardando NF',cont.invoice_pending],['agendado','Agendadas',cont.agendado],['outros','Outros',cont.outros],['','Todos',L.length]]

@@ -4321,7 +4321,7 @@ function proHtmlItens(){
       +'<button class="pri" onclick="proSel(\'participar\')"'+(selC?'':' disabled')+'>Participar ('+selC+')</button><button onclick="proSel(\'sair\')"'+(selA?'':' disabled')+' style="border-color:#f87171;color:#fca5a5">Sair ('+selA+')</button></div>';}
   h+='<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">'+L.length+' de '+(PRO.info&&PRO.info.total!=null?PRO.info.total:L.length)+' itens carregados. Ordenado do pior para o melhor resultado da Ocelot.</div>';
   const F=proFiltrados();
-  h+='<div style="overflow-x:auto"><table><thead><tr>'+(ed?'<th></th>':'')+'<th class="l">Item</th><th class="l">Fornecedor</th><th class="l">Status</th><th>Preço cheio</th><th>Na campanha</th><th>ML banca</th><th>Comissão</th><th>Frete</th><th>Repasse (CMV)</th><th>Fornecedor perde</th>'+proThRet('Imposto','imposto')+proThRet('TACoS (Ads)','ads')+proThRet('Custo fixo','fixo')+'<th>Resultado Ocelot</th><th>Resultado hoje</th>'+(ed?'<th></th>':'')+'</tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table><thead><tr>'+(ed?'<th></th>':'')+'<th class="l">Item</th><th class="l">Fornecedor</th><th class="l">Status</th><th>Preço cheio</th><th>Na campanha</th><th>ML banca</th><th>Comissão</th><th>Frete</th>'+proThRet('Imposto','imposto')+proThRet('TACoS (Ads)','ads')+proThRet('Custo fixo','fixo')+'<th>Repasse (CMV)</th><th>Resultado Ocelot</th><th>Resultado hoje</th><th>Fornecedor perde</th>'+(ed?'<th></th>':'')+'</tr></thead><tbody>';
   if(!F.length)h+='<tr><td class="l" colspan="'+(ed?17:15)+'">Nenhum item neste filtro.</td></tr>';
   F.forEach(i=>{
     const pct=v=>v==null?'':'<div style="font-size:11.5px">'+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>';
@@ -4333,11 +4333,11 @@ function proHtmlItens(){
       +'<td class="l">'+escH(i.fornecedor||'—')+'</td><td class="l">'+escH(PRO_ST[i.status]||i.status||'—')+'</td>'
       +'<td>'+dvR(i.preco_cheio)+'</td><td>'+dvR(i.preco_campanha)+(i.desconto_pct!=null?'<div style="font-size:11.5px;color:var(--muted)">−'+Number(i.desconto_pct).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>':'')+'</td>'
       +'<td>'+(i.parte_ml?dvR(i.parte_ml):'—')+'</td><td>'+dvR(i.comissao)+'</td><td>'+dvR(i.frete)+'</td>'
-      +'<td>'+dvR(i.cmv)+'<div style="font-size:11.5px;color:var(--muted)">'+escH(orig)+'</div></td>'
-      +'<td>'+(i.repasse_perde!=null?dvR(i.repasse_perde):'—')+'</td>'
       +'<td>'+proRet(i,'imposto')+'</td><td>'+proRet(i,'ads')+'</td><td>'+proRet(i,'fixo')+'</td>'
+      +'<td>'+dvR(i.cmv)+'<div style="font-size:11.5px;color:var(--muted)">'+escH(orig)+'</div></td>'
       +'<td style="color:'+proCor(i)+';font-weight:700">'+dvR(i.resultado)+pct(i.resultado_pct)+'</td>'
       +'<td style="color:var(--muted)">'+dvR(i.resultado_atual)+pct(i.resultado_atual_pct)+'</td>'
+      +'<td>'+(i.repasse_perde!=null?dvR(i.repasse_perde):'—')+'</td>'
       +(ed?'<td style="white-space:nowrap">'+(i.status==='candidate'?'<button onclick="proConfirmar(\'participar\',[\''+i.item_id+'\'])" style="font:inherit;font-size:12px;border-radius:7px;border:none;background:var(--accent);color:#fff;padding:5px 10px;cursor:pointer">Participar</button>'
         :(i.status==='started'||i.status==='pending')?'<button onclick="proConfirmar(\'sair\',[\''+i.item_id+'\'])" style="font:inherit;font-size:12px;border-radius:7px;border:1px solid #f87171;background:transparent;color:#fca5a5;padding:5px 10px;cursor:pointer">Sair</button>':'')+'</td>':'')
       +'</tr>';

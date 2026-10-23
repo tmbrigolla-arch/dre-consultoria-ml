@@ -19,6 +19,14 @@
 // erro do ML vira "esta pergunta ja foi respondida".
 // v3 (07/10/2026): pergunta com deleted_from_listing=true (apagada do anuncio) sai da fila e do contador:
 // o ML continua listando como UNANSWERED, mas ela nao aparece mais no anuncio, entao responder nao serve.
+// v4 (23/10/2026): sincronia com o que foi respondido FORA do painel (site/app do ML, outro sistema).
+// Replica ml-atendimento v5 do antoninho-comissoes.
+//   - pergunta: alem do log local, cada pergunta da busca e conferida em /questions/{id} e so fica na
+//     fila se ainda estiver UNANSWERED (a busca do ML atrasa);
+//   - mensagem: "nao lida" nao quer dizer "sem resposta". Se a ultima mensagem da conversa e nossa, ela
+//     ja foi respondida: sai da fila e e marcada como lida no ML (log 'marcar_lida', texto
+//     "respondida fora do painel").
+//   contar e listar usam a mesma regra, entao o contador bate com a tela.
 import { adminClient, Conta, contasOcelot, CORS, erroML, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
 
 Deno.serve(async (req) => {
@@ -81,6 +89,41 @@ Deno.serve(async (req) => {
     return { perguntas, packs };
   }
 
+  // Perguntas que continuam sem resposta: tira as tratadas aqui, as apagadas do anuncio e as que o
+  // ML ja da como respondidas na consulta individual (v4).
+  async function perguntasPendentes(c: Conta, tr: { perguntas: Set<string> }): Promise<any[]> {
+    const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=50&sort_fields=date_created&sort_types=ASC`);
+    if (!q.ok) throw new Error(`perguntas: ${erroML(q)}`);
+    const qs = (q.json?.questions || []).filter((x: any) =>
+      !tr.perguntas.has(String(x.id)) && x.deleted_from_listing !== true && x.status === "UNANSWERED" && !x.answer);
+    const conferidas = await Promise.all(qs.map(async (x: any) => {
+      const r = await ml(admin, c.id, `/questions/${x.id}?api_version=4`);
+      if (!r.ok) return x; // nao deu para conferir: mantem, melhor sobrar do que sumir
+      return r.json?.status === "UNANSWERED" && !r.json?.answer && r.json?.deleted_from_listing !== true ? x : null;
+    }));
+    return conferidas.filter(Boolean);
+  }
+
+  // Conversas nao lidas cuja ultima mensagem e do cliente. As ja respondidas fora do painel saem da
+  // fila e sao marcadas como lidas no ML (v4).
+  async function conversasPendentes(c: Conta, tr: { packs: Set<string> }, falhas: string[]): Promise<{ pack_id: string; count: number; json: any }[]> {
+    const packs = (await naoLidas(c)).filter((p) => !tr.packs.has(p.pack_id));
+    const res = await Promise.all(packs.slice(0, 30).map(async (p) => {
+      const r = await ml(admin, c.id, `/messages/packs/${p.pack_id}/sellers/${sellerDe(c)}?tag=post_sale&mark_as_read=false&limit=10`);
+      if (!r.ok) { falhas.push(`${c.nome} (conversa ${p.pack_id}): ${erroML(r)}`); return null; }
+      const ultima = [...(r.json?.messages || [])].sort((a: any, b: any) =>
+        String(b.message_date?.created || b.message_date?.received || "")
+          .localeCompare(String(a.message_date?.created || a.message_date?.received || "")))[0];
+      if (ultima && Number(ultima.from?.user_id) === sellerDe(c)) {
+        const m = await marcarLida(c, p.pack_id);
+        await logar(c.id, "marcar_lida", p.pack_id, "respondida fora do painel", m.ok, m.ok ? null : erroML(m));
+        return null;
+      }
+      return { ...p, json: r.json };
+    }));
+    return res.filter(Boolean) as { pack_id: string; count: number; json: any }[];
+  }
+
   try {
     if (acao === "contar") {
       const tr = await tratadosRecentes();
@@ -88,11 +131,8 @@ Deno.serve(async (req) => {
       const porConta = await Promise.all(contas.map(async (c) => {
         let perguntas = 0, mensagens = 0;
         try {
-          const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=50`);
-          if (!q.ok) throw new Error(`perguntas: ${erroML(q)}`);
-          const jaTratadas = (q.json?.questions || []).filter((x: any) => tr.perguntas.has(String(x.id)) || x.deleted_from_listing === true).length;
-          perguntas = Math.max(0, (Number(q.json?.total) || 0) - jaTratadas);
-          mensagens = (await naoLidas(c)).filter((p) => !tr.packs.has(p.pack_id)).length;
+          perguntas = (await perguntasPendentes(c, tr)).length;
+          mensagens = (await conversasPendentes(c, tr, falhas)).length;
         } catch (e) { falhas.push(`${c.nome}: ${(e as Error).message}`); }
         return { conta_id: c.id, perguntas, mensagens };
       }));
@@ -108,9 +148,7 @@ Deno.serve(async (req) => {
       const mensagens: any[] = [];
       await Promise.all(contas.map(async (c) => {
         try {
-          const q = await ml(admin, c.id, `/questions/search?seller_id=${sellerDe(c)}&status=UNANSWERED&api_version=4&limit=50&sort_fields=date_created&sort_types=ASC`);
-          if (!q.ok) throw new Error(`perguntas: ${erroML(q)}`);
-          const qs = (q.json?.questions || []).filter((x: any) => !tr.perguntas.has(String(x.id)) && x.deleted_from_listing !== true);
+          const qs = await perguntasPendentes(c, tr);
           const ids = [...new Set(qs.map((x: any) => x.item_id).filter(Boolean))] as string[];
           const itens: Record<string, any> = {};
           for (let i = 0; i < ids.length; i += 20) {
@@ -128,10 +166,9 @@ Deno.serve(async (req) => {
         } catch (e) { falhas.push(`${c.nome} (perguntas): ${(e as Error).message}`); }
 
         try {
-          const packs = (await naoLidas(c)).filter((p) => !tr.packs.has(p.pack_id));
-          await Promise.all(packs.slice(0, 30).map(async (p) => {
-            const r = await ml(admin, c.id, `/messages/packs/${p.pack_id}/sellers/${sellerDe(c)}?tag=post_sale&mark_as_read=false&limit=10`);
-            if (!r.ok) { falhas.push(`${c.nome} (conversa ${p.pack_id}): ${erroML(r)}`); return; }
+          const packs = await conversasPendentes(c, tr, falhas);
+          await Promise.all(packs.map(async (p) => {
+            const r = { json: p.json };
             const msgs = (r.json?.messages || []).map((m: any) => ({
               id: m.id,
               do_cliente: Number(m.from?.user_id) !== sellerDe(c),

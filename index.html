@@ -4265,13 +4265,15 @@ function proPart(c){
   const p=c.participando/c.elegiveis*100,cor=p>=50?'#22c55e':p>=20?'#f59e0b':'#f87171';
   return '<span style="color:'+cor+';font-weight:600">'+dvN(c.participando)+'/'+dvN(c.elegiveis)+' · '+p.toLocaleString('pt-BR',{maximumFractionDigits:0})+'%</span>';
 }
+// classe do item, a mesma dos contadores coloridos e dos filtros de resultado
+function proClasse(i){if(i.resultado==null)return 'sem_dado';if(i.resultado<0)return 'prejuizo';return i.cmv_origem!=='formula'?'ocelot_paga':'repasse';}
+function proFiltraRes(r){PRO.filtro='todos';PRO.fres=PRO.fres===r?'todos':r;proRender();}
 function proFiltrados(){
   // dois filtros que se combinam: status no ML (PRO.filtro) x resultado da Ocelot (PRO.fres)
   const f=PRO.filtro,r=PRO.fres;
   return PRO.itens.filter(proBate)
     .filter(i=>f==='todos'?true:f==='started'?(i.status==='started'||i.status==='pending'):i.status===f)
-    .filter(i=>r==='todos'?true:r==='margem'?(i.resultado!=null&&i.resultado>=0):r==='prejuizo'?(i.resultado!=null&&i.resultado<0)
-      :r==='ocelot_paga'?(i.cmv_origem==='piso'||i.cmv_origem==='custo_cadastrado'):r==='sem_dado'?i.resultado==null:true)
+    .filter(i=>r==='todos'?true:r==='margem'?(i.resultado!=null&&i.resultado>=0):proClasse(i)===r)
     .sort((a,b)=>(a.resultado_pct??1e9)-(b.resultado_pct??1e9));
 }
 function proCor(i){if(i.resultado==null)return 'var(--muted)';if(i.resultado<0)return '#f87171';if(i.cmv_origem==='piso'||i.cmv_origem==='custo_cadastrado')return '#f59e0b';return '#22c55e';}
@@ -4336,12 +4338,13 @@ function proHtmlItens(){
     h+='<div style="border:1px solid '+cor+';color:'+cor+';border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:13.5px">'+escH(PRO.msg.x)+(PRO.msg.d?'<div style="font-size:12px;opacity:.85;margin-top:4px;overflow-wrap:anywhere">'+escH(PRO.msg.d)+'</div>':'')+'</div>';}
   if(PRO.carregandoItens&&!PRO.itens.length)return h+'<div class="empty">Lendo itens, comissão e frete no ML…</div></div>';
   const L=PRO.itens,ed=proEditavel();
-  const cont={bom:0,ocelot:0,prej:0,sem:0};L.forEach(i=>{if(i.resultado==null)cont.sem++;else if(i.resultado<0)cont.prej++;else if(i.cmv_origem!=='formula')cont.ocelot++;else cont.bom++;});
-  h+='<div class="dv-bar" style="margin-bottom:8px"><span style="font-size:12.5px"><span style="color:#22c55e">● '+cont.bom+' desconto no repasse</span> · <span style="color:#f59e0b">● '+cont.ocelot+' Ocelot paga</span> · <span style="color:#f87171">● '+cont.prej+' prejuízo</span> · <span style="color:var(--muted)">● '+cont.sem+' sem dado</span></span><span class="sep"></span>';
+  const cont={repasse:0,ocelot_paga:0,prejuizo:0,sem_dado:0};L.forEach(i=>{cont[proClasse(i)]++;});
+  const ct=(k,cor,txt)=>'<span onclick="proFiltraRes(\''+k+'\')" title="Clique para filtrar" style="color:'+cor+';cursor:pointer;padding:2px 6px;border-radius:6px'+(PRO.fres===k?';background:var(--panel2);outline:1px solid '+cor+';font-weight:700':'')+'">● '+cont[k]+' '+txt+'</span>';
+  h+='<div class="dv-bar" style="margin-bottom:8px"><span style="font-size:12.5px">'+ct('repasse','#22c55e','desconto no repasse')+' · '+ct('ocelot_paga','#f59e0b','Ocelot paga')+' · '+ct('prejuizo','#f87171','prejuízo')+' · '+ct('sem_dado','var(--muted)','sem dado')+'</span><span class="sep"></span>';
   h+='<span style="font-size:12px;color:var(--muted)">Status:</span>';
   [['todos','Todos'],['candidate','Convidados'],['started','Participando']].forEach(f=>{h+='<button class="'+(PRO.filtro===f[0]?'on':'')+'" onclick="PRO.filtro=\''+f[0]+'\';proRender()">'+f[1]+'</button>';});
   h+='<span style="font-size:12px;color:var(--muted);margin-left:6px">Resultado:</span>';
-  [['todos','Todos'],['margem','Com margem'],['prejuizo','Prejuízo'],['ocelot_paga','Ocelot paga'],['sem_dado','Sem dado']].forEach(f=>{h+='<button class="'+(PRO.fres===f[0]?'on':'')+'" onclick="PRO.fres=\''+f[0]+'\';proRender()">'+f[1]+'</button>';});
+  [['todos','Todos'],['margem','Com margem'],['repasse','Desconto no repasse'],['prejuizo','Prejuízo'],['ocelot_paga','Ocelot paga'],['sem_dado','Sem dado']].forEach(f=>{h+='<button class="'+(PRO.fres===f[0]?'on':'')+'" onclick="PRO.fres=\''+f[0]+'\';proRender()">'+f[1]+'</button>';});
   h+='</div>';
   if(pode('alterar_ml')&&PRO_SO_NO_ML.indexOf(c.tipo)>=0)h+='<div class="dv-aviso">Este tipo de campanha pede estoque ou datas: participe pelo próprio Mercado Livre.</div>';
   if(ed){const sel=Object.keys(PRO.marc),selC=L.filter(i=>PRO.marc[i.item_id]&&i.status==='candidate').length,selA=L.filter(i=>PRO.marc[i.item_id]&&(i.status==='started'||i.status==='pending')).length;

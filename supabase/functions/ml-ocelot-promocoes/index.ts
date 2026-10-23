@@ -3,6 +3,7 @@
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
 // POST { acao:"campanhas" }                                                   -> { ok, campanhas[], pct }
+//   cada campanha traz participando (started + pending) e elegiveis (+ candidate), pelo paging.total do ML
 // POST { acao:"itens", promotion_id, promotion_type, status?, cursor? }      -> { ok, itens[], total, cursor, pct }
 // POST { acao:"participar"|"sair", promotion_id, promotion_type, item_ids[], forcar? } -> { ok, resultados[] }
 //
@@ -226,7 +227,19 @@ Deno.serve(async (req) => {
         id: p.id ?? null, tipo: p.type ?? null, status: p.status ?? null, nome: p.name ?? null,
         inicio: p.start_date ?? null, fim: p.finish_date ?? null, prazo_adesao: p.deadline_date ?? null,
         cupom_pct: num(p.fixed_percentage), cupom_minimo: num(p.min_purchase_amount),
+        participando: null as number | null, elegiveis: null as number | null,
       }));
+      // participacao: total de itens por status (limit=1, so o paging.total interessa); falhou um, fica null
+      await emLotes(campanhas.filter((c: any) => c.id && c.tipo), 4, async (c: any) => {
+        const tot = await Promise.all(["started", "pending", "candidate"].map(async (st) => {
+          const q = new URLSearchParams({ promotion_type: c.tipo, app_version: "v2", limit: "1", status: st });
+          const r = await mlc(`/seller-promotions/promotions/${encodeURIComponent(c.id)}/items?${q}`);
+          return r.ok ? (num(r.json?.paging?.total) ?? 0) : null;
+        }));
+        if (tot.some((t) => t == null)) return;
+        c.participando = tot[0]! + tot[1]!;
+        c.elegiveis = c.participando + tot[2]!;
+      });
       return json({ ok: true, campanhas, pct, margem_minima: MARGEM_MINIMA });
     }
 

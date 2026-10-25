@@ -1,4 +1,4 @@
-// ml-ocelot-promocoes v1 (18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v2 (25/10/2026: relampago co-participada manda stock; erro do ML com cause) v1 (18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
@@ -38,6 +38,8 @@ const POR_PAGINA = 100, MARGEM_MINIMA = 0, MAX_LOTE = 50;
 const POR_OFERTA = ["SMART", "SMART_LIGHTNING", "PRICE_MATCHING", "PRICE_MATCHING_MELI_ALL", "MARKETPLACE_CAMPAIGN", "UNHEALTHY_STOCK"];
 // tipos em que o vendedor informa o preco (deal_price)
 const POR_PRECO = ["DEAL", "SELLER_CAMPAIGN"];
+// relampago: alem da oferta, o ML exige o estoque reservado para ela (stock, dentro do min/max que ele informa)
+const COM_ESTOQUE = ["SMART_LIGHTNING"];
 const SO_NO_ML = ["LIGHTNING", "PRICE_DISCOUNT", "DOD", "VOLUME", "PRE_NEGOTIATED", "BANK"];
 
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
@@ -322,6 +324,13 @@ Deno.serve(async (req) => {
           if (POR_OFERTA.includes(promotion_type)) {
             if (!oferta) { res.erro = "sem_offer_id"; await logar(res); return res; }
             corpo.offer_id = oferta;
+            if (COM_ESTOQUE.includes(promotion_type)) {
+              const min = num(v.p.stock?.min) ?? 1, max = num(v.p.stock?.max);
+              const est = c?.estoque ?? null;
+              const qtd = est == null ? max : (max == null ? est : Math.min(est, max));
+              if (qtd == null || qtd < min) { res.erro = `estoque_insuficiente (min ${min})`; await logar(res); return res; }
+              corpo.stock = qtd;
+            }
           } else if (POR_PRECO.includes(promotion_type)) {
             if (!res.preco) { res.erro = "sem_preco"; await logar(res); return res; }
             corpo.deal_price = res.preco;

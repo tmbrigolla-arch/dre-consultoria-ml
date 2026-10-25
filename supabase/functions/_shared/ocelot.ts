@@ -133,5 +133,10 @@ export async function ml(admin: SupabaseClient, contaId: string, caminho: string
 // Mensagem de erro do ML sem eco de cabecalho/token.
 export function erroML(r: { status: number; json: any }): string {
   const m = r.json?.message || r.json?.error || "";
-  return `ML ${r.status}${m ? ": " + String(m).slice(0, 200) : ""}`;
+  // o ML costuma mandar o motivo de verdade em cause[] (o message fica generico, ex. "Invalid request.")
+  const causas = (Array.isArray(r.json?.cause) ? r.json.cause : [])
+    .map((c: any) => (typeof c === "string" ? c : [c?.code, c?.message].filter(Boolean).join(" ")))
+    .filter(Boolean).join("; ");
+  const txt = [m, causas].filter(Boolean).join(" - ");
+  return `ML ${r.status}${txt ? ": " + String(txt).slice(0, 300) : ""}`;
 }

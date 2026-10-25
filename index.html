@@ -4466,11 +4466,12 @@ function proHtmlConf(){
 
 /* ---------- CUSTO DE PRODUCAO DO FORNECEDOR (25/10/2026) ----------
    Calculadora do Miguel (cubas): insumos com o preco pago pela embalagem -> custo por unidade (kg, L, un...);
-   modelos de peca com quanto de cada insumo usam -> custo da peca; cada SKU ligado a um modelo e as vendas do mes
-   (as mesmas do repasse) -> custo de producao do mes. Backend: ml-ocelot-fabricacao (menu ocelot_fabricacao).
-   O custo usa o preco ATUAL dos insumos, inclusive para meses anteriores. */
+   receita de cada peca do cadastro (SKU, ou o MLB do anuncio sem SKU) com quanto de cada insumo usa -> custo da
+   peca; com as vendas do mes (as mesmas do repasse) -> custo de producao do mes, gravado em historico (mes aberto
+   regravado a cada abertura; mes passado gravado fica com o custo da epoca). Backend: ml-ocelot-fabricacao
+   (menu ocelot_fabricacao). v2 (25/10/2026): sem o passo de "modelo" da v1, a pedido do Tiago. */
 const FAB_API=SB_URL+'/functions/v1/ml-ocelot-fabricacao';
-let FAB={d:null,mes:null,carregando:false,erro:null,salvando:false,novaRec:false,foco:null,rasc:{}};
+let FAB={d:null,mes:null,carregando:false,erro:null,sel:null,rolar:false,rasc:{}};
 async function fabPost(body){
   const r=await fetch(FAB_API,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
   let j={};try{j=await r.json();}catch(e){}
@@ -4494,29 +4495,36 @@ async function fabCarregar(mes){
 }
 function fabMeses(){const L=[],d=new Date(Date.now()-3*3600e3);d.setUTCDate(1);for(let i=0;i<12;i++){L.push(d.toISOString().slice(0,7)+'-01');d.setUTCMonth(d.getUTCMonth()-1);}return L;}
 function fabInsumo(id){return ((FAB.d&&FAB.d.insumos)||[]).find(i=>i.id===id);}
-// custos calculados na tela a partir dos insumos carregados: mudar preco/unidade de um insumo atualiza modelos,
+// custos calculados na tela a partir dos insumos carregados: mudar preco/unidade de um insumo atualiza receitas,
 // resumo e produtos na hora, sem recarregar (e sem perder quantidades digitadas e ainda nao salvas)
 function fabCustoIns(i){return i&&i.preco>0&&i.qtd_embalagem>0?i.preco/i.qtd_embalagem:null;}
 function fabCustoRec(r){let t=0;(r.itens||[]).forEach(x=>{const c=fabCustoIns(fabInsumo(x.insumo_id));if(c!=null)t+=x.quantidade*c;});return Math.round(t*100)/100;}
-function fabProdCusto(p){const r=p.receita_id&&(FAB.d.receitas||[]).find(x=>x.id===p.receita_id);if(!r)return {peca:null,mes:null};const c=fabCustoRec(r);return {peca:c,mes:Math.round(c*p.unidades*100)/100};}
-// rascunho dos quadros de modelo (nome e quantidades digitados), mantido entre recargas da tela ate salvar
-function fabRasc(k,inp){const R=FAB.rasc[k]||(FAB.rasc[k]={q:{}});if(inp.hasAttribute('data-ins'))R.q[inp.getAttribute('data-ins')]=inp.value;else R.nome=inp.value;}
+function fabProd(chave){return ((FAB.d&&FAB.d.produtos)||[]).find(p=>p.chave===chave);}
+function fabRecDe(p){return p&&p.receita_id?(FAB.d.receitas||[]).find(x=>x.id===p.receita_id):null;}
+// mes gravado no historico: vale o custo da epoca; senao, o custo pelos precos atuais
+function fabProdCusto(p){
+  if(FAB.d.congelado)return {peca:p.custo_peca,mes:p.custo_mes};
+  const r=fabRecDe(p);if(!r)return {peca:null,mes:null};const c=fabCustoRec(r);return {peca:c,mes:Math.round(c*p.unidades*100)/100};
+}
+const fabTit=p=>escH(p.chave)+' — '+escH(p.titulo||'(sem título)');
+// rascunho da receita (quantidades digitadas), por peca, mantido entre recargas da tela ate salvar
+function fabRasc(k,inp){const R=FAB.rasc[k]||(FAB.rasc[k]={q:{}});R.q[inp.getAttribute('data-ins')]=inp.value;}
 function fabRender(){
   if(aba!=='ocelot'||ocelotSub!=='fabricacao')return;
   const app=document.getElementById('app'),D=FAB.d;
   let h='<div class="dv">';
-  h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Custo de produção'+(D&&D.fornecedor&&D.fornecedor.nome?' de <b style="color:var(--ink)">'+escH(D.fornecedor.nome)+'</b>':'')+': preço dos insumos → custo da peça → custo do mês pelas vendas.</span><span class="sep"></span>'
+  h+='<div class="dv-bar"><span style="font-size:13px;color:var(--muted)">Custo de produção'+(D&&D.fornecedor&&D.fornecedor.nome?' de <b style="color:var(--ink)">'+escH(D.fornecedor.nome)+'</b>':'')+': preço dos insumos → receita de cada peça → custo do mês pelas vendas.</span><span class="sep"></span>'
     +'<select onchange="fabCarregar(this.value)" style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 10px;color-scheme:dark">'
     +fabMeses().map(m=>'<option value="'+m+'"'+(m===FAB.mes?' selected':'')+'>'+escH(ocelotMesExtenso(m))+'</option>').join('')+'</select>'
     +'<button class="pri" onclick="fabCarregar()"'+(FAB.carregando?' disabled':'')+'>'+(FAB.carregando?'Carregando…':'↻ Atualizar')+'</button></div>';
   if(FAB.erro)h+='<div class="dv-alerta">'+escH(FAB.erro)+'</div>';
   if(!D){app.innerHTML=h+'<div class="empty">'+(FAB.carregando?'Carregando…':'')+'</div></div>';return;}
-  h+='<div id="fabResumo">'+fabHtmlResumo()+'</div>'+fabHtmlInsumos()+fabHtmlModelos()+'<div id="fabProdutos">'+fabHtmlProdutos()+'</div>';
+  h+='<div id="fabResumo">'+fabHtmlResumo()+'</div>'+fabHtmlInsumos()+fabHtmlPeca()+'<div id="fabProdutos">'+fabHtmlProdutos()+'</div>'+fabHtmlHistorico();
   app.innerHTML=h+'</div>';
-  if(FAB.foco){const box=document.getElementById('fr_'+FAB.foco);FAB.foco=null;
-    if(box){box.scrollIntoView({behavior:'smooth',block:'center'});box.style.outline='2px solid var(--accent)';const i=box.querySelector('input[data-ins]');if(i)setTimeout(()=>i.focus({preventScroll:true}),400);}}
+  fabRecCalc('peca');
+  if(FAB.rolar){FAB.rolar=false;const b=document.getElementById('fabPasso2');if(b)b.scrollIntoView({behavior:'smooth',block:'start'});}
 }
-// repinta so resumo e produtos (os quadros com campos digitados ficam como estao)
+// repinta so resumo e produtos (os campos digitados ficam como estao)
 function fabParcial(){const a=document.getElementById('fabResumo'),b=document.getElementById('fabProdutos');if(a)a.innerHTML=fabHtmlResumo();if(b)b.innerHTML=fabHtmlProdutos();}
 function fabHtmlResumo(){
   const P=FAB.d.produtos||[];let un=0,custo=0,rep=0,repCom=0,unSem=0;
@@ -4524,20 +4532,20 @@ function fabHtmlResumo(){
   const sobra=repCom-custo;
   const card=(l,v,s,cor)=>'<div class="curva-card"><div class="lbl">'+l+'</div><div class="val"'+(cor?' style="color:'+cor+'"':'')+'>'+v+'</div><div class="sub">'+(s||'&nbsp;')+'</div></div>';
   let h='<div class="dv-cards">'+card('Peças vendidas',dvN(un),escH(ocelotMesExtenso(FAB.mes)))
-    +card('Custo de produção',dvR(custo),unSem?dvN(unSem)+' peça(s) sem modelo: fora da conta':'das peças vendidas no mês')
+    +card('Custo de produção',dvR(custo),unSem?dvN(unSem)+' peça(s) sem receita: fora da conta':'das peças vendidas no mês')
     +card('Repasse estimado',dvR(rep),'vendas do mês (aba Repasse)')
-    +card('Sobra',dvR(sobra),unSem?'repasse − custo, só das peças com modelo':'repasse − custo de produção',sobra<0?'#f87171':'#22c55e')+'</div>';
+    +card('Sobra',dvR(sobra),unSem?'repasse − custo, só das peças com receita':'repasse − custo de produção',sobra<0?'#f87171':'#22c55e')+'</div>';
   const semPreco=(FAB.d.insumos||[]).filter(i=>!(i.preco>0)).length;
-  if(semPreco)h+='<div class="dv-aviso">'+semPreco+' insumo(s) sem preço: o custo das peças que usam esses insumos está incompleto. Preencha o preço pago abaixo.</div>';
-  h+='<div style="font-size:12px;color:var(--muted);margin:-6px 2px 12px">O custo usa o preço atual dos insumos, também nos meses anteriores. Repasse estimado = o mesmo da aba Repasse, antes de ajustes e devoluções do fechamento.</div>';
+  if(semPreco)h+='<div class="dv-aviso">'+semPreco+' insumo(s) sem preço: o custo das peças que usam esses insumos está incompleto. Preencha o preço pago no passo 1.</div>';
   return h;
 }
 const FAB_INP='font:inherit;font-size:13px;padding:5px 7px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);color-scheme:dark';
 const FAB_BTN='font:inherit;font-size:12.5px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:5px 10px;cursor:pointer';
+const FAB_PRI=FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600';
 function fabHtmlInsumos(){
   const L=FAB.d.insumos||[],U=FAB.d.unidades||['kg','g','L','ml','un','m'];
   const sel=(k,v)=>'<select id="fi_u_'+k+'"'+(k!=='novo'?' onchange="fabAutoIns(\''+k+'\')"':' onchange="fabInsCalc(\'novo\')"')+' style="'+FAB_INP+'">'+U.map(u=>'<option'+(u===v?' selected':'')+'>'+escH(u)+'</option>').join('')+'</select>';
-  let h='<div class="dv-sec"><h3>1. Insumos</h3><div class="sub">O que você compra e quanto pagou. Ex.: saco de cimento de <b>50 kg</b> por <b>R$ 40,00</b> → R$ 0,80 por kg. A quantidade de cada peça (no passo 2) é nessa mesma unidade. <b>Salva sozinho</b> ao mudar um campo, e os modelos já usam o valor novo.</div>';
+  let h='<div class="dv-sec"><h3>1. Insumos</h3><div class="sub">O que você compra e quanto pagou. Ex.: saco de cimento de <b>50 kg</b> por <b>R$ 40,00</b> → R$ 0,80 por kg. A quantidade de cada peça (no passo 2) é nessa mesma unidade. <b>Salva sozinho</b> ao mudar um campo.</div>';
   h+='<div style="overflow-x:auto"><table class="fab-tab" style="width:auto"><thead><tr><th class="l">Insumo</th><th class="l">Unidade</th><th>Embalagem (quantidade)</th><th>Preço pago</th><th>Custo por unidade</th><th></th></tr></thead><tbody>';
   const linha=(i)=>{const k=i?i.id:'novo',auto=i?' onchange="fabAutoIns(\''+k+'\')"':'';
     return '<tr><td class="l fab-full" data-l="Insumo"><input id="fi_n_'+k+'" value="'+escH(i?i.nome:'')+'" placeholder="Novo insumo"'+auto+' style="'+FAB_INP+';width:170px"></td>'
@@ -4546,7 +4554,7 @@ function fabHtmlInsumos(){
       +'<td data-l="Preço pago"><input id="fi_p_'+k+'" value="'+(i&&i.preco>0?cf.format(i.preco):'')+'" placeholder="R$ 0,00" inputmode="decimal" oninput="fabInsCalc(\''+k+'\')"'+auto+' style="'+FAB_INP+';width:100px;text-align:right;'+(i&&!(i.preco>0)?'border-color:#f59e0b':'')+'"></td>'
       +'<td id="fi_c_'+k+'" data-l="Custo por unidade">'+(fabCustoIns(i)!=null?fabR4(fabCustoIns(i))+' <span style="color:var(--muted);font-size:11.5px">/'+escH(i.unidade)+'</span>':'—')+'</td>'
       +'<td class="fab-acoes" style="white-space:nowrap">'+(i?'<span id="fi_s_'+k+'" style="font-size:11.5px;margin-right:6px"></span><button onclick="fabExcluiIns(\''+k+'\')" title="Excluir" style="'+FAB_BTN+';border-color:#f87171;color:#fca5a5">✕</button>'
-        :'<button onclick="fabSalvaIns(\'novo\')" style="'+FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff">Adicionar</button>')+'</td></tr>';};
+        :'<button onclick="fabSalvaIns(\'novo\')" style="'+FAB_PRI+'">Adicionar</button>')+'</td></tr>';};
   L.forEach(i=>{h+=linha(i);});h+=linha(null);
   return h+'</tbody></table></div></div>';
 }
@@ -4555,14 +4563,14 @@ function fabInsCalc(k){
   const c=document.getElementById('fi_c_'+k);if(!c)return;
   c.innerHTML=(q>0&&p>0)?fabR4(p/q)+' <span style="color:var(--muted);font-size:11.5px">/'+escH(u)+'</span>':'—';
 }
-// leva o insumo atual (unidade, nome, preco) para os quadros de modelo e refaz as contas da tela
+// leva o insumo atual (unidade, nome, preco) para a receita aberta e refaz as contas da tela
 function fabSyncInsumo(id){
   const i=fabInsumo(id);if(!i)return;const c=fabCustoIns(i);
   document.querySelectorAll('[data-u="'+id+'"]').forEach(e=>{e.textContent=i.unidade;});
   document.querySelectorAll('[data-nm="'+id+'"]').forEach(e=>{e.textContent=i.nome;});
   document.querySelectorAll('[data-sp="'+id+'"]').forEach(e=>{e.style.display=c==null?'':'none';});
   document.querySelectorAll('[data-cu="'+id+'"]').forEach(e=>{e.innerHTML=c!=null?fabR4(c):'<span style="color:#f59e0b">sem preço</span>';});
-  document.querySelectorAll('[id^="fr_"][data-rec]').forEach(b=>fabRecCalc(b.getAttribute('data-rec')));
+  fabRecCalc('peca');
   const p=document.getElementById('fi_p_'+id);if(p)p.style.borderColor=i.preco>0?'':'#f59e0b';
   fabParcial();
 }
@@ -4592,33 +4600,38 @@ async function fabSalvaIns(k){
 }
 async function fabExcluiIns(k){
   const i=fabInsumo(k);if(!i)return;
-  const usa=(FAB.d.receitas||[]).filter(r=>r.itens.some(x=>x.insumo_id===k)).map(r=>r.nome);
-  if(!confirm('Excluir o insumo "'+i.nome+'"?'+(usa.length?'\n\nEle sai também dos modelos: '+usa.join(', ')+'.':'')))return;
+  const n=(FAB.d.receitas||[]).filter(r=>r.itens.some(x=>x.insumo_id===k)).length;
+  if(!confirm('Excluir o insumo "'+i.nome+'"?'+(n?'\n\nEle sai também da receita de '+n+' peça(s).':'')))return;
   try{await fabPost({acao:'excluir_insumo',id:k});fabCarregar();}catch(e){toast('Não excluiu: '+e.message);}
 }
-function fabHtmlModelos(){
-  const R=FAB.d.receitas||[],I=FAB.d.insumos||[];
-  let h='<div class="dv-sec"><h3>2. Modelos de peça</h3><div class="sub">Quanto de cada insumo <b>uma peça</b> usa. Cores diferentes do mesmo modelo podem usar o mesmo modelo (no passo 3 você liga cada SKU ao seu). Se um insumo rende várias peças, divida: 1 kg de resina para 20 cubas = 0,05.</div>';
+// passo 2: escolhe a peca do cadastro e preenche quanto de cada insumo ela usa
+function fabHtmlPeca(){
+  const P=FAB.d.produtos||[],I=FAB.d.insumos||[];
+  let h='<div class="dv-sec" id="fabPasso2"><h3>2. Receita da peça</h3><div class="sub">Escolha a peça do cadastro e preencha quanto de cada insumo <b>uma peça</b> usa. Se um insumo rende várias peças, divida: 1 kg de resina para 20 cubas = 0,05. Para cores da mesma cuba, use <b>Copiar quantidades de</b>.</div>';
   if(!I.length)return h+'<div class="empty">Cadastre os insumos primeiro.</div></div>';
-  const cartao=(r)=>{const k=r?r.id:'novo',q={},ra=FAB.rasc[k]||{q:{}};if(r)r.itens.forEach(x=>{q[x.insumo_id]=fabQ(x.quantidade);});Object.assign(q,ra.q);
-    const nome=ra.nome!=null?ra.nome:(r?r.nome:'');
-    let c='<div id="fr_'+k+'" data-rec="'+k+'" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--panel2)">'
-      +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px"><input id="fr_n_'+k+'" value="'+escH(nome)+'" oninput="fabRasc(\''+k+'\',this)" placeholder="Nome do modelo (ex.: Cuba oval 40x23)" style="'+FAB_INP+';flex:1;min-width:220px;font-weight:600">'
-      +'<span style="font-size:13px">Custo da peça: <b id="fr_t_'+k+'" style="font-size:16px">'+dvR(r?fabCustoRec(r):0)+'</b></span></div>'
-      +'<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Insumo</th><th>Quantidade por peça</th><th>Custo por unidade</th><th>Custo na peça</th></tr></thead><tbody>';
-    I.forEach(i=>{const qq=q[i.id]||'',cu=fabCustoIns(i);
-      c+='<tr><td class="l fab-full" style="font-weight:600"><span data-nm="'+i.id+'">'+escH(i.nome)+'</span> <span data-sp="'+i.id+'" style="color:#f59e0b;font-weight:400;font-size:12px'+(cu!=null?';display:none':'')+'">sem preço</span></td>'
-        +'<td class="fab-qtd"><input data-ins="'+i.id+'" value="'+escH(qq)+'" placeholder="0" inputmode="decimal" oninput="fabRasc(\''+k+'\',this);fabRecCalc(\''+k+'\')" style="'+FAB_INP+';width:90px;text-align:right"> <span data-u="'+i.id+'" style="color:var(--muted);font-size:12px">'+escH(i.unidade)+'</span></td>'
-        +'<td class="fab-hide-m" data-cu="'+i.id+'">'+(cu!=null?fabR4(cu):'<span style="color:#f59e0b">sem preço</span>')+'</td><td data-custo="'+i.id+'" data-l="Custo na peça">—</td></tr>';});
-    c+='</tbody></table></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">'
-      +(r?'<button onclick="fabExcluiRec(\''+k+'\')" style="'+FAB_BTN+';border-color:#f87171;color:#fca5a5">Excluir modelo</button>':'<button onclick="FAB.novaRec=false;delete FAB.rasc.novo;fabRender()" style="'+FAB_BTN+'">Cancelar</button>')
-      +'<button onclick="fabSalvaRec(\''+k+'\')" style="'+FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600">Salvar modelo</button></div></div>';
-    return c;};
-  R.forEach(r=>{h+=cartao(r);});
-  if(FAB.novaRec||!R.length)h+=cartao(null);
-  else h+='<button onclick="FAB.novaRec=true;fabRender()" style="'+FAB_BTN+'">+ Novo modelo</button>';
-  // custo de cada linha pelas quantidades na tela (salvas ou em rascunho)
-  setTimeout(()=>document.querySelectorAll('[id^="fr_"][data-rec]').forEach(b=>fabRecCalc(b.getAttribute('data-rec'))),0);
+  const semRecVenda=P.filter(p=>!p.receita_id&&p.unidades>0),comRec=P.filter(p=>p.receita_id),resto=P.filter(p=>!p.receita_id&&!p.unidades);
+  const opt=p=>'<option value="'+escH(p.chave)+'"'+(p.chave===FAB.sel?' selected':'')+'>'+fabTit(p)+(p.unidades?' · '+p.unidades+' vendida(s)':'')+'</option>';
+  const grp=(t,L)=>L.length?'<optgroup label="'+escH(t)+'">'+L.map(opt).join('')+'</optgroup>':'';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px"><select onchange="FAB.sel=this.value||null;fabRender()" style="'+FAB_INP+';flex:1;min-width:240px;max-width:100%;font-size:14px">'
+    +'<option value="">— escolha a peça —</option>'+grp('Sem receita, vendidas no mês',semRecVenda)+grp('Com receita',comRec)+grp('Outras peças do cadastro',resto)+'</select></div>';
+  const p=FAB.sel&&fabProd(FAB.sel);
+  if(!p)return h+'<div style="font-size:13px;color:var(--muted)">'+(semRecVenda.length?semRecVenda.length+' peça(s) vendida(s) no mês ainda sem receita.':'Todas as peças vendidas no mês têm receita.')+'</div></div>';
+  const r=fabRecDe(p),q={},ra=FAB.rasc[p.chave]||{q:{}};if(r)r.itens.forEach(x=>{q[x.insumo_id]=fabQ(x.quantidade);});Object.assign(q,ra.q);
+  const copiaveis=comRec.filter(x=>x.chave!==p.chave);
+  h+='<div id="fr_peca" data-rec="peca" style="border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel2)">'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-weight:600">'+fabTit(p)
+    +'<div style="font-size:12px;font-weight:400;color:var(--muted)">'+(p.anuncios?p.anuncios+' anúncio(s) · ':'')+dvN(p.unidades)+' vendida(s) em '+escH(ocelotMesExtenso(FAB.mes))+(r?'':' · <span style="color:#f59e0b">sem receita</span>')+(ra.q&&Object.keys(ra.q).length?' · <span style="color:#fcd34d">alterações não salvas</span>':'')+'</div></div>'
+    +'<span style="font-size:13px">Custo da peça: <b id="fr_t_peca" style="font-size:16px">—</b></span></div>';
+  if(copiaveis.length)h+='<div style="margin-bottom:8px"><select onchange="fabCopiar(this.value)" style="'+FAB_INP+';max-width:100%"><option value="">Copiar quantidades de…</option>'+copiaveis.map(x=>'<option value="'+escH(x.chave)+'">'+fabTit(x)+'</option>').join('')+'</select></div>';
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Insumo</th><th>Quantidade por peça</th><th>Custo por unidade</th><th>Custo na peça</th></tr></thead><tbody>';
+  I.forEach(i=>{const qq=q[i.id]||'',cu=fabCustoIns(i);
+    h+='<tr><td class="l fab-full" style="font-weight:600"><span data-nm="'+i.id+'">'+escH(i.nome)+'</span> <span data-sp="'+i.id+'" style="color:#f59e0b;font-weight:400;font-size:12px'+(cu!=null?';display:none':'')+'">sem preço</span></td>'
+      +'<td class="fab-qtd"><input data-ins="'+i.id+'" value="'+escH(qq)+'" placeholder="0" inputmode="decimal" oninput="fabRasc(\''+escH(p.chave)+'\',this);fabRecCalc(\'peca\')" style="'+FAB_INP+';width:90px;text-align:right"> <span data-u="'+i.id+'" style="color:var(--muted);font-size:12px">'+escH(i.unidade)+'</span></td>'
+      +'<td class="fab-hide-m" data-cu="'+i.id+'">'+(cu!=null?fabR4(cu):'<span style="color:#f59e0b">sem preço</span>')+'</td><td data-custo="'+i.id+'" data-l="Custo na peça">—</td></tr>';});
+  h+='</tbody></table></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">'
+    +(r?'<button onclick="fabExcluiPeca()" style="'+FAB_BTN+';border-color:#f87171;color:#fca5a5">Excluir receita</button>':'')
+    +(ra.q&&Object.keys(ra.q).length?'<button onclick="delete FAB.rasc[FAB.sel];fabRender()" style="'+FAB_BTN+'">Descartar alterações</button>':'')
+    +'<button onclick="fabSalvaPeca()" style="'+FAB_PRI+'">Salvar receita</button></div></div>';
   return h+'</div>';
 }
 function fabRecCalc(k){
@@ -4627,55 +4640,68 @@ function fabRecCalc(k){
     const cu=fabCustoIns(i),c=(cu!=null&&q>0)?q*cu:null;if(c!=null)t+=c;if(cel)cel.textContent=c!=null?dvR(c):'—';});
   const tt=document.getElementById('fr_t_'+k);if(tt)tt.textContent=dvR(t);
 }
-async function fabSalvaRec(k){
-  const box=document.getElementById('fr_'+k);if(!box)return;
-  const nome=String((document.getElementById('fr_n_'+k)||{}).value||'').trim();
-  if(!nome){toast('Informe o nome do modelo.');return;}
+function fabCopiar(chave){
+  const src=fabRecDe(fabProd(chave));if(!src||!FAB.sel)return;
+  const R=FAB.rasc[FAB.sel]={q:{}};(FAB.d.insumos||[]).forEach(i=>{R.q[i.id]='';});src.itens.forEach(x=>{R.q[x.insumo_id]=fabQ(x.quantidade);});
+  fabRender();toast('Quantidades copiadas. Confira e clique em Salvar receita.');
+}
+async function fabSalvaPeca(){
+  const box=document.getElementById('fr_peca'),p=FAB.sel&&fabProd(FAB.sel);if(!box||!p)return;
   const itens=[];let ruim=false;
   box.querySelectorAll('input[data-ins]').forEach(inp=>{const q=fabNum(inp.value);if(q==null)return;if(isNaN(q)||q<0){ruim=true;return;}if(q>0)itens.push({insumo_id:inp.getAttribute('data-ins'),quantidade:q});});
-  if(ruim){toast('Há quantidade inválida no modelo.');return;}
-  try{await fabPost({acao:'salvar_receita',id:k==='novo'?undefined:k,nome:nome,itens:itens});delete FAB.rasc[k];FAB.novaRec=false;toast('Modelo salvo.');fabCarregar();}
+  if(ruim){toast('Há quantidade inválida na receita.');return;}
+  if(!itens.length&&!confirm('Nenhuma quantidade preenchida. Salvar a receita vazia (custo R$ 0,00)?'))return;
+  try{await fabPost({acao:'salvar_peca',chave:p.chave,titulo:p.titulo,itens:itens});delete FAB.rasc[p.chave];toast('Receita de '+p.chave+' salva.');fabCarregar();}
   catch(e){toast('Não salvou: '+e.message);}
 }
-async function fabExcluiRec(k){
-  const r=(FAB.d.receitas||[]).find(x=>x.id===k);if(!r)return;
-  const n=(FAB.d.produtos||[]).filter(p=>p.receita_id===k).length;
-  if(!confirm('Excluir o modelo "'+r.nome+'"?'+(n?'\n\n'+n+' SKU(s) ligados a ele ficam sem modelo.':'')))return;
-  try{await fabPost({acao:'excluir_receita',id:k});delete FAB.rasc[k];fabCarregar();}catch(e){toast('Não excluiu: '+e.message);}
+async function fabExcluiPeca(){
+  const p=FAB.sel&&fabProd(FAB.sel);if(!p)return;
+  if(!confirm('Excluir a receita de '+p.chave+'?\n\nA peça fica sem custo de produção.'))return;
+  try{await fabPost({acao:'excluir_peca',chave:p.chave});delete FAB.rasc[p.chave];fabCarregar();}catch(e){toast('Não excluiu: '+e.message);}
 }
+function fabEditar(chave){FAB.sel=chave;FAB.rolar=true;fabRender();}
+// passo 3: resultado do mes, sem nada para escolher
 function fabHtmlProdutos(){
-  const P=FAB.d.produtos||[],R=FAB.d.receitas||[];
-  let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Cada SKU ligado ao seu modelo. Unidades = peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu). Lista os SKUs vendidos nos últimos 3 meses. O custo da peça é o do modelo <b>salvo</b>.</div>';
-  if(!P.length)return h+'<div class="empty">Nenhuma venda nos últimos 3 meses.</div></div>';
-  if(!R.length)h+='<div class="dv-aviso">Ainda não há modelo salvo. Crie no passo 2 (nome + quantidades + <b>Salvar modelo</b>) ou escolha <b>+ Criar modelo novo</b> na coluna Modelo.</div>';
-  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Modelo</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
+  const D=FAB.d,P=(D.produtos||[]).filter(p=>p.unidades>0||p.receita_id);
+  const dh=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu) × custo da receita. Para cadastrar ou mudar uma receita, use o passo 2 (ou o botão na linha).</div>';
+  if(D.mes_aberto)h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">Mês aberto: gravado no histórico automaticamente cada vez que a tela abre. Quando o mês virar, fica o último cálculo.</div>';
+  else if(D.congelado)h+='<div class="dv-aviso">Mês gravado no histórico em '+escH(dh(D.gravado_em))+', com o custo daquela época (mudar preço ou receita agora não altera este mês). <button onclick="fabGravarHist()" style="'+FAB_BTN+';margin-left:6px">Regravar com os preços atuais</button></div>';
+  else h+='<div class="dv-aviso">Calculado com os preços e receitas atuais; este mês ainda não está no histórico. <button onclick="fabGravarHist()" style="'+FAB_BTN+';margin-left:6px">Gravar no histórico</button></div>';
+  if(!P.length)return h+'<div class="empty">Nenhuma venda neste mês.</div></div>';
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Receita</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
   let tu=0,tc=0,tr=0,ts=0;
   P.forEach(p=>{
     const c=fabProdCusto(p),sobra=c.mes!=null?Math.round((p.repasse-c.mes)*100)/100:null;
     tu+=p.unidades;tr+=p.repasse;if(c.mes!=null){tc+=c.mes;ts+=sobra;}
     h+='<tr><td class="l" data-l="SKU" style="white-space:nowrap">'+escH(p.chave)+(p.sem_sku?'<div style="font-size:11px;color:#f59e0b">anúncio sem SKU</div>':'')+'</td>'
       +'<td class="l fab-full" data-l="Produto" style="min-width:220px">'+escH(p.titulo||'—')+'</td>'
-      +'<td class="l fab-full" data-l="Modelo"><select onchange="fabVincula(\''+escH(p.chave)+'\',this.value)" style="'+FAB_INP+';max-width:220px'+(!p.receita_id&&p.unidades?';border-color:#f59e0b':'')+'"><option value="">— escolher —</option>'
-      +R.map(r=>'<option value="'+r.id+'"'+(r.id===p.receita_id?' selected':'')+'>'+escH(r.nome)+'</option>').join('')+'<option value="__novo">+ Criar modelo novo…</option></select></td>'
+      +'<td class="l" data-l="Receita">'+(p.receita_id?'<button onclick="fabEditar(\''+escH(p.chave)+'\')" style="'+FAB_BTN+'">✓ editar</button>'
+        :'<button onclick="fabEditar(\''+escH(p.chave)+'\')" style="'+FAB_BTN+';border-color:#f59e0b;color:#fcd34d">cadastrar</button>')+'</td>'
       +'<td data-l="Peças no mês">'+dvN(p.unidades)+'</td><td data-l="Custo da peça">'+dvR(c.peca)+'</td><td data-l="Custo no mês">'+dvR(c.mes)+'</td><td data-l="Repasse">'+dvR(p.repasse)+'</td>'
       +'<td data-l="Sobra" style="font-weight:700;color:'+(sobra==null?'var(--muted)':sobra<0?'#f87171':'#22c55e')+'">'+dvR(sobra)+'</td></tr>';
   });
   h+='<tr style="font-weight:700"><td class="l fab-full" colspan="3">Total</td><td data-l="Peças no mês">'+dvN(tu)+'</td><td class="fab-hide-m"></td><td data-l="Custo no mês">'+dvR(tc)+'</td><td data-l="Repasse">'+dvR(tr)+'</td><td data-l="Sobra">'+dvR(ts)+'</td></tr>';
   return h+'</tbody></table></div></div>';
 }
-async function fabVincula(chave,rid){
-  try{
-    if(rid==='__novo'){
-      // cria o modelo (sem quantidades), liga este SKU e leva ao quadro do modelo no passo 2 para preencher
-      const nome=String(prompt('Nome do modelo novo (ex.: Cuba oval 40x23).\n\nDepois preencha as quantidades por peça no passo 2 e clique em Salvar modelo.','')||'').trim();
-      if(!nome){fabRender();return;}
-      const r=await fabPost({acao:'salvar_receita',nome:nome,itens:[]});
-      await fabPost({acao:'vincular',chave:chave,receita_id:r.id});
-      FAB.foco=r.id;toast('Modelo criado e ligado ao SKU '+chave+'. Preencha as quantidades.');
-      await fabCarregar();return;
-    }
-    await fabPost({acao:'vincular',chave:chave,receita_id:rid||null});fabCarregar();
-  }catch(e){toast('Não salvou: '+e.message);fabRender();}
+async function fabGravarHist(){
+  if(FAB.d.congelado&&!confirm('Regravar '+ocelotMesExtenso(FAB.mes)+' com os preços e receitas de HOJE?\n\nO custo gravado na época será substituído.'))return;
+  try{FAB.d=await fabPost({acao:'gravar_historico',mes:FAB.mes});toast('Mês gravado no histórico.');fabRender();}catch(e){toast('Não gravou: '+e.message);}
+}
+// passo 4: um mes por linha (o que esta gravado); clicar abre o mes
+function fabHtmlHistorico(){
+  const H=FAB.d.historico||[];
+  let h='<div class="dv-sec"><h3>4. Histórico</h3><div class="sub">Custo de produção gravado mês a mês. Clique no mês para abrir.</div>';
+  if(!H.length)return h+'<div class="empty">Nada gravado ainda.</div></div>';
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Mês</th><th>Peças</th><th>Custo de produção</th><th>Repasse</th><th>Sobra</th><th class="l">Gravado em</th></tr></thead><tbody>';
+  H.forEach(x=>{
+    h+='<tr style="cursor:pointer'+(x.mes===FAB.mes?';background:var(--panel2)':'')+'" onclick="fabCarregar(\''+x.mes+'\')"><td class="l fab-full" data-l="Mês" style="font-weight:600">'+escH(ocelotMesExtenso(x.mes))+'</td>'
+      +'<td data-l="Peças">'+dvN(x.unidades)+(x.unidades_sem_custo?'<div style="font-size:11px;color:#f59e0b">'+dvN(x.unidades_sem_custo)+' sem receita</div>':'')+'</td>'
+      +'<td data-l="Custo de produção">'+dvR(x.custo)+'</td><td data-l="Repasse">'+dvR(x.repasse)+'</td>'
+      +'<td data-l="Sobra" style="font-weight:700;color:'+(x.sobra<0?'#f87171':'#22c55e')+'">'+dvR(x.sobra)+'</td>'
+      +'<td class="l" data-l="Gravado em" style="font-size:12px;color:var(--muted)">'+escH(new Date(x.gravado_em).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}))+'</td></tr>';
+  });
+  return h+'</tbody></table></div></div>';
 }
 
 /* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------

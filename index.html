@@ -4470,7 +4470,7 @@ function proHtmlConf(){
    (as mesmas do repasse) -> custo de producao do mes. Backend: ml-ocelot-fabricacao (menu ocelot_fabricacao).
    O custo usa o preco ATUAL dos insumos, inclusive para meses anteriores. */
 const FAB_API=SB_URL+'/functions/v1/ml-ocelot-fabricacao';
-let FAB={d:null,mes:null,carregando:false,erro:null,salvando:false,novaRec:false};
+let FAB={d:null,mes:null,carregando:false,erro:null,salvando:false,novaRec:false,foco:null};
 async function fabPost(body){
   const r=await fetch(FAB_API,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
   let j={};try{j=await r.json();}catch(e){}
@@ -4506,6 +4506,8 @@ function fabRender(){
   if(!D){app.innerHTML=h+'<div class="empty">'+(FAB.carregando?'Carregando…':'')+'</div></div>';return;}
   h+=fabHtmlResumo()+fabHtmlInsumos()+fabHtmlModelos()+fabHtmlProdutos();
   app.innerHTML=h+'</div>';
+  if(FAB.foco){const box=document.getElementById('fr_'+FAB.foco);FAB.foco=null;
+    if(box){box.scrollIntoView({behavior:'smooth',block:'center'});box.style.outline='2px solid var(--accent)';const i=box.querySelector('input[data-ins]');if(i)setTimeout(()=>i.focus({preventScroll:true}),400);}}
 }
 function fabHtmlResumo(){
   const P=FAB.d.produtos||[];let un=0,custo=0,rep=0,repCom=0,unSem=0;
@@ -4606,6 +4608,7 @@ function fabHtmlProdutos(){
   const P=FAB.d.produtos||[],R=FAB.d.receitas||[];
   let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Cada SKU ligado ao seu modelo. Unidades = peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu). Lista os SKUs vendidos nos últimos 3 meses.</div>';
   if(!P.length)return h+'<div class="empty">Nenhuma venda nos últimos 3 meses.</div></div>';
+  if(!R.length)h+='<div class="dv-aviso">Ainda não há modelo salvo. Crie no passo 2 (nome + quantidades + <b>Salvar modelo</b>) ou escolha <b>+ Criar modelo novo</b> na coluna Modelo.</div>';
   h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Modelo</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
   let tu=0,tc=0,tr=0,ts=0;
   P.forEach(p=>{
@@ -4614,7 +4617,7 @@ function fabHtmlProdutos(){
     h+='<tr><td class="l" data-l="SKU" style="white-space:nowrap">'+escH(p.chave)+(p.sem_sku?'<div style="font-size:11px;color:#f59e0b">anúncio sem SKU</div>':'')+'</td>'
       +'<td class="l fab-full" data-l="Produto" style="min-width:220px">'+escH(p.titulo||'—')+'</td>'
       +'<td class="l fab-full" data-l="Modelo"><select onchange="fabVincula(\''+escH(p.chave)+'\',this.value)" style="'+FAB_INP+';max-width:220px'+(!p.receita_id&&p.unidades?';border-color:#f59e0b':'')+'"><option value="">— escolher —</option>'
-      +R.map(r=>'<option value="'+r.id+'"'+(r.id===p.receita_id?' selected':'')+'>'+escH(r.nome)+'</option>').join('')+'</select></td>'
+      +R.map(r=>'<option value="'+r.id+'"'+(r.id===p.receita_id?' selected':'')+'>'+escH(r.nome)+'</option>').join('')+'<option value="__novo">+ Criar modelo novo…</option></select></td>'
       +'<td data-l="Peças no mês">'+dvN(p.unidades)+'</td><td data-l="Custo da peça">'+dvR(p.custo_peca)+'</td><td data-l="Custo no mês">'+dvR(p.custo_mes)+'</td><td data-l="Repasse">'+dvR(p.repasse)+'</td>'
       +'<td data-l="Sobra" style="font-weight:700;color:'+(sobra==null?'var(--muted)':sobra<0?'#f87171':'#22c55e')+'">'+dvR(sobra)+'</td></tr>';
   });
@@ -4622,7 +4625,18 @@ function fabHtmlProdutos(){
   return h+'</tbody></table></div></div>';
 }
 async function fabVincula(chave,rid){
-  try{await fabPost({acao:'vincular',chave:chave,receita_id:rid||null});fabCarregar();}catch(e){toast('Não salvou: '+e.message);}
+  try{
+    if(rid==='__novo'){
+      // cria o modelo (sem quantidades), liga este SKU e leva ao quadro do modelo no passo 2 para preencher
+      const nome=String(prompt('Nome do modelo novo (ex.: Cuba oval 40x23).\n\nDepois preencha as quantidades por peça no passo 2 e clique em Salvar modelo.','')||'').trim();
+      if(!nome){fabRender();return;}
+      const r=await fabPost({acao:'salvar_receita',nome:nome,itens:[]});
+      await fabPost({acao:'vincular',chave:chave,receita_id:r.id});
+      FAB.foco=r.id;toast('Modelo criado e ligado ao SKU '+chave+'. Preencha as quantidades.');
+      await fabCarregar();return;
+    }
+    await fabPost({acao:'vincular',chave:chave,receita_id:rid||null});fabCarregar();
+  }catch(e){toast('Não salvou: '+e.message);fabRender();}
 }
 
 /* ---------- USUARIOS E PERMISSOES (20/09/2026) ----------

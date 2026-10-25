@@ -1,4 +1,4 @@
-// ml-ocelot-promocoes v3 (25/10/2026: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v4 (25/10/2026: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
@@ -328,10 +328,14 @@ Deno.serve(async (req) => {
           const corpo: any = POR_PRECO_ESTOQUE.includes(promotion_type) ? { promotion_type } : { promotion_id, promotion_type };
           if (COM_ESTOQUE.includes(promotion_type)) {
             // estoque do anuncio, limitado ao max do ML e ao limite escolhido na tela; abaixo do min do ML nao vai
-            const min = num(v.p.stock?.min) ?? 1;
-            const tetos = [c?.estoque ?? null, num(v.p.stock?.max), estoqueMax].filter((t): t is number => t != null);
+            const min = num(v.p.stock?.min) ?? 1, maxML = num(v.p.stock?.max), est = c?.estoque ?? null;
+            const tetos = [est, maxML, estoqueMax].filter((t): t is number => t != null);
             const qtd = tetos.length ? Math.min(...tetos) : null;
-            if (qtd == null || qtd < min) { res.erro = `estoque_insuficiente (min ${min})`; await logar(res); return res; }
+            if (qtd == null || qtd < min) {
+              // diz qual teto barrou: estoque do anuncio, maximo do ML ou o limite digitado na tela
+              res.erro = `estoque_insuficiente (min ${min}; anuncio ${est ?? "?"}, max ML ${maxML ?? "-"}, limite da tela ${estoqueMax ?? "-"})`;
+              await logar(res); return res;
+            }
             corpo.stock = qtd;
             res.estoque = qtd;
           }

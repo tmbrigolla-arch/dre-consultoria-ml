@@ -4212,8 +4212,10 @@ const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso de R$ 40: o desconto sai da 
   sem_fornecedor:'Anúncio sem fornecedor gravado',abaixo_79_frete_referencia:'Abaixo de R$ 79: frete de referência de R$ 11,05',cupom_so_acima_do_minimo:'Cupom: só vale acima da compra mínima',
   comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML'};
 const PRO_ERROS={abaixo_margem_minima:'resultado da Ocelot negativo',sem_resultado_calculado:'sem resultado calculado (CMV, comissão ou preço)',item_fora_da_campanha:'o item não está mais na campanha',
-  nao_participa:'o item não está participando',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
+  nao_participa:'o item não está participando',estoque_insuficiente:'estoque abaixo do mínimo da relâmpago (ajuste na coluna Estoque)',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
 let PRO={camp:null,pct:null,erro:null,carregando:false,aberta:null,itens:[],info:null,carregandoItens:false,marc:{},filtro:'todos',fres:'todos',busca:'',msg:null,conf:null,executando:false};
+// erro com detalhe (ex.: "estoque_insuficiente (min 5)"): traduz a chave e mantem o detalhe
+function proErro(e){const k=String(e||''),b=k.split(' ')[0];return PRO_ERROS[k]||(PRO_ERROS[b]?PRO_ERROS[b]+k.slice(b.length):k);}
 async function proPost(body){
   const r=await fetch(PRO_API,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json',Authorization:'Bearer '+await tokenAtual()},body:JSON.stringify(body||{})});
   let j={};try{j=await r.json();}catch(e){}
@@ -4305,7 +4307,7 @@ async function proExecutar(){
     PRO.itens.forEach(i=>{if(okIds.has(i.item_id))i.status=C.acao==='participar'?'pending':'candidate';});
     PRO.marc={};
     PRO.msg={t:fal.length?(ok.length?'aviso':'erro'):'ok',x:(C.acao==='participar'?'Entraram: ':'Saíram: ')+ok.length+'.'+(fal.length?' Não foram: '+fal.length+'.':''),
-      d:fal.map(f=>f.item_id+' ('+(PRO_ERROS[f.erro]||f.erro)+')').join(' · ')};
+      d:fal.map(f=>f.item_id+' ('+proErro(f.erro)+')').join(' · ')};
   }catch(e){PRO.msg={t:'erro',x:'Falha ao enviar ao ML.',d:e.message};}
   PRO.executando=false;PRO.conf=null;proRender();
 }
@@ -4358,16 +4360,16 @@ function proHtmlItens(){
     +(PRO.busca&&tem?'<span style="font-size:12px;color:#f59e0b">A busca vê só os '+L.length+' itens carregados.</span><button onclick="proTodos()"'+(PRO.carregandoItens?' disabled':'')+'>'+(PRO.carregandoItens?'Lendo do ML…':'Carregar todos')+'</button>':'')+'</div>';
   h+='<div style="font-size:12px;color:var(--muted);margin:0 2px 6px">'+L.length+' de '+(PRO.info&&PRO.info.total!=null?PRO.info.total:L.length)+' itens carregados. Ordenado do pior para o melhor resultado da Ocelot.</div>';
   const F=proFiltrados();
-  h+='<div style="overflow-x:auto"><table><thead><tr>'+(ed?'<th></th>':'')+'<th class="l">Item</th><th class="l">Fornecedor</th><th class="l">Status</th><th>Preço cheio</th><th>Na campanha</th><th>ML banca</th><th>Comissão</th><th>Frete</th>'+proThRet('Imposto','imposto')+proThRet('TACoS (Ads)','ads')+proThRet('Custo fixo','fixo')+'<th>Repasse (CMV)</th><th>Resultado Ocelot</th><th>Resultado hoje</th><th>Fornecedor perde</th>'+(ed?'<th></th>':'')+'</tr></thead><tbody>';
-  if(!F.length)h+='<tr><td class="l" colspan="'+(ed?17:15)+'">Nenhum item neste filtro.</td></tr>';
+  h+='<div style="overflow-x:auto"><table><thead><tr>'+(ed?'<th></th>':'')+'<th class="l">Item</th><th class="l">Fornecedor</th><th class="l">Status</th><th>Estoque</th><th>Preço cheio</th><th>Na campanha</th><th>ML banca</th><th>Comissão</th><th>Frete</th>'+proThRet('Imposto','imposto')+proThRet('TACoS (Ads)','ads')+proThRet('Custo fixo','fixo')+'<th>Repasse (CMV)</th><th>Resultado Ocelot</th><th>Resultado hoje</th><th>Fornecedor perde</th>'+(ed?'<th></th>':'')+'</tr></thead><tbody>';
+  if(!F.length)h+='<tr><td class="l" colspan="'+(ed?18:16)+'">Nenhum item neste filtro.</td></tr>';
   F.forEach(i=>{
     const pct=v=>v==null?'':'<div style="font-size:11.5px">'+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>';
     const orig=i.cmv_origem==='piso'?'piso R$ 40':i.cmv_origem==='custo_cadastrado'?'custo cadastrado':i.cmv_origem==='formula'?'fórmula':(i.cmv_origem||'');
     h+='<tr>'+(ed?'<td><input type="checkbox"'+(PRO.marc[i.item_id]?' checked':'')+' onclick="proMarca(\''+i.item_id+'\')"></td>':'')
       +'<td class="l" style="min-width:240px">'+(i.permalink?'<a href="'+escH(i.permalink)+'" target="_blank" rel="noopener">'+escH(i.item_id)+'</a>':escH(i.item_id))+' '+escH(i.titulo||'')
-      +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+' · estoque '+(i.estoque==null?'—':dvN(i.estoque))+(i.estoque_min!=null||i.estoque_max!=null?' · relâmpago aceita '+(i.estoque_min??1)+' a '+(i.estoque_max??'—')+' un.':'')+'</div>'
+      +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+'</div>'
       +(i.avisos&&i.avisos.length?'<div style="font-size:11.5px;color:#f59e0b">'+i.avisos.map(a=>escH(PRO_AVISOS[a]||a)).join(' · ')+'</div>':'')+'</td>'
-      +'<td class="l">'+escH(i.fornecedor||'—')+'</td><td class="l">'+escH(PRO_ST[i.status]||i.status||'—')+'</td>'
+      +'<td class="l">'+escH(i.fornecedor||'—')+'</td><td class="l">'+escH(PRO_ST[i.status]||i.status||'—')+'</td>'+'<td style="white-space:nowrap">'+proHtmlEstoque(i)+'</td>'
       +'<td>'+dvR(i.preco_cheio)+'</td><td>'+dvR(i.preco_campanha)+(i.desconto_pct!=null?'<div style="font-size:11.5px;color:var(--muted)">−'+Number(i.desconto_pct).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>':'')+'</td>'
       +'<td>'+(i.parte_ml?dvR(i.parte_ml):'—')+'</td><td>'+dvR(i.comissao)+'</td><td>'+dvR(i.frete)+'</td>'
       +'<td>'+proRet(i,'imposto')+'</td><td>'+proRet(i,'ads')+'</td><td>'+proRet(i,'fixo')+'</td>'
@@ -4382,6 +4384,45 @@ function proHtmlItens(){
   h+='</tbody></table></div>';
   if(PRO.info&&PRO.info.cursor)h+='<div style="margin-top:10px"><button onclick="proMais()"'+(PRO.carregandoItens?' disabled':'')+' style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:6px 12px;cursor:pointer">'+(PRO.carregandoItens?'Lendo do ML…':'Carregar mais 100')+'</button></div>';
   return h+'</div>';
+}
+// estoque do anuncio no ML, editavel aqui (mesma gravacao do Cadastro: ml-ocelot-anuncios acao estoque, com a
+// trava "esperado" contra sobrescrever venda feita no meio). Na relampago mostra o min/max que o ML aceita e
+// pinta de vermelho quem esta abaixo do minimo (esse item seria barrado na adesao).
+function proHtmlEstoque(i){
+  const abaixo=i.estoque_min!=null&&i.estoque!=null&&i.estoque<i.estoque_min;
+  const faixa=i.estoque_min!=null||i.estoque_max!=null?'<div style="font-size:11px;color:'+(abaixo?'#f87171':'var(--muted)')+'">relâmpago: '+(i.estoque_min??1)+' a '+(i.estoque_max??'—')+' un.</div>':'';
+  if(!pode('alterar_ml')||i.estoque==null)return '<span style="'+(abaixo?'color:#f87171;font-weight:700':'')+'">'+(i.estoque==null?'—':dvN(i.estoque))+'</span>'+faixa;
+  const id=escH(i.item_id);
+  return '<input type="text" inputmode="numeric" value="'+i.estoque+'" data-q="'+i.estoque+'" title="Estoque no ML. Enter grava; +N / -N soma ou tira do saldo atual" onkeydown="if(event.key===\'Enter\')this.blur()" onchange="proSalvaEstoque(this,\''+id+'\')" style="width:64px;text-align:right;font:inherit;font-size:12.5px;padding:3px 6px;border-radius:6px;border:1px solid '+(abaixo?'#f87171':'var(--line)')+';background:var(--panel2);color:var(--ink)">'
+    +(abaixo?' <button title="Colocar o mínimo da relâmpago" onclick="const e=this.previousElementSibling;e.value=\''+i.estoque_min+'\';proSalvaEstoque(e,\''+id+'\')" style="font:inherit;font-size:11px;border-radius:6px;border:1px solid #f87171;background:transparent;color:#fca5a5;padding:2px 6px;cursor:pointer">→ '+i.estoque_min+'</button>':'')
+    +faixa+'<div id="proEst_'+id+'" style="font-size:11px"></div>';
+}
+async function proSalvaEstoque(inp,id){
+  const it=PRO.itens.find(x=>x.item_id===id);if(!it)return;
+  const ant=Number(inp.getAttribute('data-q')),bruto=String(inp.value||'').trim().replace(/\s/g,'');
+  const rel=/^[+-]\d+$/.test(bruto)?Number(bruto):null,q=rel!=null?ant+rel:Number(bruto);
+  if(!Number.isInteger(q)||q<0){alert('Estoque inválido: use um número inteiro (ou +N / -N para somar/tirar).');inp.value=ant;return;}
+  if(q===ant){inp.value=ant;return;}
+  let msg='Alterar o estoque do anúncio '+id+' no Mercado Livre?\n\n'+String(it.titulo||'')+'\n\nHoje: '+ant+'\nNovo: '+q+' ('+(q>ant?'+':'')+(q-ant)+')';
+  if(q>ant)msg+='\n\nSó aumente se o fornecedor tiver o produto: venda sem estoque vira cancelamento e derruba a reputação.';
+  if(q===0)msg+='\n\nCom estoque 0 o ML pausa o anúncio.';
+  if(!confirm(msg)){inp.value=ant;return;}
+  const st=()=>document.getElementById('proEst_'+id);inp.disabled=true;
+  const aviso=(t,cor)=>{const e=st();if(e){e.textContent=t;e.style.color=cor;}};
+  aviso('gravando…','var(--muted)');
+  try{
+    const corpo={acao:'estoque',item_id:id};
+    if(rel!=null)corpo.somar=rel;else{corpo.quantidade=q;corpo.esperado=ant;}
+    const x=await ocelotAnunciosPost(corpo);
+    if(x.j.mudou_no_ml){it.estoque=x.j.atual;proRender();aviso('mudou no ML: agora '+x.j.atual+'. Confira e digite de novo','#fbbf24');return;}
+    if(!x.r.ok||(!x.j.ok&&!x.j.depois)){inp.value=ant;inp.disabled=false;
+      const e=String(x.j.erro||('erro '+x.r.status));aviso(/varia/i.test(e)?'anúncio com variações: ajuste no Cadastro':e,'#f87171');return;}
+    const d=x.j.depois&&!x.j.depois.erro?x.j.depois.estoque:null;
+    it.estoque=d!=null?d:q;proRender();
+    aviso(x.j.ok?'gravado no ML':(x.j.aviso||'enviado'),x.j.ok?'#34d399':'#fbbf24');
+    // o Cadastro rele do ML na proxima abertura; aqui so marca o anuncio como relido
+    if(x.j.depois&&!x.j.depois.erro&&OCELOT_LIVE&&OCELOT_LIVE.itens){OCELOT_LIVE.itens[id]=x.j.depois;OCELOT_LIVE.aplicadoEm=null;}
+  }catch(e){inp.value=ant;inp.disabled=false;aviso('erro de rede','#f87171');}
 }
 function proHtmlConf(){
   const C=PRO.conf,ruins=C.itens.filter(i=>i.resultado==null||i.resultado<0),somaRes=C.itens.reduce((s,i)=>s+(Number(i.resultado)||0),0),somaPerde=C.itens.reduce((s,i)=>s+(Number(i.repasse_perde)||0),0);

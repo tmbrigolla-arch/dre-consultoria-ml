@@ -402,6 +402,20 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
     table.mcards td.mc-top{order:-1;text-align:left!important;padding:2px 0 6px!important;margin-bottom:4px;border-bottom:1px solid var(--line)!important}
     table.mcards td.mc-vazio{display:none}
   }
+  /* Custo de producao: no celular cada linha vira um cartao (rotulo em data-l), sem rolar a tabela de lado */
+  @media (max-width:640px){
+    .fab-tab thead{display:none}
+    .fab-tab,.fab-tab tbody{display:block;width:100%}
+    .fab-tab tr{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--panel)}
+    .fab-tab td{display:block;border:none!important;padding:0!important;text-align:left!important;white-space:normal!important;min-width:0!important}
+    .fab-tab td[data-l]::before{content:attr(data-l);display:block;font-size:11px;font-weight:400;color:var(--muted);margin-bottom:2px}
+    .fab-tab td.fab-full{grid-column:1/-1}
+    .fab-tab td.fab-acoes{grid-column:1/-1;text-align:right!important}
+    .fab-tab .fab-hide-m{display:none}
+    .fab-tab input,.fab-tab select{width:100%!important;max-width:none!important;box-sizing:border-box;font-size:16px!important}
+    .fab-tab td.fab-qtd{display:flex;align-items:center;gap:6px}
+    .fab-tab td.fab-qtd::before{display:none}
+  }
   @media (max-width:640px){.dv-bar{padding:8px}.dv-cards{grid-template-columns:repeat(2,1fr)}.curva-card .val{font-size:17px}}
   .rep-piso td{background:rgba(8,145,178,.10)}
   .rep-piso td:first-child{box-shadow:inset 3px 0 0 #0891b2}
@@ -4513,14 +4527,14 @@ function fabHtmlInsumos(){
   const L=FAB.d.insumos||[],U=FAB.d.unidades||['kg','g','L','ml','un','m'];
   const sel=(id,v)=>'<select id="'+id+'" style="'+FAB_INP+'">'+U.map(u=>'<option'+(u===v?' selected':'')+'>'+escH(u)+'</option>').join('')+'</select>';
   let h='<div class="dv-sec"><h3>1. Insumos</h3><div class="sub">O que você compra e quanto pagou. Ex.: saco de cimento de <b>50 kg</b> por <b>R$ 40,00</b> → R$ 0,80 por kg. A quantidade de cada peça (no passo 2) é nessa mesma unidade.</div>';
-  h+='<div style="overflow-x:auto"><table><thead><tr><th class="l">Insumo</th><th class="l">Unidade</th><th>Embalagem (quantidade)</th><th>Preço pago</th><th>Custo por unidade</th><th></th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Insumo</th><th class="l">Unidade</th><th>Embalagem (quantidade)</th><th>Preço pago</th><th>Custo por unidade</th><th></th></tr></thead><tbody>';
   const linha=(i)=>{const k=i?i.id:'novo';
-    return '<tr><td class="l"><input id="fi_n_'+k+'" value="'+escH(i?i.nome:'')+'" placeholder="Novo insumo" style="'+FAB_INP+';width:170px"></td>'
-      +'<td class="l">'+sel('fi_u_'+k,i?i.unidade:'kg')+'</td>'
-      +'<td><input id="fi_q_'+k+'" value="'+(i?fabQ(i.qtd_embalagem):'1')+'" inputmode="decimal" oninput="fabInsCalc(\''+k+'\')" style="'+FAB_INP+';width:90px;text-align:right"></td>'
-      +'<td><input id="fi_p_'+k+'" value="'+(i&&i.preco>0?cf.format(i.preco):'')+'" placeholder="R$ 0,00" inputmode="decimal" oninput="fabInsCalc(\''+k+'\')" style="'+FAB_INP+';width:100px;text-align:right;'+(i&&!(i.preco>0)?'border-color:#f59e0b':'')+'"></td>'
-      +'<td id="fi_c_'+k+'">'+(i&&i.preco>0?fabR4(i.custo_unidade)+' <span style="color:var(--muted);font-size:11.5px">/'+escH(i.unidade)+'</span>':'—')+'</td>'
-      +'<td style="white-space:nowrap"><button onclick="fabSalvaIns(\''+k+'\')" style="'+FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff">'+(i?'Salvar':'Adicionar')+'</button>'
+    return '<tr><td class="l fab-full" data-l="Insumo"><input id="fi_n_'+k+'" value="'+escH(i?i.nome:'')+'" placeholder="Novo insumo" style="'+FAB_INP+';width:170px"></td>'
+      +'<td class="l" data-l="Unidade">'+sel('fi_u_'+k,i?i.unidade:'kg')+'</td>'
+      +'<td data-l="Embalagem (quantidade)"><input id="fi_q_'+k+'" value="'+(i?fabQ(i.qtd_embalagem):'1')+'" inputmode="decimal" oninput="fabInsCalc(\''+k+'\')" style="'+FAB_INP+';width:90px;text-align:right"></td>'
+      +'<td data-l="Preço pago"><input id="fi_p_'+k+'" value="'+(i&&i.preco>0?cf.format(i.preco):'')+'" placeholder="R$ 0,00" inputmode="decimal" oninput="fabInsCalc(\''+k+'\')" style="'+FAB_INP+';width:100px;text-align:right;'+(i&&!(i.preco>0)?'border-color:#f59e0b':'')+'"></td>'
+      +'<td id="fi_c_'+k+'" data-l="Custo por unidade">'+(i&&i.preco>0?fabR4(i.custo_unidade)+' <span style="color:var(--muted);font-size:11.5px">/'+escH(i.unidade)+'</span>':'—')+'</td>'
+      +'<td class="fab-acoes" style="white-space:nowrap"><button onclick="fabSalvaIns(\''+k+'\')" style="'+FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff">'+(i?'Salvar':'Adicionar')+'</button>'
       +(i?' <button onclick="fabExcluiIns(\''+k+'\')" title="Excluir" style="'+FAB_BTN+';border-color:#f87171;color:#fca5a5">✕</button>':'')+'</td></tr>';};
   L.forEach(i=>{h+=linha(i);});h+=linha(null);
   return h+'</tbody></table></div></div>';
@@ -4553,10 +4567,10 @@ function fabHtmlModelos(){
     let c='<div id="fr_'+k+'" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--panel2)">'
       +'<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px"><input id="fr_n_'+k+'" value="'+escH(r?r.nome:'')+'" placeholder="Nome do modelo (ex.: Cuba oval 40x23)" style="'+FAB_INP+';flex:1;min-width:220px;font-weight:600">'
       +'<span style="font-size:13px">Custo da peça: <b id="fr_t_'+k+'" style="font-size:16px">'+dvR(r?r.custo_peca:0)+'</b></span></div>'
-      +'<div style="overflow-x:auto"><table><thead><tr><th class="l">Insumo</th><th>Quantidade por peça</th><th>Custo por unidade</th><th>Custo na peça</th></tr></thead><tbody>';
+      +'<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Insumo</th><th>Quantidade por peça</th><th>Custo por unidade</th><th>Custo na peça</th></tr></thead><tbody>';
     I.forEach(i=>{const qq=q[i.id];
-      c+='<tr><td class="l">'+escH(i.nome)+'</td><td><input data-ins="'+i.id+'" value="'+fabQ(qq)+'" placeholder="0" inputmode="decimal" oninput="fabRecCalc(\''+k+'\')" style="'+FAB_INP+';width:90px;text-align:right"> <span style="color:var(--muted);font-size:12px">'+escH(i.unidade)+'</span></td>'
-        +'<td>'+(i.preco>0?fabR4(i.custo_unidade):'<span style="color:#f59e0b">sem preço</span>')+'</td><td data-custo="'+i.id+'">'+(qq&&i.preco>0?dvR(qq*i.custo_unidade):'—')+'</td></tr>';});
+      c+='<tr><td class="l fab-full" style="font-weight:600">'+escH(i.nome)+(i.preco>0?'':' <span style="color:#f59e0b;font-weight:400;font-size:12px">sem preço</span>')+'</td><td class="fab-qtd"><input data-ins="'+i.id+'" value="'+fabQ(qq)+'" placeholder="0" inputmode="decimal" oninput="fabRecCalc(\''+k+'\')" style="'+FAB_INP+';width:90px;text-align:right"> <span style="color:var(--muted);font-size:12px">'+escH(i.unidade)+'</span></td>'
+        +'<td class="fab-hide-m">'+(i.preco>0?fabR4(i.custo_unidade):'<span style="color:#f59e0b">sem preço</span>')+'</td><td data-custo="'+i.id+'" data-l="Custo na peça">'+(qq&&i.preco>0?dvR(qq*i.custo_unidade):'—')+'</td></tr>';});
     c+='</tbody></table></div><div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">'
       +(r?'<button onclick="fabExcluiRec(\''+k+'\')" style="'+FAB_BTN+';border-color:#f87171;color:#fca5a5">Excluir modelo</button>':'<button onclick="FAB.novaRec=false;fabRender()" style="'+FAB_BTN+'">Cancelar</button>')
       +'<button onclick="fabSalvaRec(\''+k+'\')" style="'+FAB_BTN+';background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600">Salvar modelo</button></div></div>';
@@ -4592,19 +4606,19 @@ function fabHtmlProdutos(){
   const P=FAB.d.produtos||[],R=FAB.d.receitas||[];
   let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Cada SKU ligado ao seu modelo. Unidades = peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu). Lista os SKUs vendidos nos últimos 3 meses.</div>';
   if(!P.length)return h+'<div class="empty">Nenhuma venda nos últimos 3 meses.</div></div>';
-  h+='<div style="overflow-x:auto"><table><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Modelo</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Modelo</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
   let tu=0,tc=0,tr=0,ts=0;
   P.forEach(p=>{
     const sobra=p.custo_mes!=null?Math.round((p.repasse-p.custo_mes)*100)/100:null;
     tu+=p.unidades;tr+=p.repasse;if(p.custo_mes!=null){tc+=p.custo_mes;ts+=sobra;}
-    h+='<tr><td class="l" style="white-space:nowrap">'+escH(p.chave)+(p.sem_sku?'<div style="font-size:11px;color:#f59e0b">anúncio sem SKU</div>':'')+'</td>'
-      +'<td class="l" style="min-width:220px">'+escH(p.titulo||'—')+'</td>'
-      +'<td class="l"><select onchange="fabVincula(\''+escH(p.chave)+'\',this.value)" style="'+FAB_INP+';max-width:220px'+(!p.receita_id&&p.unidades?';border-color:#f59e0b':'')+'"><option value="">— escolher —</option>'
+    h+='<tr><td class="l" data-l="SKU" style="white-space:nowrap">'+escH(p.chave)+(p.sem_sku?'<div style="font-size:11px;color:#f59e0b">anúncio sem SKU</div>':'')+'</td>'
+      +'<td class="l fab-full" data-l="Produto" style="min-width:220px">'+escH(p.titulo||'—')+'</td>'
+      +'<td class="l fab-full" data-l="Modelo"><select onchange="fabVincula(\''+escH(p.chave)+'\',this.value)" style="'+FAB_INP+';max-width:220px'+(!p.receita_id&&p.unidades?';border-color:#f59e0b':'')+'"><option value="">— escolher —</option>'
       +R.map(r=>'<option value="'+r.id+'"'+(r.id===p.receita_id?' selected':'')+'>'+escH(r.nome)+'</option>').join('')+'</select></td>'
-      +'<td>'+dvN(p.unidades)+'</td><td>'+dvR(p.custo_peca)+'</td><td>'+dvR(p.custo_mes)+'</td><td>'+dvR(p.repasse)+'</td>'
-      +'<td style="font-weight:700;color:'+(sobra==null?'var(--muted)':sobra<0?'#f87171':'#22c55e')+'">'+dvR(sobra)+'</td></tr>';
+      +'<td data-l="Peças no mês">'+dvN(p.unidades)+'</td><td data-l="Custo da peça">'+dvR(p.custo_peca)+'</td><td data-l="Custo no mês">'+dvR(p.custo_mes)+'</td><td data-l="Repasse">'+dvR(p.repasse)+'</td>'
+      +'<td data-l="Sobra" style="font-weight:700;color:'+(sobra==null?'var(--muted)':sobra<0?'#f87171':'#22c55e')+'">'+dvR(sobra)+'</td></tr>';
   });
-  h+='<tr style="font-weight:700"><td class="l" colspan="3">Total</td><td>'+dvN(tu)+'</td><td></td><td>'+dvR(tc)+'</td><td>'+dvR(tr)+'</td><td>'+dvR(ts)+'</td></tr>';
+  h+='<tr style="font-weight:700"><td class="l fab-full" colspan="3">Total</td><td data-l="Peças no mês">'+dvN(tu)+'</td><td class="fab-hide-m"></td><td data-l="Custo no mês">'+dvR(tc)+'</td><td data-l="Repasse">'+dvR(tr)+'</td><td data-l="Sobra">'+dvR(ts)+'</td></tr>';
   return h+'</tbody></table></div></div>';
 }
 async function fabVincula(chave,rid){

@@ -1,11 +1,12 @@
-// ml-ocelot-promocoes v2 (25/10/2026: relampago co-participada manda stock; erro do ML com cause) v1 (18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v3 (25/10/2026: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
 // POST { acao:"campanhas" }                                                   -> { ok, campanhas[], pct }
 //   cada campanha traz participando (started + pending) e elegiveis (+ candidate), pelo paging.total do ML
 // POST { acao:"itens", promotion_id, promotion_type, status?, cursor? }      -> { ok, itens[], total, cursor, pct }
-// POST { acao:"participar"|"sair", promotion_id, promotion_type, item_ids[], forcar? } -> { ok, resultados[] }
+// POST { acao:"participar"|"sair", promotion_id, promotion_type, item_ids[], forcar?, estoque_max? } -> { ok, resultados[] }
+//   relampago (LIGHTNING, SMART_LIGHTNING): reserva o estoque do anuncio, limitado ao max do ML e a estoque_max
 //
 // Conta por unidade, no preco da campanha P (e o mesmo no preco cheio, para comparar):
 //   comissao = tarifa do ML em P (/sites/MLB/listing_prices) - parte que o ML banca (meli_percentage do
@@ -38,9 +39,11 @@ const POR_PAGINA = 100, MARGEM_MINIMA = 0, MAX_LOTE = 50;
 const POR_OFERTA = ["SMART", "SMART_LIGHTNING", "PRICE_MATCHING", "PRICE_MATCHING_MELI_ALL", "MARKETPLACE_CAMPAIGN", "UNHEALTHY_STOCK"];
 // tipos em que o vendedor informa o preco (deal_price)
 const POR_PRECO = ["DEAL", "SELLER_CAMPAIGN"];
-// relampago: alem da oferta, o ML exige o estoque reservado para ela (stock, dentro do min/max que ele informa)
-const COM_ESTOQUE = ["SMART_LIGHTNING"];
-const SO_NO_ML = ["LIGHTNING", "PRICE_DISCOUNT", "DOD", "VOLUME", "PRE_NEGOTIATED", "BANK"];
+// oferta relampago do vendedor: preco (deal_price) + estoque, sem promotion_id (formato da doc do ML)
+const POR_PRECO_ESTOQUE = ["LIGHTNING"];
+// relampago: o ML exige o estoque reservado para a oferta (stock, dentro do min/max que ele informa)
+const COM_ESTOQUE = ["SMART_LIGHTNING", "LIGHTNING"];
+const SO_NO_ML = ["PRICE_DISCOUNT", "DOD", "VOLUME", "PRE_NEGOTIATED", "BANK"];
 
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -215,6 +218,7 @@ Deno.serve(async (req) => {
         cmv_atual: atual?.cmv ?? null, resultado_atual: atual?.resultado ?? null, resultado_atual_pct: atual?.resultado_pct ?? null,
         repasse_perde: camp?.cmv != null && atual?.cmv != null ? r2(atual.cmv - camp.cmv) : null,
         inicio: x.start_date ?? null, fim: x.end_date ?? null,
+        estoque_min: num(x.stock?.min), estoque_max: num(x.stock?.max),
         avisos,
       };
     });
@@ -280,6 +284,7 @@ Deno.serve(async (req) => {
       const promotion_id = String(body?.promotion_id || "");
       const promotion_type = String(body?.promotion_type || "");
       const forcar = body?.forcar === true;
+      const estoqueMax = num(body?.estoque_max) != null && num(body.estoque_max)! > 0 ? Math.floor(num(body.estoque_max)!) : null;
       const ids = [...new Set<string>((Array.isArray(body?.item_ids) ? body.item_ids : []).map(String))].filter((x) => /^MLB\d+$/.test(x));
       if (!promotion_id || !promotion_type) return json({ ok: false, erro: "promotion_id e promotion_type obrigatorios" }, 400);
       if (!ids.length) return json({ ok: false, erro: "nenhum item" }, 400);
@@ -320,18 +325,20 @@ Deno.serve(async (req) => {
             res.erro = c?.resultado_pct == null ? "sem_resultado_calculado" : "abaixo_margem_minima";
             await logar(res); return res;
           }
-          const corpo: any = { promotion_id, promotion_type };
+          const corpo: any = POR_PRECO_ESTOQUE.includes(promotion_type) ? { promotion_type } : { promotion_id, promotion_type };
+          if (COM_ESTOQUE.includes(promotion_type)) {
+            // estoque do anuncio, limitado ao max do ML e ao limite escolhido na tela; abaixo do min do ML nao vai
+            const min = num(v.p.stock?.min) ?? 1;
+            const tetos = [c?.estoque ?? null, num(v.p.stock?.max), estoqueMax].filter((t): t is number => t != null);
+            const qtd = tetos.length ? Math.min(...tetos) : null;
+            if (qtd == null || qtd < min) { res.erro = `estoque_insuficiente (min ${min})`; await logar(res); return res; }
+            corpo.stock = qtd;
+            res.estoque = qtd;
+          }
           if (POR_OFERTA.includes(promotion_type)) {
             if (!oferta) { res.erro = "sem_offer_id"; await logar(res); return res; }
             corpo.offer_id = oferta;
-            if (COM_ESTOQUE.includes(promotion_type)) {
-              const min = num(v.p.stock?.min) ?? 1, max = num(v.p.stock?.max);
-              const est = c?.estoque ?? null;
-              const qtd = est == null ? max : (max == null ? est : Math.min(est, max));
-              if (qtd == null || qtd < min) { res.erro = `estoque_insuficiente (min ${min})`; await logar(res); return res; }
-              corpo.stock = qtd;
-            }
-          } else if (POR_PRECO.includes(promotion_type)) {
+          } else if (POR_PRECO.includes(promotion_type) || POR_PRECO_ESTOQUE.includes(promotion_type)) {
             if (!res.preco) { res.erro = "sem_preco"; await logar(res); return res; }
             corpo.deal_price = res.preco;
           }

@@ -1,4 +1,4 @@
-// ml-ocelot-promocoes v4 (25/10/2026: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v5 (25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
@@ -43,6 +43,9 @@ const POR_PRECO = ["DEAL", "SELLER_CAMPAIGN"];
 const POR_PRECO_ESTOQUE = ["LIGHTNING"];
 // relampago: o ML exige o estoque reservado para a oferta (stock, dentro do min/max que ele informa)
 const COM_ESTOQUE = ["SMART_LIGHTNING", "LIGHTNING"];
+// desconto minimo exigido pelo ML por tipo (relampago: "Discount final Price must be more than 5 Percent of
+// initial Price", erro MINIMUM_DISCOUNT_PERCENT visto em 25/10/2026): o preco da campanha desce ate passar dele
+const DESCONTO_MINIMO: Record<string, number> = { LIGHTNING: 5 };
 const SO_NO_ML = ["PRICE_DISCOUNT", "DOD", "VOLUME", "PRE_NEGOTIATED", "BANK"];
 
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
@@ -100,7 +103,7 @@ Deno.serve(async (req) => {
     ml(admin, OCELOT_CONTA, caminho, { ...init, headers: { version: "v2", ...(init.headers || {}) } });
 
   // resultado de cada item cru da API de promocoes (lista de /promotions/{id}/items ou montada de /items/{id})
-  async function calcular(lista: any[]) {
+  async function calcular(lista: any[], promotion_type = "") {
     const ids = [...new Set(lista.map((x) => String(x.id)))];
 
     // anuncio ao vivo (titulo, preco, categoria, tipo)
@@ -180,8 +183,15 @@ Deno.serve(async (req) => {
 
       const cheio = num(x.original_price) ?? num(v.price);
       const cupomPct = num(x.fixed_percentage);
-      const precoCampanha = (num(x.price) || null) ?? num(x.max_discounted_price) ?? num(x.suggested_discounted_price)
+      let precoCampanha = (num(x.price) || null) ?? num(x.max_discounted_price) ?? num(x.suggested_discounted_price)
         ?? (cheio && cupomPct ? r2(cheio * (1 - cupomPct / 100)) : null);
+      // convite sem preco fixo: se o menor desconto sugerido nao passa do minimo do ML, desce 1 centavo abaixo dele
+      const descMin = DESCONTO_MINIMO[promotion_type];
+      let ajustadoMin = false;
+      if (descMin && !num(x.price) && cheio && precoCampanha != null && precoCampanha > cheio * (1 - descMin / 100) - 0.005) {
+        precoCampanha = Math.floor(cheio * (1 - descMin / 100) * 100 - 1) / 100;
+        ajustadoMin = true;
+      }
       const meliPct = num(x.meli_percentage) || 0;
       const parteMl = cheio && meliPct ? r2(cheio * meliPct / 100) : 0;
       const tipo = v.listing_type_id || null, cat = v.category_id || null;
@@ -203,7 +213,8 @@ Deno.serve(async (req) => {
       if (cupomPct) avisos.push("cupom_so_acima_do_minimo");
       if (tarCamp == null) avisos.push("comissao_indisponivel");
       if (freteGratis == null && !(precoCampanha != null && precoCampanha < FRETE_GRATIS_MIN)) avisos.push("frete_indisponivel");
-      if (!num(x.price) && precoCampanha != null) avisos.push("preco_sugerido");
+      if (!num(x.price) && precoCampanha != null && !ajustadoMin) avisos.push("preco_sugerido");
+      if (ajustadoMin) avisos.push("desconto_minimo_ml");
 
       return {
         item_id: id, status: x.status ?? null, offer_id: x.offer_id ?? x.ref_id ?? null,
@@ -273,7 +284,7 @@ Deno.serve(async (req) => {
         cursor = r.json?.paging?.searchAfter ?? r.json?.paging?.search_after ?? null;
         if (!cursor || !res.length) { cursor = null; break; }
       }
-      const itens = await calcular(lista);
+      const itens = await calcular(lista, promotion_type);
       return json({ ok: true, itens, total, cursor, pct, margem_minima: MARGEM_MINIMA });
     }
 
@@ -306,7 +317,7 @@ Deno.serve(async (req) => {
         const p = lista.find((x: any) => String(x.id) === promotion_id && x.type === promotion_type);
         return { id, p: p ? { ...p, id } : null, erro: r.ok ? null : erroML(r) };
       });
-      const calc = acao === "participar" ? await calcular(vivos.filter((v) => v.p).map((v) => v.p)) : [];
+      const calc = acao === "participar" ? await calcular(vivos.filter((v) => v.p).map((v) => v.p), promotion_type) : [];
       const porId: Record<string, any> = {};
       for (const c of calc) porId[c.item_id] = c;
 

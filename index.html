@@ -4210,7 +4210,8 @@ const PRO_TIPOS={DEAL:'Campanha tradicional (DEAL)',MARKETPLACE_CAMPAIGN:'Co-par
 const PRO_ST={candidate:'Convidado',pending:'Programado',started:'Ativo',finished:'Encerrado'};
 const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso de R$ 40: o desconto sai da parte da Ocelot',custo_cadastrado_ocelot_paga:'CMV é custo cadastrado: o desconto sai da parte da Ocelot',
   sem_fornecedor:'Anúncio sem fornecedor gravado',abaixo_79_frete_referencia:'Abaixo de R$ 79: frete de referência de R$ 11,05',cupom_so_acima_do_minimo:'Cupom: só vale acima da compra mínima',
-  comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML'};
+  comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML',
+  desconto_minimo_ml:'Preço baixado para passar do desconto mínimo que o ML exige (relâmpago: mais de 5%)'};
 const PRO_ERROS={abaixo_margem_minima:'resultado da Ocelot negativo',sem_resultado_calculado:'sem resultado calculado (CMV, comissão ou preço)',item_fora_da_campanha:'o item não está mais na campanha',
   nao_participa:'o item não está participando',estoque_insuficiente:'estoque abaixo do mínimo da relâmpago (ajuste na coluna Estoque)',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
 let PRO={camp:null,pct:null,erro:null,carregando:false,aberta:null,itens:[],info:null,carregandoItens:false,marc:{},filtro:'todos',fres:'todos',busca:'',msg:null,conf:null,executando:false};

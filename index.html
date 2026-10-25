@@ -4201,7 +4201,9 @@ function atMarcarLida(i){const m=AT.dados.mensagens[i];if(!confirm('Marcar esta 
    Pela formula o resultado da Ocelot e a gestao (5,5%) e o desconto sai do repasse; a Ocelot so perde quando o
    CMV vem do piso de R$ 40 ou de custo cadastrado. A trava (no servidor) barra prejuizo ou CMV desconhecido. */
 const PRO_API=SB_URL+'/functions/v1/ml-ocelot-promocoes', PRO_LOTE=50;
-const PRO_SO_NO_ML=['LIGHTNING','PRICE_DISCOUNT','DOD','VOLUME','PRE_NEGOTIATED','BANK'];
+// relampago (LIGHTNING, SMART_LIGHTNING) entra pelo painel reservando estoque (PRO_ESTOQUE)
+const PRO_ESTOQUE=['LIGHTNING','SMART_LIGHTNING'];
+const PRO_SO_NO_ML=['PRICE_DISCOUNT','DOD','VOLUME','PRE_NEGOTIATED','BANK'];
 const PRO_TIPOS={DEAL:'Campanha tradicional (DEAL)',MARKETPLACE_CAMPAIGN:'Co-participada do ML',SMART:'Automática (SMART)',SMART_LIGHTNING:'Relâmpago co-participada',
   PRICE_MATCHING:'Preço competitivo',PRICE_MATCHING_MELI_ALL:'Preço competitivo (100% ML)',PRICE_DISCOUNT:'Desconto próprio',LIGHTNING:'Oferta relâmpago',DOD:'Oferta do dia',
   VOLUME:'Desconto por volume',SELLER_CAMPAIGN:'Campanha do vendedor',SELLER_COUPON_CAMPAIGN:'Cupom do vendedor',UNHEALTHY_STOCK:'Estoque parado (Full)',PRE_NEGOTIATED:'Pré-negociada',BANK:'Desconto no Pix/banco'};
@@ -4289,14 +4291,14 @@ function proMarca(id){if(PRO.marc[id])delete PRO.marc[id];else if(Object.keys(PR
 function proSelBons(){PRO.marc={};proFiltrados().forEach(i=>{if(Object.keys(PRO.marc).length<PRO_LOTE&&i.status==='candidate'&&i.resultado!=null&&i.resultado>=0&&i.cmv_origem==='formula')PRO.marc[i.item_id]=true;});proRender();}
 function proConfirmar(acao,ids){
   const lista=PRO.itens.filter(i=>ids.indexOf(i.item_id)>=0&&(acao==='participar'?i.status==='candidate':(i.status==='started'||i.status==='pending')));
-  if(!lista.length)return;PRO.conf={acao:acao,itens:lista,forcar:false};proRender();
+  if(!lista.length)return;PRO.conf={acao:acao,itens:lista,forcar:false,estoqueMax:''};proRender();
 }
 function proSel(acao){proConfirmar(acao,Object.keys(PRO.marc));}
 async function proExecutar(){
   const C=PRO.conf;if(!C||PRO.executando)return;
   PRO.executando=true;proRender();
   try{
-    const r=await proPost({acao:C.acao,promotion_id:PRO.aberta.id,promotion_type:PRO.aberta.tipo,item_ids:C.itens.map(i=>i.item_id),forcar:!!C.forcar});
+    const r=await proPost({acao:C.acao,promotion_id:PRO.aberta.id,promotion_type:PRO.aberta.tipo,item_ids:C.itens.map(i=>i.item_id),forcar:!!C.forcar,estoque_max:Number(C.estoqueMax)>0?Number(C.estoqueMax):null});
     const res=r.resultados||[],ok=res.filter(x=>x.ok),okIds=new Set(ok.map(x=>x.item_id)),fal=res.filter(x=>!x.ok);
     const ca=(PRO.camp||[]).find(c=>c.id===PRO.aberta.id&&c.tipo===PRO.aberta.tipo);
     if(ca&&ca.participando!=null)ca.participando=Math.max(0,ca.participando+(C.acao==='participar'?1:-1)*ok.length);
@@ -4363,7 +4365,7 @@ function proHtmlItens(){
     const orig=i.cmv_origem==='piso'?'piso R$ 40':i.cmv_origem==='custo_cadastrado'?'custo cadastrado':i.cmv_origem==='formula'?'fórmula':(i.cmv_origem||'');
     h+='<tr>'+(ed?'<td><input type="checkbox"'+(PRO.marc[i.item_id]?' checked':'')+' onclick="proMarca(\''+i.item_id+'\')"></td>':'')
       +'<td class="l" style="min-width:240px">'+(i.permalink?'<a href="'+escH(i.permalink)+'" target="_blank" rel="noopener">'+escH(i.item_id)+'</a>':escH(i.item_id))+' '+escH(i.titulo||'')
-      +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+' · estoque '+(i.estoque==null?'—':dvN(i.estoque))+'</div>'
+      +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+' · estoque '+(i.estoque==null?'—':dvN(i.estoque))+(i.estoque_min!=null||i.estoque_max!=null?' · relâmpago aceita '+(i.estoque_min??1)+' a '+(i.estoque_max??'—')+' un.':'')+'</div>'
       +(i.avisos&&i.avisos.length?'<div style="font-size:11.5px;color:#f59e0b">'+i.avisos.map(a=>escH(PRO_AVISOS[a]||a)).join(' · ')+'</div>':'')+'</td>'
       +'<td class="l">'+escH(i.fornecedor||'—')+'</td><td class="l">'+escH(PRO_ST[i.status]||i.status||'—')+'</td>'
       +'<td>'+dvR(i.preco_cheio)+'</td><td>'+dvR(i.preco_campanha)+(i.desconto_pct!=null?'<div style="font-size:11.5px;color:var(--muted)">−'+Number(i.desconto_pct).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>':'')+'</td>'
@@ -4389,6 +4391,12 @@ function proHtmlConf(){
   if(C.acao==='participar'){
     h+='<div style="font-size:13.5px">Resultado da Ocelot somado (por unidade): <b>'+dvR(somaRes)+'</b><br>O repasse aos fornecedores cai: <b>'+dvR(somaPerde)+'</b> por unidade vendida.</div>';
     if(ruins.length)h+='<div class="dv-aviso" style="margin-top:10px">'+ruins.length+' item(ns) com prejuízo para a Ocelot ou sem resultado calculado serão barrados.<label style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox"'+(C.forcar?' checked':'')+' onchange="PRO.conf.forcar=this.checked"> Forçar a entrada mesmo assim (fica registrado)</label></div>';
+    if(PRO_ESTOQUE.indexOf(PRO.aberta.tipo)>=0){
+      const res=C.itens.reduce((s,i)=>s+Math.min(i.estoque??Infinity,i.estoque_max??Infinity,Number(C.estoqueMax)>0?Number(C.estoqueMax):Infinity),0);
+      h+='<div class="dv-aviso" style="margin-top:10px">Oferta relâmpago reserva estoque no preço da oferta.'
+        +'<label style="display:flex;gap:6px;align-items:center;margin-top:6px">Reservar no máximo <input type="number" min="1" step="1" value="'+escH(String(C.estoqueMax||''))+'" oninput="PRO.conf.estoqueMax=this.value;proRender();const e=document.getElementById(\'proEstMax\');if(e){e.focus();const n=e.value.length;try{e.setSelectionRange(n,n);}catch(x){}}" id="proEstMax" placeholder="todo" style="width:80px;font:inherit;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--panel2);color:var(--ink)"> un. por item</label>'
+        +'<div style="font-size:12px;margin-top:4px">Vazio = todo o estoque do anúncio, até o máximo que o ML aceita. Total reservado: <b>'+(isFinite(res)?dvN(res):'—')+' un.</b> Itens com estoque abaixo do mínimo do ML são barrados.</div></div>';
+    }
     h+='<div style="font-size:12px;color:var(--muted);margin-top:8px">O preço muda no Mercado Livre quando a campanha começar. Na SMART o ML pode ajustar o preço depois; dá para sair por aqui.</div>';
   }else h+='<div style="font-size:13px;color:var(--muted)">O item volta ao preço cheio nesta campanha.</div>';
   h+='<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px"><button onclick="PRO.conf=null;proRender()"'+(PRO.executando?' disabled':'')+' style="font:inherit;font-size:13px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);padding:7px 14px;cursor:pointer">Cancelar</button>'

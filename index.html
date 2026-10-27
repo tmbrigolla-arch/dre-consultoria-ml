@@ -1290,11 +1290,24 @@ async function ocelotDesfazerFechamento(forn,mes){
   if(!confirm('Desfazer o registro do fechamento de '+OCN_FORN_NOME[forn]+' — '+dreMesLabel(mes)+'? O repasse gravado de cada venda e os ajustes aplicados neste mês serão apagados.'))return;
   if(await ocelotFornSet({tipo:'desfazer_repasse',fornecedor:forn,mes_competencia:mes}))ocelotRepasseRecarrega();
 }
+// Aceita "95,60", "95.60", "R$ 1.234,56", "1,234.56", "1234". Ponto seguido de 3 dígitos sem vírgula = milhar.
+function ocelotValorBR(v){
+  let s=String(v==null?'':v).replace(/R\$|\s/gi,'');
+  if(!/^-?[\d.,]+$/.test(s))return NaN;
+  const iv=s.lastIndexOf(','),ip=s.lastIndexOf('.');
+  if(iv>=0&&ip>=0)s=iv>ip?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'');
+  else if(iv>=0)s=s.replace(',','.');
+  else if(ip>=0&&(s.split('.').length>2||/\.\d{3}$/.test(s)))s=s.replace(/\./g,'');
+  const n=Number(s);return isFinite(n)?n:NaN;
+}
 async function ocelotAdiantAdd(forn,mes){
-  const v=prompt('Valor do adiantamento para '+OCN_FORN_NOME[forn]+' ('+dreMesLabel(mes)+'), em R$:');
+  let v=prompt('Valor do adiantamento para '+OCN_FORN_NOME[forn]+' ('+dreMesLabel(mes)+'), em R$ (só o número, ex.: 95,60):');
+  let valor=ocelotValorBR(v);
+  while(v!=null&&!(valor>0)){
+    v=prompt('Valor inválido: "'+v+'".\nDigite só o valor em R$, ex.: 95,60 ou 1.250,00 (a descrição vem na próxima tela):',v);
+    valor=ocelotValorBR(v);
+  }
   if(v==null)return;
-  const valor=Number(String(v).replace(/\./g,'').replace(',','.'));
-  if(!(valor>0)){alert('Valor inválido.');return;}
   const obs=prompt('Observação (opcional):','')||null;
   if(await ocelotFornSet({tipo:'add_adiantamento',fornecedor:forn,mes_competencia:mes,valor:valor,observacao:obs,data:new Date().toISOString().slice(0,10)}))ocelotRepasseRecarrega();
 }
@@ -2717,8 +2730,8 @@ async function registrarReclamacao(fornecedorId){
   const itemId=prompt('Código do item (item_id), se souber (opcional):');
   const valorStr=prompt('Valor do custo de reclamação (R$):');
   if(!valorStr)return;
-  const valor=Number(String(valorStr).replace(',','.'));
-  if(!valor||isNaN(valor)||valor<=0)return alert('Valor inválido.');
+  const valor=ocelotValorBR(valorStr);
+  if(!(valor>0))return alert('Valor inválido: "'+valorStr+'". Digite só o número, ex.: 95,60.');
   const deFornecedor=confirm('Esse custo é culpa do FORNECEDOR?\n\nOK = sim, descontar do próximo pagamento dele\nCancelar = não, o custo é seu (só reduz seu resultado, não mexe no pagamento do fornecedor)');
   const observacao=prompt('Observação (opcional):')||'';
   const mes=new Date().toISOString().slice(0,7)+'-01';

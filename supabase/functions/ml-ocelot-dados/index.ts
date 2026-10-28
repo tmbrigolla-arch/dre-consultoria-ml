@@ -144,8 +144,12 @@ Deno.serve(async(req)=>{
   const semSkuMap:Record<string,any>={};
   function anuncioDe(item_id:string,tituloFallback:string){
     const inf=infoItem[item_id]||{};
-    return {item_id,titulo:inf.titulo||tituloFallback||item_id,preco:inf.preco==null?null:inf.preco,
-            status:inf.status||null,permalink:inf.permalink||permalinkMap[item_id]||null};
+    // 28/10/2026: resp = responsavel pelo CMV do anuncio (mapa ocelot_item_fornecedor, senao palavra-chave
+    // do titulo); a tela de Cadastro mostra e edita por produto.
+    const titulo=inf.titulo||tituloFallback||item_id;
+    return {item_id,titulo,preco:inf.preco==null?null:inf.preco,
+            status:inf.status||null,permalink:inf.permalink||permalinkMap[item_id]||null,
+            resp:COD_FORN[fornecedorPorItem[item_id]||""]||classifyResponsavel(titulo)};
   }
   for(const r of (skuRows||[])){
     skuPorItem[r.item_id]=r.sku||null;

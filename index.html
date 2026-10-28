@@ -1465,7 +1465,7 @@ function htmlOcelotSintetica(){
     h+='</div>';
   }
   h+='</div>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">O pagamento aos fornecedores (repasse, estornos de devolução e adiantamentos) fica na aba <b>Repasse a fornecedores</b>. Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha manual na DRE por venda.</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">O pagamento aos fornecedores (repasse, estornos de devolução e adiantamentos) fica na aba <b>Repasse a fornecedores</b>. Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha na coluna <b>Resp. CMV</b> do Cadastro (por produto).</div>';
   h+='</div>';
   return h;
 }
@@ -1570,15 +1570,6 @@ async function editarCmvOcelot(input,itemId,mes,qtdOrig,sku){
   try{
     const {data:{session}}=await sb.auth.getSession();
     await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(payload)});
-  }catch(e){}
-  await renderOcelot();
-}
-async function editarResponsavelOcelot(select,orderId,itemId){
-  const val=select.value;
-  select.disabled=true;
-  try{
-    const {data:{session}}=await sb.auth.getSession();
-    await fetch(SB_URL+'/functions/v1/ml-ocelot-set',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({tipo:'responsavel',order_id:orderId,item_id:itemId,responsavel_cmv:val})});
   }catch(e){}
   await renderOcelot();
 }
@@ -1735,14 +1726,6 @@ function htmlOcelotVendas(){
     if(it.status==='cancelled'&&!it.devolucao_com_custo)return '—';
     return P(it.cmv_total);
   }
-  // 28/10/2026: coluna "Resp. CMV" saiu (responsavel so importa no Repasse); o seletor continua so
-  // nas devolucoes parciais, embaixo do selo da coluna Origem CMV.
-  function respSelectorCell(it){
-    if(it.status!=='partially_refunded')return '';
-    const cur=it.responsavel_cmv||'ocelot';
-    function opt(v,label){return '<option value="'+v+'"'+(cur===v?' selected':'')+'>'+label+'</option>';}
-    return '<br><select onclick="event.stopPropagation()" onchange="editarResponsavelOcelot(this,\''+it.order_id+'\',\''+it.item_id+'\')" style="padding:2px 4px;border:1px solid var(--line);border-radius:5px;font-size:11.5px">'+opt('ocelot','Custo Ocelot')+opt('miguel','Custo Miguel')+opt('alan','Custo Alan')+'</select>';
-  }
   for(let pi=0;pi<lista.length;pi++){
     const p=lista[pi];
     const multi=p.itens.length>1;
@@ -1751,7 +1734,7 @@ function htmlOcelotVendas(){
     const tituloTxt=p.is_carrinho?('🛒 Carrinho — '+p.itens.length+' itens ('+p.order_ids.length+' pedidos)'):(multi?('Pedido — '+p.itens.length+' itens'):(p.itens[0].titulo||p.itens[0].item_id));
     const titulo=linkVenda(cortaTitulo(tituloTxt,44),p.order_id);
     const mlbColuna=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':linkAnuncio(p.itens[0].item_id,p.itens[0].permalink);
-    const origem=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':origemPill(p.itens[0].cmv_origem,p.status,p.itens[0])+respSelectorCell(p.itens[0]);
+    const origem=multi?'<span style="color:#94a3b8;font-size:11px">expanda</span>':origemPill(p.itens[0].cmv_origem,p.status,p.itens[0]);
     const qtdColuna=multi?p.itens.reduce(function(s,x){return s+Number(x.quantidade||0);},0):p.itens[0].quantidade;
     const cmvColuna=multi?P(p.cmv_total):cmvCell(p.itens[0]);
     h+='<tr'+(multi?' style="cursor:pointer" onclick="toggleOcelotPed(\''+cls+'\')"':'')+'><td class="m" title="'+escH(tituloTxt)+'">'+(multi?'▸ ':'')+dtf(p.data_venda_ts)+' — '+titulo+'</td><td class="ped">'+(p.is_carrinho?linkVenda('🛒 '+p.pack_id+' ('+p.order_ids.length+')',p.order_id):linkVenda(p.order_id,p.order_id))+'</td><td class="mlb">'+mlbColuna+'</td><td>'+P(p.valor_venda)+'</td><td>'+P(p.taxa_ml)+'</td><td>'+P(p.frete_vendedor)+'</td><td>'+(p.valor_devolvido?P(p.valor_devolvido):'—')+'</td><td>'+P(p.valor_liquido)+'</td><td>'+qtdColuna+'</td><td>'+cmvColuna+'</td><td class="org">'+origem+'</td><td>'+(p.tem_breakdown?P(p.imposto_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.ads_valor):'—')+'</td><td>'+(p.tem_breakdown?P(p.custofixo_valor):'—')+'</td><td style="'+(p.resultado<0?'color:#dc2626':'color:#16a34a')+'">'+P(p.resultado)+'</td><td>'+(margem==null?'—':margem.toFixed(1).replace('.',',')+'%')+'</td></tr>';
@@ -1760,7 +1743,7 @@ function htmlOcelotVendas(){
         const it=p.itens[ii];
         const im=it.valor_liquido>0?(it.resultado/it.valor_liquido*100):null;
         const temBk=it.imposto_valor!=null;
-        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2" title="'+escH(it.titulo||it.item_id)+'">— '+linkVenda(cortaTitulo(it.titulo||it.item_id,40),it.order_id)+' (x'+it.quantidade+')</td><td class="ped sub2">'+linkVenda(it.order_id,it.order_id)+'</td><td class="mlb sub2">'+linkAnuncio(it.item_id,it.permalink)+'</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+cmvCell(it)+'</td><td class="org">'+origemPill(it.cmv_origem,it.status,it)+respSelectorCell(it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
+        h+='<tr class="'+cls+'" style="display:none;background:#fafbfd"><td class="m sub2" title="'+escH(it.titulo||it.item_id)+'">— '+linkVenda(cortaTitulo(it.titulo||it.item_id,40),it.order_id)+' (x'+it.quantidade+')</td><td class="ped sub2">'+linkVenda(it.order_id,it.order_id)+'</td><td class="mlb sub2">'+linkAnuncio(it.item_id,it.permalink)+'</td><td>'+P(it.valor_venda)+'</td><td>'+P(it.taxa_ml)+'</td><td>'+P(it.frete_vendedor)+'</td><td>'+(it.valor_devolvido?P(it.valor_devolvido):'—')+'</td><td>'+P(it.valor_liquido)+'</td><td>'+qtdCell(it)+'</td><td>'+cmvCell(it)+'</td><td class="org">'+origemPill(it.cmv_origem,it.status,it)+'</td><td>'+(temBk?P(it.imposto_valor):'—')+'</td><td>'+(temBk?P(it.ads_valor):'—')+'</td><td>'+(temBk?P(it.custofixo_valor):'—')+'</td><td>'+P(it.resultado)+'</td><td>'+(im==null?'—':im.toFixed(1).replace('.',',')+'%')+'</td></tr>';
       }
     }
   }
@@ -2313,6 +2296,39 @@ function htmlExpansaoLinha(l){
   h+='<div id="chist_'+l.k+'">'+htmlHistoricoLinha(l)+'</div>';
   return h;
 }
+// 28/10/2026 (pedido do Tiago): responsavel pelo CMV e definido por produto no Cadastro (antes era por
+// venda, na DRE por venda). Grava no mapa anuncio -> fornecedor (ocelot_item_fornecedor) para todos os
+// anuncios do SKU; vale para as vendas ainda nao pagas ao fornecedor (as ja registradas ficam travadas).
+const OCN_RESP_NOME={ocelot:'Ocelot (Tiago)',miguel:'Miguel',alan:'Alan'};
+function ocelotRespAnuncios(l){
+  if(l.tipo==='sku')return (l.anuncios||[]).map(function(a){return {item_id:a.item_id,resp:a.resp||null};});
+  const x=((OCELOT_CACHE||{}).itens_sem_sku||[]).find(function(y){return y.item_id===l.chave;});
+  return [{item_id:l.chave,resp:x?(x.resp||null):null}];
+}
+function ocelotRespCell(l){
+  const an=ocelotRespAnuncios(l);
+  const vals=Array.from(new Set(an.map(function(a){return a.resp||'';})));
+  const cur=vals.length===1?vals[0]:'misto';
+  let o='';
+  if(cur==='misto')o+='<option value="misto" selected>misto</option>';
+  if(cur==='')o+='<option value="" selected>&mdash;</option>';
+  ['ocelot','miguel','alan'].forEach(function(v){o+='<option value="'+v+'"'+(cur===v?' selected':'')+'>'+OCN_RESP_NOME[v]+'</option>';});
+  return '<select onclick="event.stopPropagation()" onchange="ocelotSalvarResp(this,\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' style="padding:2px 4px;border:1px solid var(--line);border-radius:5px;font-size:12px">'+o+'</select>';
+}
+async function ocelotSalvarResp(sel,k){
+  const l=OCELOT_LINHAS[k]; if(!l||!sel.value||sel.value==='misto')return;
+  const resp=sel.value, fid=OCN_FORN_ID[resp==='ocelot'?'tiago':resp];
+  const an=ocelotRespAnuncios(l);
+  if(!confirm('Responsável pelo CMV de "'+(l.titulo||l.chave)+'" ('+an.length+' anúncio(s)) passa a ser '+OCN_RESP_NOME[resp]+'.\n\nVale para as vendas deste produto que ainda não entraram em repasse registrado.'))return renderOcelotBodyMantendoTela();
+  sel.disabled=true;
+  for(const a of an){if(!(await ocelotFornSet({tipo:'mapear_item',item_id:a.item_id,fornecedor_id:fid}))){sel.disabled=false;return;}}
+  an.forEach(function(a){
+    (l.anuncios||[]).forEach(function(x){if(x.item_id===a.item_id)x.resp=resp;});
+    ((OCELOT_CACHE||{}).itens_sem_sku||[]).forEach(function(x){if(x.item_id===a.item_id)x.resp=resp;});
+  });
+  sel.disabled=false;
+  OCELOT_ALT_CACHE=null; ocelotRecarregaCache();
+}
 function htmlOcelotProdutos(){
   const D=OCELOT_CACHE; if(!D)return '<div class="empty">Sem dados.</div>';
   ocelotLiveGarante();
@@ -2333,7 +2349,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'</tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th title="De quem é o CMV deste produto (vai para o repasse desse fornecedor)">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
   for(let i=0;i<linhas.length;i++){
     const l=linhas[i], k=l.k;
@@ -2354,10 +2370,11 @@ function htmlOcelotProdutos(){
       +'<td class="n">'+faixa+'</td>'
       +'<td class="n">'+estq+'</td>'
       +'<td class="n">'+inp+'</td>'
-      +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td></tr>';
-    h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="8" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
+      +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
+      +'<td>'+ocelotRespCell(l)+'</td></tr>';
+    h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="9" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
-  if(!mostradas)h+='<tr><td class="m" colspan="8" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';
+  if(!mostradas)h+='<tr><td class="m" colspan="9" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';
   h+='</tbody></table></div>';
   h+='</div>';
   return h;

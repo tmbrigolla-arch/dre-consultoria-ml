@@ -1900,7 +1900,11 @@ async function salvarSkuAnuncio(inp,itemId){
       setTimeout(function(){ocelotMoveAnuncioLocal(itemId,real);renderOcelotBodyMantendoTela();},900);
       return;
     }
-    const msg=(j&&j.status==='simulada')?('simulado, NÃO aplicado — '+(j.motivo||'')):((j&&(j.motivo||j.error))||'não gravou');
+    // 28/10/2026: o ML devolve 400 "not_modifiable" para anuncio inativo/encerrado -- mostra o motivo em vez de so o codigo
+    const causa=JSON.stringify((j&&j.resposta&&j.resposta.ml)||'');
+    const msg=(j&&j.status==='simulada')?('simulado, NÃO aplicado — '+(j.motivo||'')):
+      (causa.indexOf('not_modifiable')!==-1?'o ML não deixa alterar este anúncio (inativo ou encerrado). Para mudar o SKU, reative no ML ou crie um anúncio novo.':
+      ((j&&(j.motivo||j.error))||'não gravou'));
     if(st){st.textContent=msg;st.style.color='#fbbf24';}
     inp.value=antigo; inp.disabled=false;
   }catch(e){

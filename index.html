@@ -1874,6 +1874,11 @@ async function salvarSkuAnuncio(inp,itemId){
   const antigo=inp.getAttribute('data-sku')||'';
   if(!novo){alert('Informe o SKU.');inp.value=antigo;return;}
   if(novo===antigo)return;
+  // 28/10/2026 (regra do Tiago): SKU sempre com 5 digitos; SKU novo so o proximo da sequencia
+  // (a trava de formato tambem esta no ml-acao, contas_permissoes.limites.sku_regex).
+  if(!/^[0-9]{5}$/.test(novo)){alert('O SKU precisa ter 5 dígitos (ex.: 00012).');inp.value=antigo;return;}
+  const prox=ocelotProximoSku();
+  if(!ocelotSkuExiste(novo)&&novo!==prox){alert('O SKU '+novo+' ainda não existe. SKU novo segue a sequência: use '+prox+', ou um SKU que já existe se for o mesmo produto.');inp.value=antigo;return;}
   if(!confirm('Gravar o SKU "'+novo+'" no anúncio '+itemId+' do Mercado Livre?'+(antigo?('\n\nSKU atual: '+antigo):'\n\nHoje este anúncio está sem SKU.')+'\n\nO anúncio passa a fazer parte do produto '+novo+' aqui no cadastro.')){inp.value=antigo;return;}
   const st=document.getElementById('skst_'+itemId);
   inp.disabled=true; if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
@@ -1903,9 +1908,14 @@ async function salvarSkuAnuncio(inp,itemId){
     inp.value=antigo; inp.disabled=false;
   }
 }
+function ocelotSkuExiste(sku){return ((OCELOT_CACHE||{}).skus||[]).some(function(x){return x.sku===sku;});}
+function ocelotProximoSku(){
+  let mx=0;((OCELOT_CACHE||{}).skus||[]).forEach(function(x){if(/^[0-9]{5}$/.test(x.sku))mx=Math.max(mx,Number(x.sku));});
+  return String(mx+1).padStart(5,'0');
+}
 function skuInputCell(a){
   const cur=a.sku_atual||'';
-  return '<input value="'+escH(cur)+'" data-sku="'+escH(cur)+'" placeholder="sem SKU" onclick="event.stopPropagation()" onchange="salvarSkuAnuncio(this,\''+a.item_id+'\')" style="width:110px;padding:2px 6px;font-size:12px">'
+  return '<input value="'+escH(cur)+'" data-sku="'+escH(cur)+'" placeholder="sem SKU" title="5 dígitos. SKU novo: '+ocelotProximoSku()+'" onclick="event.stopPropagation()" onchange="salvarSkuAnuncio(this,\''+a.item_id+'\')" style="width:110px;padding:2px 6px;font-size:12px">'
    +'<div id="skst_'+a.item_id+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
 }
 function precoTxt(p){return p==null?'—':('R$ '+cf.format(Number(p)));}

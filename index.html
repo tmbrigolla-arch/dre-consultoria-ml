@@ -1465,7 +1465,7 @@ function htmlOcelotSintetica(){
     h+='</div>';
   }
   h+='</div>';
-  h+='<div class="foot" style="text-align:left;margin-top:10px">O pagamento aos fornecedores (repasse, estornos de devolução e adiantamentos) fica na aba <b>Repasse a fornecedores</b>. Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha na coluna <b>Resp. CMV</b> do Cadastro (por produto).</div>';
+  h+='<div class="foot" style="text-align:left;margin-top:10px">O pagamento aos fornecedores (repasse, estornos de devolução e adiantamentos) fica na aba <b>Repasse a fornecedores</b>. Etiqueta em cada linha mostra de onde vem o número: <b>pedidos</b> = somado das vendas do mês (mesma base da aba "DRE por venda"); <b>fatura ML</b> = cobranças reais da fatura do Mercado Livre; <b>parâmetro</b> = valor cadastrado para o mês. Responsável pelo CMV é definido pelo título do produto (pochete/copo térmico = Tiago; cuba, porta-copo, saboneteira etc. = Miguel; balanço, prateleira, banco, baú = Alan) ou pela escolha de <b>Resp. CMV</b> em cada anúncio no Cadastro.</div>';
   h+='</div>';
   return h;
 }
@@ -2272,7 +2272,7 @@ function htmlExpansaoLinha(l){
     if(!an.length)h+='<div style="font-size:12px;color:var(--muted)">Nenhum an&uacute;ncio na &uacute;ltima coleta.</div>';
     else{
       h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-      h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">MLB</th><th style="text-align:left;padding:3px 6px">An&uacute;ncio</th><th style="text-align:center;padding:3px 6px">Situa&ccedil;&atilde;o</th><th style="text-align:right;padding:3px 6px">Estoque</th><th style="text-align:right;padding:3px 6px">Pre&ccedil;o</th><th style="text-align:right;padding:3px 6px">SKU no ML</th></tr>';
+      h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">MLB</th><th style="text-align:left;padding:3px 6px">An&uacute;ncio</th><th style="text-align:center;padding:3px 6px">Situa&ccedil;&atilde;o</th><th style="text-align:right;padding:3px 6px">Estoque</th><th style="text-align:right;padding:3px 6px">Pre&ccedil;o</th><th style="text-align:right;padding:3px 6px">SKU no ML</th><th style="text-align:left;padding:3px 6px">Resp. CMV</th></tr>';
       for(let i=0;i<an.length;i++){
         const a=an[i]; a.sku_atual=l.chave;
         const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,60))+'</a>'):escH(String(a.titulo||'').slice(0,60));
@@ -2281,7 +2281,8 @@ function htmlExpansaoLinha(l){
           +'<td style="padding:3px 6px;text-align:center">'+ocelotStatusCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotEstoqueCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotPrecoCell(a)+'</td>'
-          +'<td style="padding:3px 6px;text-align:right">'+skuInputCell(a)+'</td></tr>';
+          +'<td style="padding:3px 6px;text-align:right">'+skuInputCell(a)+'</td>'
+          +'<td style="padding:3px 6px">'+ocelotRespSelect(a,l.k)+'</td></tr>';
       }
       h+='</table>';
     }
@@ -2290,43 +2291,46 @@ function htmlExpansaoLinha(l){
     h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncio sem SKU no Mercado Livre</div>';
     h+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preencher o SKU aqui grava no an&uacute;ncio do ML; na pr&oacute;xima coleta ele passa a usar o custo do produto e some desta lista.</div>';
     h+='<div style="display:flex;gap:18px;align-items:flex-start;font-size:12px;flex-wrap:wrap"><div>SKU: '+skuInputCell(a)+'</div>'
-      +'<div>Situa&ccedil;&atilde;o: '+ocelotStatusCell(l.chave)+'</div><div>Estoque: '+ocelotEstoqueCell(l.chave)+'</div><div>Pre&ccedil;o: '+ocelotPrecoCell({item_id:l.chave,preco:l.pmin})+'</div></div>';
+      +'<div>Situa&ccedil;&atilde;o: '+ocelotStatusCell(l.chave)+'</div><div>Estoque: '+ocelotEstoqueCell(l.chave)+'</div><div>Pre&ccedil;o: '+ocelotPrecoCell({item_id:l.chave,preco:l.pmin})+'</div>'
+      +'<div>Resp. CMV: '+ocelotRespSelect(ocelotRespAnuncios(l)[0]||{item_id:l.chave,resp:null},l.k)+'</div></div>';
   }
   h+='<div style="font-size:12.5px;font-weight:600;margin:12px 0 4px">Custos cadastrados por m&ecirc;s</div>';
   h+='<div id="chist_'+l.k+'">'+htmlHistoricoLinha(l)+'</div>';
   return h;
 }
-// 28/10/2026 (pedido do Tiago): responsavel pelo CMV e definido por produto no Cadastro (antes era por
-// venda, na DRE por venda). Grava no mapa anuncio -> fornecedor (ocelot_item_fornecedor) para todos os
-// anuncios do SKU; vale para as vendas ainda nao pagas ao fornecedor (as ja registradas ficam travadas).
-const OCN_RESP_NOME={ocelot:'Ocelot (Tiago)',miguel:'Miguel',alan:'Alan'};
+// 28/10/2026 (pedido do Tiago): responsavel pelo CMV e definido POR ANUNCIO no Cadastro (expandir o
+// produto). Grava no mapa anuncio -> fornecedor (ocelot_item_fornecedor), o mesmo que o ml-ocelot-dados usa;
+// vale para as vendas ainda nao pagas ao fornecedor (as ja registradas num repasse ficam travadas).
+// Na linha do produto a coluna Resp. CMV so resume os anuncios.
+const OCN_RESP_NOME={ocelot:'Tiago',miguel:'Miguel',alan:'Alan'};
 function ocelotRespAnuncios(l){
-  if(l.tipo==='sku')return (l.anuncios||[]).map(function(a){return {item_id:a.item_id,resp:a.resp||null};});
-  const x=((OCELOT_CACHE||{}).itens_sem_sku||[]).find(function(y){return y.item_id===l.chave;});
-  return [{item_id:l.chave,resp:x?(x.resp||null):null}];
+  if(l.tipo==='sku')return l.anuncios||[];
+  return ((OCELOT_CACHE||{}).itens_sem_sku||[]).filter(function(y){return y.item_id===l.chave;});
 }
-function ocelotRespCell(l){
-  const an=ocelotRespAnuncios(l);
-  const vals=Array.from(new Set(an.map(function(a){return a.resp||'';})));
-  const cur=vals.length===1?vals[0]:'misto';
-  let o='';
-  if(cur==='misto')o+='<option value="misto" selected>misto</option>';
-  if(cur==='')o+='<option value="" selected>&mdash;</option>';
+function ocelotRespResumo(l){
+  const cont={};ocelotRespAnuncios(l).forEach(function(a){const r=a.resp||'';cont[r]=(cont[r]||0)+1;});
+  const ks=Object.keys(cont);
+  if(!ks.length)return '<span style="color:var(--muted)">&mdash;</span>';
+  if(ks.length===1)return ks[0]?OCN_RESP_NOME[ks[0]]:'<span style="color:#f87171">sem respons&aacute;vel</span>';
+  return '<span style="color:#fbbf24" title="An&uacute;ncios deste produto com respons&aacute;veis diferentes">'+ks.map(function(r){return (r?OCN_RESP_NOME[r]:'sem')+' '+cont[r];}).join(' &middot; ')+'</span>';
+}
+function ocelotRespSelect(a,k){
+  const cur=a.resp||'';
+  let o=cur?'':'<option value="" selected>&mdash;</option>';
   ['ocelot','miguel','alan'].forEach(function(v){o+='<option value="'+v+'"'+(cur===v?' selected':'')+'>'+OCN_RESP_NOME[v]+'</option>';});
-  return '<select onclick="event.stopPropagation()" onchange="ocelotSalvarResp(this,\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' style="padding:2px 4px;border:1px solid var(--line);border-radius:5px;font-size:12px">'+o+'</select>';
+  return '<select onclick="event.stopPropagation()" onchange="ocelotSalvarResp(this,\''+a.item_id+'\',\''+k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' style="padding:2px 4px;border:1px solid var(--line);border-radius:5px;font-size:12px">'+o+'</select>';
 }
-async function ocelotSalvarResp(sel,k){
-  const l=OCELOT_LINHAS[k]; if(!l||!sel.value||sel.value==='misto')return;
-  const resp=sel.value, fid=OCN_FORN_ID[resp==='ocelot'?'tiago':resp];
-  const an=ocelotRespAnuncios(l);
-  if(!confirm('Responsável pelo CMV de "'+(l.titulo||l.chave)+'" ('+an.length+' anúncio(s)) passa a ser '+OCN_RESP_NOME[resp]+'.\n\nVale para as vendas deste produto que ainda não entraram em repasse registrado.'))return renderOcelotBodyMantendoTela();
+async function ocelotSalvarResp(sel,itemId,k){
+  const resp=sel.value; if(!resp)return;
   sel.disabled=true;
-  for(const a of an){if(!(await ocelotFornSet({tipo:'mapear_item',item_id:a.item_id,fornecedor_id:fid}))){sel.disabled=false;return;}}
-  an.forEach(function(a){
-    (l.anuncios||[]).forEach(function(x){if(x.item_id===a.item_id)x.resp=resp;});
-    ((OCELOT_CACHE||{}).itens_sem_sku||[]).forEach(function(x){if(x.item_id===a.item_id)x.resp=resp;});
-  });
+  const ok=await ocelotFornSet({tipo:'mapear_item',item_id:itemId,fornecedor_id:OCN_FORN_ID[resp==='ocelot'?'tiago':resp]});
   sel.disabled=false;
+  if(!ok){renderOcelotBodyMantendoTela();return;}
+  const D=OCELOT_CACHE||{};
+  (D.skus||[]).forEach(function(s){(s.anuncios||[]).forEach(function(x){if(x.item_id===itemId)x.resp=resp;});});
+  (D.itens_sem_sku||[]).forEach(function(x){if(x.item_id===itemId)x.resp=resp;});
+  const l=OCELOT_LINHAS[k], el=document.getElementById('resp_'+k);
+  if(l&&el)el.innerHTML=ocelotRespResumo(l);
   OCELOT_ALT_CACHE=null; ocelotRecarregaCache();
 }
 function htmlOcelotProdutos(){
@@ -2349,7 +2353,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th title="De quem é o CMV deste produto (vai para o repasse desse fornecedor)">Resp. CMV</th></tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
   for(let i=0;i<linhas.length;i++){
     const l=linhas[i], k=l.k;
@@ -2371,7 +2375,7 @@ function htmlOcelotProdutos(){
       +'<td class="n">'+estq+'</td>'
       +'<td class="n">'+inp+'</td>'
       +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
-      +'<td>'+ocelotRespCell(l)+'</td></tr>';
+      +'<td id="resp_'+k+'">'+ocelotRespResumo(l)+'</td></tr>';
     h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="9" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
   if(!mostradas)h+='<tr><td class="m" colspan="9" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';

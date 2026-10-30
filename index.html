@@ -4273,7 +4273,7 @@ const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso de R$ 40: o desconto sai da 
   comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML',
   desconto_minimo_ml:'Preço baixado para passar do desconto mínimo que o ML exige (relâmpago: mais de 5%)'};
 const PRO_ERROS={abaixo_margem_minima:'resultado da Ocelot negativo',sem_resultado_calculado:'sem resultado calculado (CMV, comissão ou preço)',item_fora_da_campanha:'o item não está mais na campanha',
-  nao_participa:'o item não está participando',estoque_insuficiente:'estoque abaixo do mínimo da relâmpago (ajuste na coluna Estoque)',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
+  nao_participa:'o item não está participando',estoque_insuficiente:'estoque abaixo do mínimo da relâmpago (ajuste na coluna Estoque)',limite_abaixo_minimo:'o "Reservar no máximo" está abaixo do mínimo que o ML exige nessa relâmpago (apague o limite ou suba até o mínimo)',sem_offer_id:'o ML não informou a oferta',sem_preco:'sem preço para a campanha'};
 let PRO={camp:null,pct:null,erro:null,carregando:false,aberta:null,itens:[],info:null,carregandoItens:false,marc:{},filtro:'todos',fres:'todos',busca:'',msg:null,conf:null,executando:false};
 // erro com detalhe (ex.: "estoque_insuficiente (min 5)"): traduz a chave e mantem o detalhe
 function proErro(e){const k=String(e||''),b=k.split(' ')[0];return PRO_ERROS[k]||(PRO_ERROS[b]?PRO_ERROS[b]+k.slice(b.length):k);}

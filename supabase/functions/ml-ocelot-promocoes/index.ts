@@ -1,4 +1,4 @@
-// ml-ocelot-promocoes v5 (25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v6 (30/10/2026: relampago LIGHTNING aplica o desconto minimo mesmo quando o convite traz price (o ML manda price de referencia com menos de 5%), limite da tela abaixo do min do ML tem erro proprio, ML 5xx tenta de novo 1 vez; v5 25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
@@ -185,10 +185,12 @@ Deno.serve(async (req) => {
       const cupomPct = num(x.fixed_percentage);
       let precoCampanha = (num(x.price) || null) ?? num(x.max_discounted_price) ?? num(x.suggested_discounted_price)
         ?? (cheio && cupomPct ? r2(cheio * (1 - cupomPct / 100)) : null);
-      // convite sem preco fixo: se o menor desconto sugerido nao passa do minimo do ML, desce 1 centavo abaixo dele
+      // se o preco nao passa do desconto minimo do ML, desce 1 centavo abaixo dele. Vale tambem quando o convite
+      // traz price: na LIGHTNING o ML manda um price de referencia com menos de 5% (ex.: 181,99 em 189,90, 30/10/2026)
+      // e recusa esse mesmo preco com MINIMUM_DISCOUNT_PERCENT
       const descMin = DESCONTO_MINIMO[promotion_type];
       let ajustadoMin = false;
-      if (descMin && !num(x.price) && cheio && precoCampanha != null && precoCampanha > cheio * (1 - descMin / 100) - 0.005) {
+      if (descMin && cheio && precoCampanha != null && precoCampanha > cheio * (1 - descMin / 100) - 0.005) {
         precoCampanha = Math.floor(cheio * (1 - descMin / 100) * 100 - 1) / 100;
         ajustadoMin = true;
       }
@@ -344,7 +346,9 @@ Deno.serve(async (req) => {
             const qtd = tetos.length ? Math.min(...tetos) : null;
             if (qtd == null || qtd < min) {
               // diz qual teto barrou: estoque do anuncio, maximo do ML ou o limite digitado na tela
-              res.erro = `estoque_insuficiente (min ${min}; anuncio ${est ?? "?"}, max ML ${maxML ?? "-"}, limite da tela ${estoqueMax ?? "-"})`;
+              const semLimite = [est, maxML].filter((t): t is number => t != null);
+              const cabeSemLimite = estoqueMax != null && estoqueMax < min && semLimite.length > 0 && Math.min(...semLimite) >= min;
+              res.erro = cabeSemLimite ? `limite_abaixo_minimo (min ${min}; limite da tela ${estoqueMax})` : `estoque_insuficiente (min ${min}; anuncio ${est ?? "?"}, max ML ${maxML ?? "-"}, limite da tela ${estoqueMax ?? "-"})`;
               await logar(res); return res;
             }
             corpo.stock = qtd;
@@ -357,7 +361,12 @@ Deno.serve(async (req) => {
             if (!res.preco) { res.erro = "sem_preco"; await logar(res); return res; }
             corpo.deal_price = res.preco;
           }
-          const r = await mlc(`/seller-promotions/items/${v.id}?app_version=v2`, { method: "POST", body: JSON.stringify(corpo) });
+          let r = await mlc(`/seller-promotions/items/${v.id}?app_version=v2`, { method: "POST", body: JSON.stringify(corpo) });
+          // ML 5xx ("Oops! Something went wrong") costuma ser instavel do lado dele: tenta de novo uma vez
+          if (!r.ok && r.status >= 500) {
+            await new Promise((ok) => setTimeout(ok, 1500));
+            r = await mlc(`/seller-promotions/items/${v.id}?app_version=v2`, { method: "POST", body: JSON.stringify(corpo) });
+          }
           res.ok = r.ok;
           if (!r.ok) res.erro = erroML(r);
         } else {

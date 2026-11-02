@@ -1,3 +1,6 @@
+// v5.5 (02/11/2026, pedido do Tiago): efetivar aceita forcar_faixa:true -- grava fora da faixa segura (metade a dobro
+//   da tabela) quando a pessoa confirmou na tela, depois de ver o repasse de hoje x o do preco novo. Fica no log
+//   (origem "...+fora_faixa"); no agendamento ("manter") vale ate o cron gravar.
 // v5.4 (02/11/2026, pedido do Tiago): POST { acao:"vendas30" } (ocelot) -> unidades vendidas por MLB nos ultimos 30
 //   dias (data da venda em Brasilia, hoje incluso), sem canceladas. Coluna "Vendas 30d" do Cadastro.
 // v5.3 (02/11/2026, pedido do Tiago): PRECO SUGERIDO por anuncio. POST { acao:"sugerir", item_ids[] } (ocelot, ate 20):
@@ -208,14 +211,18 @@ Deno.serve(async (req) => {
     const itemId = String(body.item_id || "");
     const preco = r2(Number(body.preco));
     const escolha = String(body.promocao || "");
+    const forcar = body.forcar_faixa === true;
     if (!/^MLB\d+$/.test(itemId)) return json({ ok: false, erro: "item_id invalido" }, 400);
     if (!(preco >= 5 && preco <= 100000)) return json({ ok: false, erro: "preco invalido" }, 400);
     const [antes, promos] = await Promise.all([precoAtual(admin, itemId), promocoesAtivas(admin, itemId)]);
     if ((antes as any).erro) return json({ ok: false, erro: (antes as any).erro }, 502);
     const a: any = antes;
     // trava contra erro de digitacao / calculo: no maximo 2x ou metade do preco de tabela atual
-    if (a.tabela > 0 && (preco > a.tabela * 2 || preco < a.tabela / 2))
+    // (v5.5: passa se a pessoa confirmou na tela -- forcar_faixa)
+    const foraFaixa = a.tabela > 0 && (preco > a.tabela * 2 || preco < a.tabela / 2);
+    if (foraFaixa && !forcar)
       return json({ ok: false, erro: `preço fora da faixa segura (preço de tabela atual R$ ${a.tabela.toFixed(2)})` }, 400);
+    const sufixo = foraFaixa ? "+fora_faixa" : "";
     if (promos.erro) return json({ ok: false, erro: `não consegui ler as promoções do anúncio (${promos.erro})` }, 502);
     const lista = promos.lista || [];
     // v5: em promocao o preco so muda com a escolha explicita da pessoa (a tela pergunta)
@@ -226,7 +233,7 @@ Deno.serve(async (req) => {
       await cancelarPendentes(admin, itemId, "substituído por novo agendamento");
       const fins = lista.map((p: any) => p.fim).filter(Boolean).sort();
       const { data: ag, error } = await admin.from("ocelot_precos_agendados").insert({
-        conta_id: OCELOT_CONTA, item_id: itemId, preco, usuario_id: u.id,
+        conta_id: OCELOT_CONTA, item_id: itemId, preco, usuario_id: u.id, forcar_faixa: foraFaixa,
         promocoes: lista.map((p: any) => ({ id: p.id, tipo: p.tipo, nome: p.nome, preco: p.preco, fim: p.fim })),
         fim_previsto: fins.length ? fins[fins.length - 1] : null,
       }).select("id, item_id, preco, fim_previsto, criado_em, status").single();
@@ -241,13 +248,13 @@ Deno.serve(async (req) => {
       if (!sai.ok) {
         await admin.from("ocelot_precos_log").insert({
           conta_id: OCELOT_CONTA, item_id: itemId, preco_anterior: a.tabela, preco_novo: preco, em_promocao: true,
-          usuario_id: u.id, ok: false, origem: "remover_promocao", resposta: `nao saiu da promocao: ${sai.erro}`,
+          usuario_id: u.id, ok: false, origem: "remover_promocao" + sufixo, resposta: `nao saiu da promocao: ${sai.erro}`,
         });
         return json({ ok: false, erro: `não consegui tirar o anúncio da promoção (${sai.erro}); o preço não foi alterado`, promocoes: removidas }, 502);
       }
     }
     await cancelarPendentes(admin, itemId, "substituído por alteração direta de preço");
-    const g = await gravarPreco(admin, itemId, preco, a, u.id, lista.length ? "remover_promocao" : "direto", body.order_id);
+    const g = await gravarPreco(admin, itemId, preco, a, u.id, (lista.length ? "remover_promocao" : "direto") + sufixo, body.order_id);
     return json({ ...g.corpo, promocoes_removidas: removidas }, g.http);
   }
 
@@ -364,10 +371,10 @@ Deno.serve(async (req) => {
       const antes: any = await precoAtual(admin, ag.item_id);
       let st = "erro", obs = "";
       if (antes.erro) obs = antes.erro;
-      else if (antes.tabela > 0 && (Number(ag.preco) > antes.tabela * 2 || Number(ag.preco) < antes.tabela / 2))
+      else if (!ag.forcar_faixa && antes.tabela > 0 && (Number(ag.preco) > antes.tabela * 2 || Number(ag.preco) < antes.tabela / 2))
         obs = `preço fora da faixa segura (preço de tabela atual R$ ${antes.tabela.toFixed(2)}); não aplicado`;
       else {
-        const g = await gravarPreco(admin, ag.item_id, Number(ag.preco), antes, ag.usuario_id, "agendado", null);
+        const g = await gravarPreco(admin, ag.item_id, Number(ag.preco), antes, ag.usuario_id, "agendado" + (ag.forcar_faixa ? "+fora_faixa" : ""), null);
         st = g.corpo.ok || g.corpo.depois ? "aplicado" : "erro";
         obs = g.corpo.ok ? "gravado no ML após o fim da promoção" : (g.corpo.aviso || g.corpo.erro || "");
       }

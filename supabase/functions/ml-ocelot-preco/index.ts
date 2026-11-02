@@ -259,9 +259,12 @@ Deno.serve(async (req) => {
   }
 
   if (body.acao === "sugerir") {
-    const u = await exigirUsuario(admin, req, "ocelot");
-    if (u instanceof Response) return u;
-    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    // so leitura: aceita tambem o segredo do cron (diagnostico pelo servidor), senao exige usuario com "ocelot"
+    if (!(await segredoConfere(admin, "cron_precos", req.headers.get("x-cron-secret")))) {
+      const u = await exigirUsuario(admin, req, "ocelot");
+      if (u instanceof Response) return u;
+      if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    }
     const ids = Array.from(new Set<string>((Array.isArray(body.item_ids) ? body.item_ids : []).map((x: any) => String(x).trim().toUpperCase())))
       .filter((x) => /^MLB\d+$/.test(x)).slice(0, 20);
     const itens: Record<string, any> = {};

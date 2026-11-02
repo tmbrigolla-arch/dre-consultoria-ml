@@ -18,6 +18,8 @@ const CMV_PISO = 40, FRETE_GRATIS_MIN = 79, FRETE_REF_PADRAO = 11.05;
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const final90 = (p: number) => Math.max(0.9, Math.ceil(p - 0.9 + 1e-9) + 0.9);
+// tarifa do ML por tipo|categoria|preco, compartilhada entre anuncios e chamadas (instancia quente); limitada
+const CACHE_TARIFA = new Map<string, number | null>();
 const semAcento = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 export type Margem = {
@@ -63,14 +65,17 @@ export async function contextoMargem(admin: any, conta: string, itemId: string) 
     const r = await ml(admin, conta, `/users/${c.ml_user_id}/shipping_options/free?item_id=${itemId}`);
     freteGratis = r.ok ? num(r.json?.coverage?.all_country?.list_cost) : null;
   }
-  const cacheTarifa: Record<string, number | null> = {};
   async function tarifa(P: number) {
     if (!v.listing_type_id || !v.category_id) return null;
-    const k = r2(P).toFixed(2);
-    if (k in cacheTarifa) return cacheTarifa[k];
-    const r = await ml(admin, conta, `/sites/MLB/listing_prices?price=${k}&listing_type_id=${v.listing_type_id}&category_id=${v.category_id}`);
+    const preco = r2(P).toFixed(2);
+    const k = `${v.listing_type_id}|${v.category_id}|${preco}`;
+    if (CACHE_TARIFA.has(k)) return CACHE_TARIFA.get(k)!;
+    let r = await ml(admin, conta, `/sites/MLB/listing_prices?price=${preco}&listing_type_id=${v.listing_type_id}&category_id=${v.category_id}`);
+    if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 1200)); r = await ml(admin, conta, `/sites/MLB/listing_prices?price=${preco}&listing_type_id=${v.listing_type_id}&category_id=${v.category_id}`); }
     const o = Array.isArray(r.json) ? r.json.find((x: any) => x.listing_type_id === v.listing_type_id) || r.json[0] : r.json;
-    return (cacheTarifa[k] = r.ok ? num(o?.sale_fee_amount) : null);
+    const val = r.ok ? num(o?.sale_fee_amount) : null;
+    if (val != null) { if (CACHE_TARIFA.size > 5000) CACHE_TARIFA.clear(); CACHE_TARIFA.set(k, val); } // erro nao fica em cache
+    return val;
   }
   async function contaEm(P: number, parteMl = 0): Promise<Margem> {
     const tar = await tarifa(P);

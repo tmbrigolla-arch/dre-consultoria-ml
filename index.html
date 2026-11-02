@@ -2435,13 +2435,32 @@ async function ocelotSalvaPreco(inp,id){
     const an=await ocelotPrecoPost({acao:'analisar',item_id:id,preco:novo});
     if(!an.r.ok||!an.j.ok){msg(an.j.erro||('erro '+an.r.status),'#f87171');volta();return;}
     const J=an.j, tab=J.antes?Number(J.antes.tabela):ant;
-    if(J.fora_faixa){alert(J.fora_faixa);msg('');volta();return;}
+    // 02/11/2026 (pedido do Tiago): fora da faixa segura (metade a dobro da tabela) nao bloqueia mais direto:
+    // mostra o repasse de hoje x o repasse no preco novo e pergunta. Sim = grava (forcar_faixa, fica no log);
+    // Nao = mantem o preco atual.
+    let forcar=false;
+    if(J.fora_faixa){
+      const M=J.margem||{}, nv=M.novo, at=(J.em_promocao&&M.promocao)?M.promocao:M.tabela;
+      const pAt=(J.em_promocao&&J.preco_promocao)?J.preco_promocao:tab;
+      const rp=function(m){return m&&m.cmv!=null?precoTxt(m.cmv)+(m.cmv_origem==='piso'?' (piso R$ 40)':''):'—';};
+      const mg=function(m){return m&&m.resultado_pct!=null?' · Ocelot '+String(m.resultado_pct).replace('.',',')+'%':'';};
+      let t='O preço novo está FORA DA FAIXA SEGURA (de metade ao dobro do preço de tabela).\n\n'+id+' · '+String(v.titulo||'').slice(0,60)
+        +'\nPreço de tabela: '+precoTxt(tab)+(J.em_promocao&&J.preco_promocao?'  ·  na promoção o cliente paga '+precoTxt(J.preco_promocao):'')
+        +'\nPreço novo: '+precoTxt(novo)+(tab?' ('+(novo>tab?'+':'')+((novo/tab-1)*100).toFixed(1).replace('.',',')+'% sobre a tabela)':'')
+        +'\n\nRepasse '+(M.fornecedor||'(sem responsável)')+' por unidade:'
+        +'\n   hoje ('+precoTxt(pAt)+'): '+rp(at)+mg(at)
+        +'\n   com '+precoTxt(novo)+': '+rp(nv)+mg(nv);
+      ocelotAvisosMinimo(M).forEach(function(a){t+='\n\n⚠ '+a+'.';});
+      t+='\n\nTrocar o preço mesmo assim?\nOK = trocar   ·   Cancelar = manter o preço atual';
+      if(!confirm(t)){msg('preço mantido','var(--muted)');volta();return;}
+      forcar=true;
+    }
     let escolha=null;
     if(J.em_promocao){
       msg('');
       escolha=await ocelotModalPromo(id,novo,J);
       if(!escolha){volta();return;}
-    }else{
+    }else if(!forcar){ // fora da faixa ja confirmou acima, com o repasse: nao pergunta de novo
       const M=J.margem||{}, mn=M.novo, mt=M.tabela;
       let mg='';
       if(mn&&mn.cmv!=null){
@@ -2452,7 +2471,7 @@ async function ocelotSalvaPreco(inp,id){
       if(!confirm('Mudar o preço de tabela do anúncio '+id+' no Mercado Livre?\n\n'+String(v.titulo||'')+'\n\nHoje: '+precoTxt(tab)+'\nNovo: '+precoTxt(novo)+(tab?(' ('+(novo>tab?'+':'')+((novo/tab-1)*100).toFixed(1).replace('.',',')+'%)'):'')+mg+(J.agendado?'\n\nO preço agendado de '+precoTxt(Number(J.agendado.preco))+' será cancelado.':''))){msg('');volta();return;}
     }
     msg(escolha==='remover'?'saindo da promoção…':(escolha==='manter'?'agendando…':'gravando…'));
-    const corpo={acao:'efetivar',item_id:id,preco:novo}; if(escolha)corpo.promocao=escolha;
+    const corpo={acao:'efetivar',item_id:id,preco:novo}; if(escolha)corpo.promocao=escolha; if(forcar)corpo.forcar_faixa=true;
     const x=await ocelotPrecoPost(corpo), j=x.j;
     if(j.agendado){
       OCELOT_AGENDA[id]=Object.assign({status:'pendente'},j.agendado);

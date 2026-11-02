@@ -258,6 +258,8 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
   #app table.cad th,#app table.cad td{white-space:normal;word-break:break-word;vertical-align:middle}
   #app table.cad td.n,#app table.cad th.n{white-space:nowrap;text-align:right}
   #app table.cad td.m,#app table.cad th.m{width:auto;min-width:150px}
+  #app table.cad th{white-space:nowrap}
+  #app table.cadprod th,#app table.cadprod td{padding:6px 8px}
   #app table.cad td.det{font-size:11.5px;color:var(--muted);line-height:1.5;min-width:230px}
   #app table.cad td.obs{font-size:11.5px;min-width:180px}
   /* impressao / PDF: sempre claro */
@@ -1635,7 +1637,7 @@ function renderOcelotBody(){
   if(ocelotSub==='fornecedores'&&!OCELOT_FORN_CACHE){renderFornecedores();return;}
   if(ocelotSub==='entregas'&&!OCELOT_ENTREGAS_CACHE){renderEntregas();return;}
   const app=document.getElementById('app');
-  app.style.maxWidth=ocelotSub==='vendas'?'none':'';
+  app.style.maxWidth=(ocelotSub==='vendas'||ocelotSub==='config')?'none':''; // 02/11/2026: Cadastro tambem usa a largura toda (tabela larga)
   sincOcelotNav();
   let h='<div id="ocelotBody"></div>';
   app.innerHTML=h;
@@ -2682,7 +2684,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th title="Repasse mínimo por unidade ao fornecedor deste produto. Vazio = padrão R$ 40. O sistema avisa quando um preço ou promoção deixa o repasse abaixo dele.">Repasse mín.</th><th title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. Vazio = padrão R$ 40. O sistema avisa quando um preço ou promoção deixa o repasse abaixo dele.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
   const q=ocelotBuscaNorm(), bates={};
   if(q){
@@ -2713,7 +2715,7 @@ function htmlOcelotProdutos(){
       +'<td class="n">'+inp+'</td>'
       +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
       +'<td class="n">'+ocelotMinimoInput(l)+'</td>'
-      +'<td id="resp_'+k+'">'+ocelotRespResumo(l)+'</td></tr>';
+      +'<td id="resp_'+k+'" style="white-space:nowrap">'+ocelotRespResumo(l)+'</td></tr>';
     h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="10" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
   if(!mostradas)h+='<tr><td class="m" colspan="10" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
@@ -2729,7 +2731,7 @@ function htmlOcelotProdutos(){
 function celulaProduto(l,tit){
   if(l.tipo!=='sku')return tit||'<span style="color:var(--muted)">&mdash;</span>';
   const ap=OCELOT_APELIDOS[l.chave]||'';
-  let h='<input id="ap_'+l.k+'" value="'+escH(ap)+'" placeholder="nome interno deste produto" onclick="event.stopPropagation()" onchange="salvarApelido(\''+l.k+'\')" title="Nome interno do produto. Não altera o título do anúncio no Mercado Livre." style="width:100%;min-width:210px;padding:3px 6px;font-size:12.5px'+(ap?';font-weight:600':'')+'">';
+  let h='<input id="ap_'+l.k+'" value="'+escH(ap)+'" placeholder="nome interno deste produto" onclick="event.stopPropagation()" onchange="salvarApelido(\''+l.k+'\')" title="Nome interno do produto. Não altera o título do anúncio no Mercado Livre." style="width:100%;min-width:190px;padding:3px 6px;font-size:12.5px'+(ap?';font-weight:600':'')+'">';
   h+='<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35">'+escH(String(l.titulo||'').slice(0,58))+'<span id="apst_'+l.k+'" style="margin-left:6px"></span></div>';
   return h;
 }

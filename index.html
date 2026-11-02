@@ -4699,8 +4699,10 @@ function proBuscar(v){
 }
 function proPart(c){
   if(c.elegiveis==null)return '—';if(!c.elegiveis)return '0/0';
-  const p=c.participando/c.elegiveis*100,cor=p>=50?'#22c55e':p>=20?'#f59e0b':'#f87171';
-  return '<span style="color:'+cor+';font-weight:600">'+dvN(c.participando)+'/'+dvN(c.elegiveis)+' · '+p.toLocaleString('pt-BR',{maximumFractionDigits:0})+'%</span>';
+  // 02/11/2026 (pedido do Tiago): cor pela participacao, no % ARREDONDADO que aparece na tela
+  // (assim 9,6% nao aparece "10%" em vermelho): abaixo de 10% vermelho, 10 a 15% amarelo, acima de 15% verde
+  const p=Math.round(c.participando/c.elegiveis*100),cor=p>15?'#22c55e':p>=10?'#f59e0b':'#f87171';
+  return '<span style="color:'+cor+';font-weight:600" title="Vermelho: abaixo de 10% · Amarelo: 10 a 15% · Verde: acima de 15%">'+dvN(c.participando)+'/'+dvN(c.elegiveis)+' · '+p+'%</span>';
 }
 // classe do item, a mesma dos contadores coloridos e dos filtros de resultado
 function proClasse(i){if(i.resultado==null)return 'sem_dado';if(i.resultado<0)return 'prejuizo';return i.cmv_origem!=='formula'?'ocelot_paga':'repasse';}

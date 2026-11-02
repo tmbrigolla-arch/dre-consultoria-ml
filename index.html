@@ -1926,6 +1926,7 @@ function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 let ocelotSkuAberto={};
 function toggleSkuLinhas(k){
   ocelotSkuAberto[k]=!ocelotSkuAberto[k];
+  if(ocelotSkuAberto[k]&&typeof ocelotSugPedirLinha==='function')ocelotSugPedirLinha(k);
   const rows=document.querySelectorAll('.skl_'+k);
   for(let i=0;i<rows.length;i++)rows[i].style.display=ocelotSkuAberto[k]?'':'none';
   const c=document.getElementById('skcar_'+k); if(c)c.innerHTML=ocelotSkuAberto[k]?'&#9662;':'&#9656;';
@@ -2185,7 +2186,15 @@ function ocelotTipoSelo(id){
 // repasse/margem).
 let OCELOT_SUG={}, OCELOT_SUG_FILA={}, OCELOT_SUG_T=null;
 function ocelotSugTab(id){const v=OCELOT_LIVE.itens[id];if(!v)return null;return ocelotPrecoPromoInfo(v)?Number(v.preco_original):(v.preco==null?null:Number(v.preco));}
-function ocelotSugCell(id){if(!OCELOT_SUG[id])ocelotSugPedir(id);return '<span id="sug_'+id+'">'+ocelotSugHtml(id)+'</span>';}
+// 02/11/2026: so pede a sugestao dos anuncios de produto ABERTO (a linha de anuncios existe escondida para todo
+// produto; pedir na montagem enfileirava os ~340 anuncios e o produto aberto ficava no "…" esperando a fila).
+function ocelotSugCell(id){return '<span id="sug_'+id+'">'+ocelotSugHtml(id)+'</span>';}
+function ocelotSugPedirLinha(k){
+  const l=OCELOT_LINHAS[k]; if(!l)return;
+  const ids=l.tipo==='sku'?(l.anuncios||[]).map(function(a){return a.item_id;}):[l.chave];
+  ids.forEach(function(id){if(!OCELOT_SUG[id])ocelotSugPedir(id);});
+}
+function ocelotSugPedirAbertos(){for(const k in ocelotSkuAberto)if(ocelotSkuAberto[k])ocelotSugPedirLinha(k);}
 function ocelotSugHtml(id){
   const g=OCELOT_SUG[id];
   if(!g||g.carregando)return '<span style="color:var(--muted)">&hellip;</span>';
@@ -2799,6 +2808,7 @@ function htmlOcelotProdutos(){
   }
   if(!mostradas)h+='<tr><td class="m" colspan="10" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
   h+='</tbody></table></div>';
+  setTimeout(ocelotSugPedirAbertos,0);
   if(q&&mostradas)h+='<div class="foot" style="text-align:left;margin-top:6px">Busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;: '+mostradas+' de '+linhas.length+' linhas.</div>';
   h+='</div>';
   return h;
@@ -2842,7 +2852,8 @@ function ocelotMinimoInput(l){
 // campo e o aviso sao procurados de novo pelo id (a tabela pode ter sido redesenhada nesse meio tempo).
 function ocelotRepintaSugProduto(l){ // repasse minimo mudou: recalcula a sugestao dos anuncios abertos desse produto
   const ids=l.tipo==='sku'?(l.anuncios||[]).map(function(a){return a.item_id;}):[l.chave];
-  ids.forEach(function(id){delete OCELOT_SUG[id];if(document.getElementById('sug_'+id)){ocelotSugPedir(id);ocelotSugPinta(id);}});
+  ids.forEach(function(id){delete OCELOT_SUG[id];ocelotSugPinta(id);});
+  if(ocelotSkuAberto[l.k])ocelotSugPedirLinha(l.k);
 }
 function ocelotPintaMinimo(k,ch,msg,cor){
   const inp=document.getElementById('rm_'+k), st=document.getElementById('rmst_'+k), v=OCELOT_REPMIN.itens[ch];

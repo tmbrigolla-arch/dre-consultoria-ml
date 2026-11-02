@@ -1,3 +1,5 @@
+// v5.4 (02/11/2026, pedido do Tiago): POST { acao:"vendas30" } (ocelot) -> unidades vendidas por MLB nos ultimos 30
+//   dias (data da venda em Brasilia, hoje incluso), sem canceladas. Coluna "Vendas 30d" do Cadastro.
 // v5.3 (02/11/2026, pedido do Tiago): PRECO SUGERIDO por anuncio. POST { acao:"sugerir", item_ids[] } (ocelot, ate 20):
 //   menor preco (final ,90) em que, mesmo com 5% de desconto de promocao, o repasse pela formula cobre o repasse
 //   minimo do produto (ou o custo cadastrado do mes) e a Ocelot fica com a gestao (5,5%). Ver sugerirPreco.
@@ -267,6 +269,23 @@ Deno.serve(async (req) => {
       } catch (e) { itens[id] = { erro: String((e as Error).message || e) }; }
     });
     return json({ ok: true, itens });
+  }
+
+  if (body.acao === "vendas30") {
+    const u = await exigirUsuario(admin, req, "ocelot");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const hoje = new Date(Date.now() - 3 * 3600_000); // Brasilia (UTC-3)
+    const desde = new Date(hoje.getTime() - 29 * 86400_000).toISOString().slice(0, 10);
+    const itens: Record<string, number> = {};
+    for (let de = 0; de < 50000; de += 1000) {
+      const { data, error } = await admin.from("ocelot_vendas_itens").select("item_id, quantidade")
+        .eq("conta_id", OCELOT_CONTA).gte("data_venda", desde).neq("status", "cancelled").range(de, de + 999);
+      if (error) return json({ ok: false, erro: error.message }, 500);
+      for (const r of data || []) itens[r.item_id] = (itens[r.item_id] || 0) + Number(r.quantidade || 0);
+      if (!data || data.length < 1000) break;
+    }
+    return json({ ok: true, desde, ate: hoje.toISOString().slice(0, 10), itens });
   }
 
   if (body.acao === "minimos") {

@@ -333,6 +333,7 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
   #mSenha{display:none;position:fixed;inset:0;background:rgba(2,6,23,.7);z-index:100;align-items:center;justify-content:center;padding:16px}
   .adm-modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px 22px;width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px}
   .adm-modal h3{margin:0;color:var(--ink)}
+  input.rmin::placeholder{font-style:italic;opacity:.45}
   #toastMsg{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;border:1px solid #374151;border-radius:10px;padding:10px 16px;font-size:13px;z-index:120;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:calc(100vw - 32px)}
   #toastMsg.show{opacity:1;transform:translateX(-50%) translateY(0)}
   @media print{#toastMsg,#mSenha,.noprint{display:none!important}}
@@ -2741,27 +2742,33 @@ async function ocelotCarregaMinimos(){
 function ocelotMinimoChave(l){return (l.tipo==='sku'?'sku:':'mlb:')+l.chave;}
 function ocelotMinimoInput(l){
   const v=OCELOT_REPMIN.itens[ocelotMinimoChave(l)];
-  return '<input id="rm_'+l.k+'" type="text" inputmode="decimal" value="'+(v!=null?Number(v).toFixed(2).replace('.',','):'')+'" placeholder="'+String(OCELOT_REPMIN.padrao).replace('.',',')+'" onclick="event.stopPropagation()" onchange="ocelotSalvaMinimo(\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' title="Repasse mínimo por unidade (vazio = padrão R$ '+OCELOT_REPMIN.padrao+')" style="width:70px;text-align:right'+(v!=null?';border-color:#93c5fd;font-weight:600':'')+'">'
+  return '<input id="rm_'+l.k+'" type="text" inputmode="decimal" value="'+(v!=null?Number(v).toFixed(2).replace('.',','):'')+'" placeholder="'+String(OCELOT_REPMIN.padrao).replace('.',',')+'" onclick="event.stopPropagation()" onchange="ocelotSalvaMinimo(\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' title="Repasse mínimo por unidade (vazio = padrão R$ '+OCELOT_REPMIN.padrao+')" class="rmin" style="width:70px;text-align:right'+(v!=null?';border-color:#93c5fd;font-weight:600':'')+'">'
     +'<div id="rmst_'+l.k+'" style="font-size:10.5px;min-height:12px"></div>';
+}
+// 02/11/2026: o valor entra na memoria NA HORA (antes de o servidor responder). Antes, trocar o mes logo
+// depois de digitar redesenhava a tabela com o valor antigo e o campo ficava vazio. No fim do salvamento o
+// campo e o aviso sao procurados de novo pelo id (a tabela pode ter sido redesenhada nesse meio tempo).
+function ocelotPintaMinimo(k,ch,msg,cor){
+  const inp=document.getElementById('rm_'+k), st=document.getElementById('rmst_'+k), v=OCELOT_REPMIN.itens[ch];
+  if(inp&&document.activeElement!==inp){inp.value=v!=null?Number(v).toFixed(2).replace('.',','):'';inp.style.borderColor=v!=null?'#93c5fd':'';inp.style.fontWeight=v!=null?'600':'';}
+  if(msg!=null)ocelotMsgSt(st,msg,cor);
 }
 async function ocelotSalvaMinimo(k){
   const l=OCELOT_LINHAS[k]; if(!l)return;
-  const inp=document.getElementById('rm_'+k), st=document.getElementById('rmst_'+k), ch=ocelotMinimoChave(l);
+  const inp=document.getElementById('rm_'+k), ch=ocelotMinimoChave(l);
   const ant=OCELOT_REPMIN.itens[ch];
   const bruto=String(inp.value||'').trim().replace(/\s|R\$/g,'');
-  const volta=function(){const a=OCELOT_REPMIN.itens[ch];inp.value=a!=null?Number(a).toFixed(2).replace('.',','):'';};
   let valor=null;
-  if(bruto!==''){valor=Math.round(Number(bruto.indexOf(',')>=0?bruto.replace(/\./g,'').replace(',','.'):bruto)*100)/100;if(!(valor>0)){alert('Valor inválido.');volta();return;}}
-  if((valor==null&&ant==null)||(valor!=null&&ant!=null&&Math.abs(valor-ant)<0.005)){volta();return;}
-  ocelotMsgSt(st,'salvando…');
+  if(bruto!==''){valor=Math.round(Number(bruto.indexOf(',')>=0?bruto.replace(/\./g,'').replace(',','.'):bruto)*100)/100;if(!(valor>0)){alert('Valor inválido.');ocelotPintaMinimo(k,ch);return;}}
+  if((valor==null&&ant==null)||(valor!=null&&ant!=null&&Math.abs(valor-ant)<0.005)){ocelotPintaMinimo(k,ch);return;}
+  const poe=function(x){if(x==null)delete OCELOT_REPMIN.itens[ch];else OCELOT_REPMIN.itens[ch]=x;};
+  poe(valor); ocelotPintaMinimo(k,ch,'salvando…');
   const corpo={acao:'minimo_set',valor:valor}; if(l.tipo==='sku')corpo.sku=l.chave;else corpo.item_id=l.chave;
   try{
     const x=await ocelotPrecoPost(corpo);
-    if(!x.r.ok||!x.j.ok){ocelotMsgSt(st,x.j.erro||'não salvou','#f87171');volta();return;}
-    if(valor==null)delete OCELOT_REPMIN.itens[ch];else OCELOT_REPMIN.itens[ch]=valor;
-    volta(); inp.style.borderColor=valor!=null?'#93c5fd':''; inp.style.fontWeight=valor!=null?'600':'';
-    ocelotMsgSt(st,valor==null?'padrão R$ '+OCELOT_REPMIN.padrao:'salvo',valor==null?'var(--muted)':'#34d399');
-  }catch(e){ocelotMsgSt(st,'erro de rede','#f87171');volta();}
+    if(!x.r.ok||!x.j.ok){poe(ant);ocelotPintaMinimo(k,ch,x.j.erro||'não salvou','#f87171');return;}
+    ocelotPintaMinimo(k,ch,valor==null?'padrão R$ '+OCELOT_REPMIN.padrao:'salvo',valor==null?'var(--muted)':'#34d399');
+  }catch(e){poe(ant);ocelotPintaMinimo(k,ch,'erro de rede','#f87171');}
 }
 async function ocelotCarregaApelidos(){
   try{

@@ -2772,6 +2772,9 @@ async function salvarParametrosOcelot(mes){
 async function fecharMesOcelot(mes){
   if(!confirm('Fechar '+dreMesLabel(mes)+'?\n\nO sistema busca no Mercado Livre o gasto de Ads do mês (1º ao último dia) e calcula o custo fixo ÷ faturamento real. O Ads que o ML lançar depois deste fechamento entra no Ads do mês seguinte. DRE, Dashboard e Repasse de '+dreMesLabel(mes)+' passam a usar esses valores, e o repasse aos fornecedores fica liberado para registro. Dá para reabrir depois.'))return;
   const j=await ocelotParPost({tipo:'fechar_mes',mes_competencia:mes});
+  // 02/11/2026: com a fatura do ML, Ads e custo fixo (com Minha Pagina e tarifas extras) sao % do faturamento liquido
+  if(j&&j.base_fatura){const bf=j.base_fatura,pc=function(v){return Number(v).toFixed(2).replace('.',',')+'%';};
+    alert(dreMesLabel(mes)+' fechado.\n\nFaturamento líquido do mês: '+dreBRL(bf.fat_liquido)+'\nAds (fatura do ML): '+dreBRL(bf.ads_fatura)+' = '+pc(j.ads_pct_congelado)+'\nCusto fixo + Minha Página + tarifas extras: '+dreBRL(Number(j.fixo_pct_calculado)*Number(bf.fat_liquido)/100)+' = '+pc(j.fixo_pct_calculado)+'\n\nO % do repasse cobre imposto, gestão, Ads e esses custos. Agora dá para registrar o repasse.');OCELOT_DRE_CACHE=null;renderOcelot();return;}
   if(j){alert(dreMesLabel(mes)+' fechado.\nCusto fixo: '+Number(j.fixo_pct_calculado).toFixed(2).replace('.',',')+'% de cada venda\nAds: '+Number(j.ads_pct_congelado).toFixed(2).replace('.',',')+'%'+(j.ads_valor_mes!=null?' (gasto de Ads '+dreBRL(j.ads_valor_mes)+(j.ads_ajuste_anterior?' '+(j.ads_ajuste_anterior>0?'+ ':'− ')+dreBRL(Math.abs(j.ads_ajuste_anterior))+' lançados depois do fechamento de '+dreMesLabel(j.ads_ajuste_mes):'')+' ÷ vendas do ML '+dreBRL(j.vendas_ml_mes)+')':'')+'\n\nTodos os relatórios do mês já usam esses valores. Agora dá para registrar o repasse.');OCELOT_DRE_CACHE=null;renderOcelot();}
 }
 async function reabrirMesOcelot(mes){

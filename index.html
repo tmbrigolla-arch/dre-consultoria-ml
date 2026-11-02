@@ -2171,6 +2171,13 @@ function ocelotAgendaHtml(id){
   if(g.status==='erro')return '<div style="font-size:10.5px;color:#f87171;margin-top:2px" title="'+escH(g.obs||'')+'">agendamento falhou: '+escH(String(g.obs||'').slice(0,60))+'</div>';
   return '';
 }
+// 02/11/2026 (pedido do Tiago): tipo do anuncio no ML, lido ao vivo (ml-ocelot-anuncios v7)
+const OCN_TIPO={gold_special:['Clássico','#33455f','#cbd5e1'],gold_pro:['Premium','#7c3aed','#fff'],free:['Grátis','#475569','#e2e8f0']};
+function ocelotTipoSelo(id){
+  const v=OCELOT_LIVE.itens[id], t=v&&v.tipo; if(!t)return '';
+  const x=OCN_TIPO[t]||[t,'#475569','#e2e8f0'];
+  return '<span title="Tipo do anúncio no Mercado Livre ('+escH(t)+')" style="font-size:10px;font-weight:600;background:'+x[1]+';color:'+x[2]+';padding:1px 6px;border-radius:4px;margin-left:4px">'+escH(x[0])+'</span>';
+}
 function ocelotPrecoCell(a){
   const v=OCELOT_LIVE.itens[a.item_id], promo=ocelotPrecoPromoInfo(v);
   const tab=v?(promo?Number(v.preco_original):v.preco):null;
@@ -2612,7 +2619,7 @@ function htmlExpansaoLinha(l){
         const a=an[i]; a.sku_atual=l.chave;
         const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,60))+'</a>'):escH(String(a.titulo||'').slice(0,60));
         const mlb=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id;
-        h+='<tr'+(ocelotBuscaAnuncio(a.item_id)?' style="background:#1e3a5f;outline:1px solid #3b82f6"':'')+'><td style="padding:3px 6px;font-size:11.5px">'+mlb+'</td><td style="padding:3px 6px">'+tit+'</td>'
+        h+='<tr'+(ocelotBuscaAnuncio(a.item_id)?' style="background:#1e3a5f;outline:1px solid #3b82f6"':'')+'><td style="padding:3px 6px;font-size:11.5px;white-space:nowrap">'+mlb+' '+ocelotTipoSelo(a.item_id)+'</td><td style="padding:3px 6px">'+tit+'</td>'
           +'<td style="padding:3px 6px;text-align:center">'+ocelotStatusCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotEstoqueCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotPrecoCell(a)+'</td>'
@@ -2623,7 +2630,7 @@ function htmlExpansaoLinha(l){
     }
   }else{
     const a={item_id:l.chave,sku_atual:''};
-    h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncio sem SKU no Mercado Livre</div>';
+    h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncio sem SKU no Mercado Livre '+ocelotTipoSelo(l.chave)+'</div>';
     h+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preencher o SKU aqui grava no an&uacute;ncio do ML; na pr&oacute;xima coleta ele passa a usar o custo do produto e some desta lista.</div>';
     h+='<div style="display:flex;gap:18px;align-items:flex-start;font-size:12px;flex-wrap:wrap"><div>SKU: '+skuInputCell(a)+'</div>'
       +'<div>Situa&ccedil;&atilde;o: '+ocelotStatusCell(l.chave)+'</div><div>Estoque: '+ocelotEstoqueCell(l.chave)+'</div><div>Pre&ccedil;o: '+ocelotPrecoCell({item_id:l.chave,preco:l.pmin})+'</div>'

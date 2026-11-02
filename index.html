@@ -2236,6 +2236,18 @@ async function ocelotSalvaEstoque(inp,id,vid){
     ocelotLiveAtualiza(id,x.j.depois);
   }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}inp.value=ant;inp.disabled=false;}
 }
+// Depois de gravar um preco, a faixa "Preco no ML" da linha do produto tambem muda (antes so mudava ao recarregar).
+function ocelotRepintaPrecoLinha(id){
+  const D=OCELOT_CACHE||{};
+  for(const k in OCELOT_LINHAS){
+    const l=OCELOT_LINHAS[k]; let s=null;
+    if(l.tipo==='sku'){s=(D.skus||[]).find(function(x){return x.sku===l.chave;});if(!s||!(s.anuncios||[]).some(function(a){return a.item_id===id;}))continue;l.pmin=s.preco_min;l.pmax=s.preco_max;}
+    else if(l.chave===id){const v=OCELOT_LIVE.itens[id];if(v&&v.preco!=null){l.pmin=l.pmax=Number(v.preco);}}
+    else continue;
+    const td=document.getElementById('cpr_'+k);
+    if(td)td.innerHTML=(l.pmin==null)?'<span style="color:var(--muted)">&mdash;</span>':((l.pmin===l.pmax)?precoTxt(l.pmin):(precoTxt(l.pmin)+' a '+precoTxt(l.pmax)));
+  }
+}
 async function ocelotSalvaPreco(inp,id){
   const antS=inp.getAttribute('data-p'), ant=antS===''?null:Number(antS);
   const volta=function(){inp.value=ant==null?'':ant.toFixed(2).replace('.',',');};
@@ -2256,6 +2268,7 @@ async function ocelotSalvaPreco(inp,id){
     inp.setAttribute('data-p',novo);
     if(st){st.textContent=j.ok?('gravado no ML'+(j.depois&&j.depois.em_promocao?' · em promoção: cliente paga '+precoTxt(j.depois.comprador):'')):(j.aviso||'enviado');st.style.color=j.ok?'#34d399':'#fbbf24';}
     if(OCELOT_LIVE.itens[id]){OCELOT_LIVE.itens[id].preco=novo;OCELOT_LIVE.aplicadoEm=null;ocelotLiveAplica();}
+    ocelotRepintaPrecoLinha(id);
   }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}inp.disabled=false;volta();}
 }
 /* ============================================================
@@ -2274,6 +2287,39 @@ async function ocelotSalvaPreco(inp,id){
    ============================================================ */
 let ocelotCustoMes=(new Date().toISOString().slice(0,7));
 let ocelotSoSemCusto=false;
+// BUSCA (02/11/2026, pedido do Tiago): filtra a tabela por MLB, SKU ou nome. MLB acha o produto (SKU) que
+// tem aquele anuncio, abre a linha e destaca o anuncio -- e la que se muda preco/estoque/situacao no ML.
+// Aceita "MLB123...", "mlb-123..." ou so os numeros (6+ digitos, para nao confundir com SKU tipo 00005).
+let ocelotCadBusca='', ocelotCadBuscaTimer=null;
+function ocelotBuscaNorm(){
+  const t=String(ocelotCadBusca||'').trim(); if(!t)return null;
+  const an=t.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const dig=/^(MLB)?\d+$/.test(an)?an.replace(/^MLB/,''):'';
+  return {txt:t.toLowerCase(),an:an,mlb:(dig&&(dig.length>=6||/^MLB/.test(an)))?dig:''};
+}
+function ocelotBuscaAnuncio(itemId,q){q=q||ocelotBuscaNorm();return !!(q&&q.mlb&&String(itemId||'').indexOf(q.mlb)>=0);}
+function ocelotBuscaBate(l,q){
+  if(!q)return {ok:true};
+  const an=ocelotRespAnuncios(l);
+  if(q.mlb){
+    if(l.tipo==='mlb'&&ocelotBuscaAnuncio(l.chave,q))return {ok:true,mlb:true};
+    if(an.some(function(a){return ocelotBuscaAnuncio(a.item_id,q);}))return {ok:true,mlb:true};
+  }
+  if(q.an&&String(l.chave||'').toUpperCase().replace(/[^A-Z0-9]/g,'').indexOf(q.an)>=0)return {ok:true};
+  const nomes=[l.titulo,(l.tipo==='sku'&&OCELOT_APELIDOS[l.chave])||''].concat(an.map(function(a){return a.titulo;}));
+  if(nomes.some(function(n){return String(n||'').toLowerCase().indexOf(q.txt)>=0;}))return {ok:true};
+  return {ok:false};
+}
+function ocelotSetBusca(v){
+  ocelotCadBusca=String(v||'');
+  clearTimeout(ocelotCadBuscaTimer);
+  ocelotCadBuscaTimer=setTimeout(function(){
+    const el=document.getElementById('ocBusca'), pos=el?el.selectionStart:null;
+    renderOcelotBodyMantendoTela();
+    const n=document.getElementById('ocBusca');
+    if(n){n.focus();try{const p=pos==null?n.value.length:pos;n.setSelectionRange(p,p);}catch(e){}}
+  },250);
+}
 let OCELOT_LINHAS={};
 let OCELOT_APELIDOS={};
 // ORDENACAO (18/09/2026): clicar no cabecalho ordena por aquela coluna. 1o clique = maior->menor
@@ -2416,7 +2462,7 @@ function htmlExpansaoLinha(l){
         const a=an[i]; a.sku_atual=l.chave;
         const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,60))+'</a>'):escH(String(a.titulo||'').slice(0,60));
         const mlb=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+a.item_id+'</a>'):a.item_id;
-        h+='<tr><td style="padding:3px 6px;font-size:11.5px">'+mlb+'</td><td style="padding:3px 6px">'+tit+'</td>'
+        h+='<tr'+(ocelotBuscaAnuncio(a.item_id)?' style="background:#1e3a5f;outline:1px solid #3b82f6"':'')+'><td style="padding:3px 6px;font-size:11.5px">'+mlb+'</td><td style="padding:3px 6px">'+tit+'</td>'
           +'<td style="padding:3px 6px;text-align:center">'+ocelotStatusCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotEstoqueCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotPrecoCell(a)+'</td>'
@@ -2487,6 +2533,7 @@ function htmlOcelotProdutos(){
   h+='<div class="sub">Uma linha por produto. O custo &eacute; por <b>SKU</b> e vale para <b>todos os an&uacute;ncios daquele SKU</b> no m&ecirc;s escolhido &mdash; digite na coluna do m&ecirc;s para cadastrar, apague o campo para o produto voltar &agrave; f&oacute;rmula. Clique na linha para ver os an&uacute;ncios e o hist&oacute;rico de custos.'+' Na linha aberta, situa&ccedil;&atilde;o (ativar/pausar), estoque e pre&ccedil;o de cada an&uacute;ncio s&atilde;o alterados <b>direto no Mercado Livre</b>.</div>';
   h+='<div id="ocLiveInfo" style="font-size:12px;margin-top:6px">'+ocelotLiveInfo()+'</div>';
   h+='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:12px 0">';
+  h+='<label style="font-size:12px">Buscar<br><input id="ocBusca" type="search" value="'+escH(ocelotCadBusca)+'" placeholder="MLB, SKU ou nome" oninput="ocelotSetBusca(this.value)" autocomplete="off" style="width:210px"></label>';
   h+='<label style="font-size:12px">M&ecirc;s de compet&ecirc;ncia<br><input type="month" value="'+ocelotCustoMes+'" onchange="ocelotSetCustoMes(this.value)" style="width:158px"></label>';
   h+='<div><button id="btnAplicarCustoRef" onclick="aplicarTodosCustoRef()"'+(repetir?'':' disabled style="display:none"')+' style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Repetir '+repetir+' custo(s) do m&ecirc;s anterior em '+mesBr(mes)+'</button> <span id="stAplicarCustoRef" style="font-size:12px;color:var(--muted)"></span></div>';
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
@@ -2494,9 +2541,17 @@ function htmlOcelotProdutos(){
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
   h+='<div class="cadwrap"><table class="cad"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
+  const q=ocelotBuscaNorm(), bates={};
+  if(q){
+    let nMlb=0;
+    for(let i=0;i<linhas.length;i++){const b=ocelotBuscaBate(linhas[i],q);bates[linhas[i].k]=b;if(b.mlb&&!(ocelotSoSemCusto&&linhas[i].atual))nMlb++;}
+    // busca por MLB com poucos resultados: abre a linha para mostrar o anuncio (e o campo de preco)
+    if(nMlb&&nMlb<=5)for(const kk in bates)if(bates[kk].mlb)ocelotSkuAberto[kk]=true;
+  }
   for(let i=0;i<linhas.length;i++){
     const l=linhas[i], k=l.k;
     if(ocelotSoSemCusto&&l.atual)continue;
+    if(q&&!bates[k].ok)continue;
     mostradas++;
     const selo=(l.tipo==='mlb')?' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>':'';
     const tit=(l.tipo==='mlb'&&l.permalink)?('<a href="'+l.permalink+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:inherit">'+escH(String(l.titulo).slice(0,58))+'</a>'):escH(String(l.titulo).slice(0,58));
@@ -2510,15 +2565,16 @@ function htmlOcelotProdutos(){
       +'<td style="text-align:left">'+celulaProduto(l,tit)+'</td>'
       +'<td class="n">'+nAn+'</td>'
       +'<td class="n">'+l.unid+'</td>'
-      +'<td class="n">'+faixa+'</td>'
+      +'<td class="n" id="cpr_'+k+'">'+faixa+'</td>'
       +'<td class="n">'+estq+'</td>'
       +'<td class="n">'+inp+'</td>'
       +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
       +'<td id="resp_'+k+'">'+ocelotRespResumo(l)+'</td></tr>';
     h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="9" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
-  if(!mostradas)h+='<tr><td class="m" colspan="9" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro.</td></tr>';
+  if(!mostradas)h+='<tr><td class="m" colspan="9" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
   h+='</tbody></table></div>';
+  if(q&&mostradas)h+='<div class="foot" style="text-align:left;margin-top:6px">Busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;: '+mostradas+' de '+linhas.length+' linhas.</div>';
   h+='</div>';
   return h;
 }

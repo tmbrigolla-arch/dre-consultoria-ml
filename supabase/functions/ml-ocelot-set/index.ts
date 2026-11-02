@@ -2,6 +2,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const OCELOT_CONTA="30fa53d4-60c0-40f6-9832-63b4cb313797";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
 function json(o:unknown,s=200){return new Response(JSON.stringify(o),{status:s,headers:{...cors,"Content-Type":"application/json"}});}
+// v10 (02/11/2026): fechar_mes calcula Ads e custo fixo pela fatura do ML sobre o faturamento liquido (ver abaixo).
 // v6 (07/10/2026): fechamento de mes revisado (o botao do Cadastro so enxergava o mes corrente e fechou
 // outubro com 6 dias de venda, travando o custo fixo em 10% de cada venda).
 //  * parametros: recusa alterar mes FECHADO (antes, mudar % de um mes fechado mexia nos numeros dele);
@@ -127,11 +128,23 @@ Deno.serve(async(req)=>{
       ajuste=Math.round((Number(sAnt.ad_spend)-Number(pAnt!.ads_valor_fechamento))*100)/100;
     }
     const adsMes=Number(sMes.ad_spend), vendasMl=Number(sMes.vendas);
-    const adsPctCongelado=Math.max(0,(adsMes+ajuste)/vendasMl*100);
-    const {error}=await supabase.from("ocelot_parametros").upsert({conta_id:OCELOT_CONTA,mes_competencia,custo_fixo_mensal:custoFixo,imposto_pct:p?.imposto_pct??5.5,gestao_pct:p?.gestao_pct??5.5,ads_pct:adsPctCongelado,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,fechado:true,
+    let adsPctCongelado=Math.max(0,(adsMes+ajuste)/vendasMl*100);
+    // v10 (02/11/2026, regra do Tiago): o % do repasse tem de cobrir todos os custos da conta, para sobrar so a
+    // gestao. Com a fatura do ML do mes: Ads = Ads da fatura / faturamento liquido; custo fixo = (fixo + Minha
+    // Pagina + tarifas extras da fatura) / faturamento liquido -- mesma base em que o % e aplicado em cada venda
+    // e mesmos valores que a DRE cobra. Sem fatura, fica a regra anterior (TACoS sobre vendas do ML).
+    let fixoPctFinal=fixoPct, base:any=null;
+    { const {data:bf}=await supabase.rpc("ocelot_base_fechamento",{p_conta:OCELOT_CONTA,p_mes:mes_competencia});
+      if(bf&&bf.tem_fatura&&Number(bf.fat_liquido)>0){
+        base=bf;
+        adsPctCongelado=Math.max(0,Number(bf.ads_fatura)/Number(bf.fat_liquido)*100);
+        fixoPctFinal=Math.min(50,(custoFixo+Number(bf.tarifas_conta||0))/Number(bf.fat_liquido)*100);
+      } }
+    const {error}=await supabase.from("ocelot_parametros").upsert({conta_id:OCELOT_CONTA,mes_competencia,custo_fixo_mensal:custoFixo,imposto_pct:p?.imposto_pct??5.5,gestao_pct:p?.gestao_pct??5.5,ads_pct:adsPctCongelado,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPctFinal,fechado:true,
       ads_valor_fechamento:adsMes,vendas_ml_fechamento:vendasMl,ads_ajuste_anterior:comAjuste?ajuste:null,ads_ajuste_mes:comAjuste?mesAnt:null,atualizado_em:new Date().toISOString()},{onConflict:"conta_id,mes_competencia"});
     if(error)return json({error:error.message},500);
-    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPct,ads_pct_congelado:adsPctCongelado,ads_origem:"tacos_mensal",
+    return json({ok:true,receita_bruta_mes:receitaBruta,receita_liquida_mes:receitaLiquida,fixo_pct_calculado:fixoPctFinal,ads_pct_congelado:adsPctCongelado,ads_origem:base?"fatura_ml":"tacos_mensal",
+      base_fatura:base,
       ads_valor_mes:adsMes,vendas_ml_mes:vendasMl,ads_ajuste_anterior:comAjuste?ajuste:null,ads_ajuste_mes:comAjuste?mesAnt:null});
   }
   if(tipo==="reabrir_mes"){

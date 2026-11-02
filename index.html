@@ -259,7 +259,12 @@ window.addEventListener("load",function(){ setTimeout(__bootFalhou,0); });
   #app table.cad td.n,#app table.cad th.n{white-space:nowrap;text-align:right}
   #app table.cad td.m,#app table.cad th.m{width:auto;min-width:150px}
   #app table.cad th{white-space:nowrap}
-  #app table.cadprod th,#app table.cadprod td{padding:6px 8px}
+  #app table.cadprod th,#app table.cadprod td{padding:6px}
+  /* 02/11/2026: tabela de produtos cabe em tela de notebook (~1366px): cabecalho quebra entre palavras (nunca
+     letra por letra), faixa de preco e ultimo custo podem ir para 2 linhas, SKU e Produto mais estreitos */
+  #app table.cadprod th,#app table.cadprod th.n,#app table.cadprod th.m{white-space:normal;word-break:normal;overflow-wrap:normal}
+  #app table.cadprod td.m,#app table.cadprod th.m{min-width:96px}
+  #app table.cadprod td.n.quebra{white-space:normal;word-break:normal;overflow-wrap:normal}
   #app table.cad td.det{font-size:11.5px;color:var(--muted);line-height:1.5;min-width:230px}
   #app table.cad td.obs{font-size:11.5px;min-width:180px}
   /* impressao / PDF: sempre claro */
@@ -2050,7 +2055,7 @@ function skuInputCell(a){
   return '<input value="'+escH(cur)+'" data-sku="'+escH(cur)+'" placeholder="sem SKU" title="5 dígitos. SKU novo: '+ocelotProximoSku()+'" onclick="event.stopPropagation()" onchange="salvarSkuAnuncio(this,\''+a.item_id+'\')" style="width:110px;padding:2px 6px;font-size:12px">'
    +'<div id="skst_'+a.item_id+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
 }
-function precoTxt(p){return p==null?'—':('R$ '+cf.format(Number(p)));}
+function precoTxt(p){return p==null?'—':('R$\u00a0'+cf.format(Number(p)));} // espaco que nao quebra: "R$" nunca fica longe do valor
 function statusPt(s){const m={active:'ativo',paused:'pausado',closed:'encerrado',under_review:'em revisão',inactive:'inativo'};return m[s]||s||'—';}
 /* ============================================================
    CADASTRO INTEGRADO COM O ML (12/10/2026, pedido do Tiago)
@@ -2566,7 +2571,7 @@ function ocelotLinhasProdutos(){
 }
 function htmlUltimoCusto(l){
   if(!l.ant)return '<span style="color:var(--muted)">&mdash;</span>';
-  let s='R$ '+cf.format(l.ant.custo_unitario)+' <span style="color:var(--muted);font-size:11px">'+mesBr(l.ant.mes_competencia)+'</span>';
+  let s='<span style="white-space:nowrap">R$&nbsp;'+cf.format(l.ant.custo_unitario)+'</span> <span style="color:var(--muted);font-size:11px">'+mesBr(l.ant.mes_competencia)+'</span>';
   if(!l.atual)s+=' <button onclick="event.stopPropagation();aplicarCustoRef(\''+l.k+'\')" style="background:transparent;border:1px solid var(--line);color:var(--ink);padding:2px 8px;border-radius:6px;cursor:pointer;font-size:11px;margin-left:4px">Repetir</button>';
   return s;
 }
@@ -2703,17 +2708,17 @@ function htmlOcelotProdutos(){
     const faixa=(l.pmin==null)?'<span style="color:var(--muted)">&mdash;</span>':((l.pmin===l.pmax)?precoTxt(l.pmin):(precoTxt(l.pmin)+' a '+precoTxt(l.pmax)));
     const eq=ocelotEstoqueLinha(l), estq=eq==null?'<span style="color:var(--muted)">'+(OCELOT_LIVE.carregando?'&hellip;':'&mdash;')+'</span>':(eq===0?'<span style="color:#f87171;font-weight:600">0</span>':String(eq));
     const nAn=l.n+((l.ativos!=null&&l.ativos<l.n)?('<span style="color:var(--muted);font-size:11px"> ('+l.ativos+' ativos)</span>'):'');
-    const inp='<input id="ci_'+k+'" type="number" step="0.01" value="'+(l.atual?Number(l.atual.custo_unitario).toFixed(2):'')+'" placeholder="&mdash;" onclick="event.stopPropagation()" onchange="salvarCustoLinha(\''+k+'\')" style="width:92px;text-align:right'+(l.atual?';border-color:#34d399':'')+'">'
+    const inp='<input id="ci_'+k+'" type="number" step="0.01" value="'+(l.atual?Number(l.atual.custo_unitario).toFixed(2):'')+'" placeholder="&mdash;" onclick="event.stopPropagation()" onchange="salvarCustoLinha(\''+k+'\')" style="width:80px;text-align:right'+(l.atual?';border-color:#34d399':'')+'">'
       +'<div id="cst_'+k+'" style="font-size:10.5px;color:var(--muted);margin-top:2px;min-height:12px"></div>';
     h+='<tr style="cursor:pointer'+((!l.ant&&!l.atual&&!l.unid)?';opacity:.6':'')+'" onclick="toggleSkuLinhas(\''+k+'\')">'
       +'<td class="m"><span id="skcar_'+k+'" style="font-size:10px;opacity:.7">'+(ocelotSkuAberto[k]?'&#9662;':'&#9656;')+'</span> <b>'+escH(l.chave)+'</b>'+selo+'</td>'
       +'<td style="text-align:left">'+celulaProduto(l,tit)+'</td>'
       +'<td class="n">'+nAn+'</td>'
       +'<td class="n">'+l.unid+'</td>'
-      +'<td class="n" id="cpr_'+k+'">'+faixa+'</td>'
+      +'<td class="n quebra" id="cpr_'+k+'">'+faixa+'</td>'
       +'<td class="n">'+estq+'</td>'
       +'<td class="n">'+inp+'</td>'
-      +'<td class="n" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
+      +'<td class="n quebra" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
       +'<td class="n">'+ocelotMinimoInput(l)+'</td>'
       +'<td id="resp_'+k+'" style="white-space:nowrap">'+ocelotRespResumo(l)+'</td></tr>';
     h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="10" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
@@ -2731,7 +2736,7 @@ function htmlOcelotProdutos(){
 function celulaProduto(l,tit){
   if(l.tipo!=='sku')return tit||'<span style="color:var(--muted)">&mdash;</span>';
   const ap=OCELOT_APELIDOS[l.chave]||'';
-  let h='<input id="ap_'+l.k+'" value="'+escH(ap)+'" placeholder="nome interno deste produto" onclick="event.stopPropagation()" onchange="salvarApelido(\''+l.k+'\')" title="Nome interno do produto. Não altera o título do anúncio no Mercado Livre." style="width:100%;min-width:190px;padding:3px 6px;font-size:12.5px'+(ap?';font-weight:600':'')+'">';
+  let h='<input id="ap_'+l.k+'" value="'+escH(ap)+'" placeholder="nome interno deste produto" onclick="event.stopPropagation()" onchange="salvarApelido(\''+l.k+'\')" title="Nome interno do produto. Não altera o título do anúncio no Mercado Livre." style="width:100%;min-width:150px;padding:3px 6px;font-size:12.5px'+(ap?';font-weight:600':'')+'">';
   h+='<div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.35">'+escH(String(l.titulo||'').slice(0,58))+'<span id="apst_'+l.k+'" style="margin-left:6px"></span></div>';
   return h;
 }
@@ -2744,7 +2749,7 @@ async function ocelotCarregaMinimos(){
 function ocelotMinimoChave(l){return (l.tipo==='sku'?'sku:':'mlb:')+l.chave;}
 function ocelotMinimoInput(l){
   const v=OCELOT_REPMIN.itens[ocelotMinimoChave(l)];
-  return '<input id="rm_'+l.k+'" type="text" inputmode="decimal" value="'+(v!=null?Number(v).toFixed(2).replace('.',','):'')+'" placeholder="'+String(OCELOT_REPMIN.padrao).replace('.',',')+'" onclick="event.stopPropagation()" onchange="ocelotSalvaMinimo(\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' title="Repasse mínimo por unidade (vazio = padrão R$ '+OCELOT_REPMIN.padrao+')" class="rmin" style="width:70px;text-align:right'+(v!=null?';border-color:#93c5fd;font-weight:600':'')+'">'
+  return '<input id="rm_'+l.k+'" type="text" inputmode="decimal" value="'+(v!=null?Number(v).toFixed(2).replace('.',','):'')+'" placeholder="'+String(OCELOT_REPMIN.padrao).replace('.',',')+'" onclick="event.stopPropagation()" onchange="ocelotSalvaMinimo(\''+l.k+'\')"'+(pode('editar_cadastro')?'':' disabled')+' title="Repasse mínimo por unidade (vazio = padrão R$ '+OCELOT_REPMIN.padrao+')" class="rmin" style="width:62px;text-align:right'+(v!=null?';border-color:#93c5fd;font-weight:600':'')+'">'
     +'<div id="rmst_'+l.k+'" style="font-size:10.5px;min-height:12px"></div>';
 }
 // 02/11/2026: o valor entra na memoria NA HORA (antes de o servidor responder). Antes, trocar o mes logo

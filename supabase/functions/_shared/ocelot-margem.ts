@@ -10,6 +10,9 @@ import { ml } from "./ocelot.ts";
 
 const MIGUEL_ID = "9e88add9-8405-46db-8bd4-e128ee9ce65a";
 const ALAN_ID = "e7e5a84c-9294-4d80-a251-d3f36dc83d46";
+const FORN_NOME: Record<string, string> = {
+  [MIGUEL_ID]: "Miguel", [ALAN_ID]: "Alan", "91c31303-ab54-43c0-9b36-88b7bd8d5c54": "Tiago",
+};
 const CMV_PISO = 40, FRETE_GRATIS_MIN = 79, FRETE_REF_PADRAO = 11.05;
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -17,7 +20,7 @@ const semAcento = (s: string) => (s || "").toLowerCase().normalize("NFD").replac
 
 export type Margem = {
   preco: number; comissao: number | null; frete: number | null; liquido: number | null;
-  cmv: number | null; cmv_origem: string; retencoes: number | null; resultado: number | null; resultado_pct: number | null;
+  cmv: number | null; cmv_origem: string; repasse_preco: number | null; retencoes: number | null; resultado: number | null; resultado_pct: number | null;
 };
 
 // precos: [{ P, parteMl? }] -> uma Margem por preco, na mesma ordem
@@ -66,20 +69,23 @@ export async function margemOcelot(admin: any, conta: string, itemId: string, pr
     const tar = await tarifa(r2(P));
     const comissao = tar == null ? null : r2(Math.max(0, tar - (parteMl || 0)));
     const frete = P < FRETE_GRATIS_MIN ? FRETE_REF_PADRAO : freteGratis;
-    const vazio: Margem = { preco: P, comissao, frete, liquido: null, cmv: null, cmv_origem: "sem_dados", retencoes: null, resultado: null, resultado_pct: null };
+    const vazio: Margem = { preco: P, comissao, frete, liquido: null, cmv: null, cmv_origem: "sem_dados", repasse_preco: null, retencoes: null, resultado: null, resultado_pct: null };
     if (comissao == null || frete == null) return vazio;
     const liquido = r2(P - comissao - frete);
-    let cmv: number | null, origem: string;
-    if (custoManual != null) { cmv = custoManual; origem = "custo_cadastrado"; }
+    // repasse_preco: o que ESTE preco gera de repasse antes do piso de R$ 40 (pelo piso a Ocelot completa a diferenca)
+    let cmv: number | null, origem: string, repassePreco: number | null = null;
+    if (custoManual != null) { cmv = custoManual; origem = "custo_cadastrado"; repassePreco = custoManual; }
     else if (pct.repasse == null) { cmv = null; origem = "sem_regra"; }
     else {
       const formula = liquido - P * pct.repasse / 100;
+      repassePreco = r2(formula);
       if (temPiso && formula < CMV_PISO) { cmv = CMV_PISO; origem = "piso"; } else { cmv = formula; origem = "formula"; }
     }
     if (cmv == null) return { ...vazio, liquido, cmv_origem: origem };
     const retencoes = r2(P * (pct.imposto + pct.ads + pct.fixo) / 100);
     const resultado = r2(liquido - cmv - retencoes);
-    return { preco: P, comissao, frete, liquido, cmv: r2(cmv), cmv_origem: origem, retencoes, resultado, resultado_pct: P ? r2(resultado / P * 100) : null };
+    return { preco: P, comissao, frete, liquido, cmv: r2(cmv), cmv_origem: origem, repasse_preco: repassePreco, retencoes, resultado, resultado_pct: P ? r2(resultado / P * 100) : null };
   }));
-  return { pct, sku, itens };
+  // repasse = CMV da Ocelot = o que vai para o fornecedor dono do anuncio (ocelot_item_fornecedor)
+  return { pct, sku, itens, fornecedor: fornId ? (FORN_NOME[fornId] || "outro") : null, fornecedor_sugerido: !fornRow?.fornecedor_id && !!fornId };
 }

@@ -1,3 +1,8 @@
+// v5.2 (02/11/2026, pedido do Tiago): REPASSE MINIMO por SKU (ou anuncio sem SKU), padrao R$ 40, em
+//   ocelot_repasse_minimo. POST { acao:"minimos" } (ocelot) lista; { acao:"minimo_set", sku|item_id, valor|null }
+//   (editar_cadastro) grava/apaga. "analisar" devolve margem.repasse_minimo e a tela avisa quando o preco novo ou a
+//   promocao deixam o repasse (o que o preco gera, antes do piso) abaixo do minimo. So aviso: nao muda o pagamento.
+// v5.1 (02/11/2026): analisar devolve tambem o fornecedor do repasse (margem.fornecedor) -- a tela mostra o repasse.
 // v5 (02/11/2026, pedido do Tiago): anuncio em PROMOCAO. A tela chama "analisar" (promocoes ativas, preco que o
 //   comprador paga e a margem da Ocelot no preco novo e na promocao) e pergunta: sair da promocao e gravar agora
 //   (efetivar com promocao:"remover" -> DELETE em /seller-promotions, confere, depois PUT do preco) ou manter
@@ -26,6 +31,7 @@ import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } fr
 import { margemOcelot } from "../_shared/ocelot-margem.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
+const REPASSE_MIN_PADRAO = 40;
 const PISO_UN = 40, FRETE_GRATIS_MIN = 79, MAX_ITENS = 40;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
@@ -177,7 +183,8 @@ Deno.serve(async (req) => {
     let margem: any = null;
     try {
       const m = await margemOcelot(admin, OCELOT_CONTA, itemId, pedidos);
-      margem = { novo: m.itens[0], promocao: pedidos.length === 3 ? m.itens[1] : null, tabela: a.tabela > 0 ? m.itens[m.itens.length - 1] : null, pct: m.pct };
+      const minimo = await repasseMinimo(admin, m.sku, itemId);
+      margem = { repasse_minimo: minimo, novo: m.itens[0], promocao: pedidos.length === 3 ? m.itens[1] : null, tabela: a.tabela > 0 ? m.itens[m.itens.length - 1] : null, pct: m.pct, fornecedor: m.fornecedor, fornecedor_sugerido: m.fornecedor_sugerido };
     } catch (e) { margem = { erro: String((e as Error).message || e) }; }
     const fora = a.tabela > 0 && (preco > a.tabela * 2 || preco < a.tabela / 2);
     return json({
@@ -236,6 +243,34 @@ Deno.serve(async (req) => {
     await cancelarPendentes(admin, itemId, "substituído por alteração direta de preço");
     const g = await gravarPreco(admin, itemId, preco, a, u.id, lista.length ? "remover_promocao" : "direto", body.order_id);
     return json({ ...g.corpo, promocoes_removidas: removidas }, g.http);
+  }
+
+  if (body.acao === "minimos") {
+    const u = await exigirUsuario(admin, req, "ocelot");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const { data } = await admin.from("ocelot_repasse_minimo").select("tipo, chave, valor").eq("conta_id", OCELOT_CONTA).limit(5000);
+    const itens: Record<string, number> = {};
+    for (const r of data || []) itens[`${r.tipo}:${r.chave}`] = Number(r.valor);
+    return json({ ok: true, padrao: REPASSE_MIN_PADRAO, itens });
+  }
+
+  if (body.acao === "minimo_set") {
+    const u = await exigirUsuario(admin, req, "editar_cadastro");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const sku = String(body.sku || "").trim(), item = String(body.item_id || "").trim().toUpperCase();
+    const tipo = sku ? "sku" : "mlb", chave = sku || item;
+    if (!chave || (tipo === "mlb" && !/^MLB\d+$/.test(chave)) || chave.length > 80) return json({ ok: false, erro: "informe sku ou item_id" }, 400);
+    if (body.valor === null || body.valor === "") {
+      await admin.from("ocelot_repasse_minimo").delete().eq("conta_id", OCELOT_CONTA).eq("tipo", tipo).eq("chave", chave);
+      return json({ ok: true, valor: null, padrao: REPASSE_MIN_PADRAO });
+    }
+    const valor = r2(Number(body.valor));
+    if (!(valor > 0 && valor < 100000)) return json({ ok: false, erro: "valor invalido" }, 400);
+    const { error } = await admin.from("ocelot_repasse_minimo").upsert({ conta_id: OCELOT_CONTA, tipo, chave, valor, usuario_id: u.id, atualizado_em: new Date().toISOString() });
+    if (error) return json({ ok: false, erro: error.message }, 500);
+    return json({ ok: true, valor });
   }
 
   if (body.acao === "agendados") {
@@ -354,6 +389,16 @@ async function sairPromocoes(admin: any, itemId: string, lista: any[]) {
     if (!d.erro && !(d.lista || []).length) return { ok: true, resultados };
   }
   return { ok: false, erro: "o ML aceitou a saída, mas a promoção ainda aparece ativa; tente de novo em alguns minutos", resultados };
+}
+
+// minimo do SKU; senao do anuncio; senao o padrao (R$ 40)
+async function repasseMinimo(admin: any, sku: string | null, itemId: string) {
+  const q = (tipo: string, chave: string) => admin.from("ocelot_repasse_minimo").select("valor")
+    .eq("conta_id", OCELOT_CONTA).eq("tipo", tipo).eq("chave", chave).maybeSingle();
+  if (sku) { const { data } = await q("sku", sku); if (data) return { valor: Number(data.valor), origem: "sku" }; }
+  const { data } = await q("mlb", itemId);
+  if (data) return { valor: Number(data.valor), origem: "anuncio" };
+  return { valor: REPASSE_MIN_PADRAO, origem: "padrao" };
 }
 
 async function cancelarPendentes(admin: any, itemId: string, obs: string) {

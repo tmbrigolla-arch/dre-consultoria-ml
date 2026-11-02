@@ -1,3 +1,9 @@
+// v5 (02/11/2026, pedido do Tiago): anuncio em PROMOCAO. A tela chama "analisar" (promocoes ativas, preco que o
+//   comprador paga e a margem da Ocelot no preco novo e na promocao) e pergunta: sair da promocao e gravar agora
+//   (efetivar com promocao:"remover" -> DELETE em /seller-promotions, confere, depois PUT do preco) ou manter
+//   a promocao (promocao:"manter" -> o preco fica em ocelot_precos_agendados e o cron 'ocelot-precos-agendados'
+//   grava quando nenhuma promocao estiver ativa). Sem a escolha, efetivar recusa (409) anuncio em promocao.
+//   POST { acao:"agendados" } lista; { acao:"cancelar_agendado", id }; { acao:"aplicar_agendados" } so o cron.
 // v4 (12/10/2026): efetivar passa a ser chamado pela aba Cadastro (preco por anuncio, saiu da aba Repasse) e
 //   exige a permissao alterar_ml, a mesma da troca de SKU, situacao e estoque (tudo que escreve no anuncio do ML).
 // v3 (12/10/2026): o sugerido e sempre o preco de TABELA, sem descontar promocao (a promocao so e indicada).
@@ -16,11 +22,15 @@
 //   Muda o preco de tabela do anuncio no ML (PUT /items/{id}), confere relendo o anuncio e grava em
 //   ocelot_precos_log (quem, quando, de quanto para quanto, resposta do ML).
 // Token do ML so no servidor. Leitura com permissao "ocelot".
-import { adminClient, CORS, erroML, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
+import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
+import { margemOcelot } from "../_shared/ocelot-margem.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const PISO_UN = 40, FRETE_GRATIS_MIN = 79, MAX_ITENS = 40;
 const r2 = (v: number) => Math.round(v * 100) / 100;
+const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
+// tipos de promocao em que a saida vai com offer_id (mesma lista do ml-ocelot-promocoes)
+const POR_OFERTA = ["SMART", "SMART_LIGHTNING", "PRICE_MATCHING", "PRICE_MATCHING_MELI_ALL", "MARKETPLACE_CAMPAIGN", "UNHEALTHY_STOCK"];
 const final90 = (p: number) => Math.max(0.9, Math.ceil(p - 0.9 + 1e-9) + 0.9);
 
 async function emLotes<T>(lista: T[], n: number, fn: (x: T) => Promise<void>) {
@@ -74,7 +84,7 @@ Deno.serve(async (req) => {
       .filter((x: any) => /^MLB\d+$/.test(String(x?.item_id || "")) && /^\d+$/.test(String(x?.order_id || "")));
 
     const anuncios: Record<string, any> = {};
-    await emLotes(Array.from(new Set(itens.map((x: any) => String(x.item_id)))), 6, async (id) => {
+    await emLotes(Array.from(new Set<string>(itens.map((x: any) => String(x.item_id)))), 6, async (id: string) => {
       try { anuncios[id] = await precoAtual(admin, id); } catch (e) { anuncios[id] = { erro: String((e as Error).message || e) }; }
     });
 
@@ -143,7 +153,9 @@ Deno.serve(async (req) => {
     return json({ ok: true, itens: out });
   }
 
-  if (body.acao === "efetivar") {
+  // ---------------------------------------------------------------- v5: promocao ativa
+  // analisar: antes de gravar, a tela pergunta o que fazer quando o anuncio esta em promocao e mostra a margem
+  if (body.acao === "analisar") {
     const u = await exigirUsuario(admin, req, "alterar_ml");
     if (u instanceof Response) return u;
     if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
@@ -151,29 +163,206 @@ Deno.serve(async (req) => {
     const preco = r2(Number(body.preco));
     if (!/^MLB\d+$/.test(itemId)) return json({ ok: false, erro: "item_id invalido" }, 400);
     if (!(preco >= 5 && preco <= 100000)) return json({ ok: false, erro: "preco invalido" }, 400);
-    const antes = await precoAtual(admin, itemId);
+    const [antes, promos] = await Promise.all([precoAtual(admin, itemId), promocoesAtivas(admin, itemId)]);
+    if ((antes as any).erro) return json({ ok: false, erro: (antes as any).erro }, 502);
+    const a: any = antes;
+    const lista = promos.lista || [];
+    // preco que o comprador paga hoje e quanto o ML banca dele (co-participacao), para a margem na promocao
+    const p0 = lista[0] || null;
+    const precoPromo = a.em_promocao ? a.comprador : (p0?.preco ?? null);
+    const parteMl = p0?.meli_pct && (p0.original ?? a.tabela) ? r2((p0.original ?? a.tabela) * p0.meli_pct / 100) : 0;
+    const pedidos: { P: number; parteMl?: number }[] = [{ P: preco }];
+    if (precoPromo && (lista.length || a.em_promocao)) pedidos.push({ P: precoPromo, parteMl });
+    if (a.tabela > 0) pedidos.push({ P: a.tabela });
+    let margem: any = null;
+    try {
+      const m = await margemOcelot(admin, OCELOT_CONTA, itemId, pedidos);
+      margem = { novo: m.itens[0], promocao: pedidos.length === 3 ? m.itens[1] : null, tabela: a.tabela > 0 ? m.itens[m.itens.length - 1] : null, pct: m.pct };
+    } catch (e) { margem = { erro: String((e as Error).message || e) }; }
+    const fora = a.tabela > 0 && (preco > a.tabela * 2 || preco < a.tabela / 2);
+    return json({
+      ok: true, antes: a, em_promocao: lista.length > 0 || !!a.em_promocao, promocoes: lista,
+      promocoes_erro: promos.erro || null, preco_promocao: precoPromo, margem,
+      fora_faixa: fora ? `preço fora da faixa segura (preço de tabela atual R$ ${a.tabela.toFixed(2)})` : null,
+      agendado: await agendadoPendente(admin, itemId),
+    });
+  }
+
+  if (body.acao === "efetivar") {
+    const u = await exigirUsuario(admin, req, "alterar_ml");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const itemId = String(body.item_id || "");
+    const preco = r2(Number(body.preco));
+    const escolha = String(body.promocao || "");
+    if (!/^MLB\d+$/.test(itemId)) return json({ ok: false, erro: "item_id invalido" }, 400);
+    if (!(preco >= 5 && preco <= 100000)) return json({ ok: false, erro: "preco invalido" }, 400);
+    const [antes, promos] = await Promise.all([precoAtual(admin, itemId), promocoesAtivas(admin, itemId)]);
     if ((antes as any).erro) return json({ ok: false, erro: (antes as any).erro }, 502);
     const a: any = antes;
     // trava contra erro de digitacao / calculo: no maximo 2x ou metade do preco de tabela atual
     if (a.tabela > 0 && (preco > a.tabela * 2 || preco < a.tabela / 2))
       return json({ ok: false, erro: `preço fora da faixa segura (preço de tabela atual R$ ${a.tabela.toFixed(2)})` }, 400);
-    // anuncio com variacoes: o preco vai em cada variacao (o ML exige o mesmo preco em todas)
-    let corpo: any = { price: preco };
-    if (a.n_variacoes > 0) {
-      const v = await ml(admin, OCELOT_CONTA, `/items/${itemId}?attributes=variations`);
-      corpo = { variations: (v.json?.variations || []).map((z: any) => ({ id: z.id, price: preco })) };
+    if (promos.erro) return json({ ok: false, erro: `não consegui ler as promoções do anúncio (${promos.erro})` }, 502);
+    const lista = promos.lista || [];
+    // v5: em promocao o preco so muda com a escolha explicita da pessoa (a tela pergunta)
+    if (lista.length && escolha !== "remover" && escolha !== "manter")
+      return json({ ok: false, em_promocao: true, promocoes: lista, erro: "anúncio em promoção: escolha sair da promoção ou manter" }, 409);
+
+    if (lista.length && escolha === "manter") {
+      await cancelarPendentes(admin, itemId, "substituído por novo agendamento");
+      const fins = lista.map((p: any) => p.fim).filter(Boolean).sort();
+      const { data: ag, error } = await admin.from("ocelot_precos_agendados").insert({
+        conta_id: OCELOT_CONTA, item_id: itemId, preco, usuario_id: u.id,
+        promocoes: lista.map((p: any) => ({ id: p.id, tipo: p.tipo, nome: p.nome, preco: p.preco, fim: p.fim })),
+        fim_previsto: fins.length ? fins[fins.length - 1] : null,
+      }).select("id, item_id, preco, fim_previsto, criado_em, status").single();
+      if (error) return json({ ok: false, erro: `não agendou: ${error.message}` }, 500);
+      return json({ ok: true, agendado: ag, antes: a });
     }
-    const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify(corpo) });
-    const depois: any = r.ok ? await precoAtual(admin, itemId) : null;
-    const ok = r.ok && depois && !depois.erro && Math.abs(Number(depois.tabela) - preco) < 0.01;
-    await admin.from("ocelot_precos_log").insert({
-      conta_id: OCELOT_CONTA, item_id: itemId, order_id: /^\d+$/.test(String(body.order_id || "")) ? Number(body.order_id) : null,
-      preco_anterior: a.tabela, preco_novo: preco, em_promocao: a.em_promocao, usuario_id: u.id, ok,
-      resposta: r.ok ? null : erroML(r),
-    });
-    if (!r.ok) return json({ ok: false, erro: erroML(r) }, 502);
-    return json({ ok, antes: a, depois, aviso: ok ? null : "o ML aceitou, mas o preço relido ainda não é o novo (pode levar alguns minutos)" });
+
+    let removidas: any[] = [];
+    if (lista.length) {
+      const sai = await sairPromocoes(admin, itemId, lista);
+      removidas = sai.resultados;
+      if (!sai.ok) {
+        await admin.from("ocelot_precos_log").insert({
+          conta_id: OCELOT_CONTA, item_id: itemId, preco_anterior: a.tabela, preco_novo: preco, em_promocao: true,
+          usuario_id: u.id, ok: false, origem: "remover_promocao", resposta: `nao saiu da promocao: ${sai.erro}`,
+        });
+        return json({ ok: false, erro: `não consegui tirar o anúncio da promoção (${sai.erro}); o preço não foi alterado`, promocoes: removidas }, 502);
+      }
+    }
+    await cancelarPendentes(admin, itemId, "substituído por alteração direta de preço");
+    const g = await gravarPreco(admin, itemId, preco, a, u.id, lista.length ? "remover_promocao" : "direto", body.order_id);
+    return json({ ...g.corpo, promocoes_removidas: removidas }, g.http);
   }
 
-  return json({ ok: false, erro: "acao invalida (use consultar|efetivar)" }, 400);
+  if (body.acao === "agendados") {
+    const u = await exigirUsuario(admin, req, "ocelot");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const desde = new Date(Date.now() - 3 * 86400_000).toISOString();
+    const { data } = await admin.from("ocelot_precos_agendados")
+      .select("id, item_id, preco, promocoes, fim_previsto, status, criado_em, verificado_em, aplicado_em, obs")
+      .eq("conta_id", OCELOT_CONTA).or(`status.eq.pendente,and(status.in.(aplicado,erro),aplicado_em.gte.${desde})`)
+      .order("criado_em", { ascending: false }).limit(500);
+    return json({ ok: true, agendados: data || [] });
+  }
+
+  if (body.acao === "cancelar_agendado") {
+    const u = await exigirUsuario(admin, req, "alterar_ml");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    const id = Number(body.id);
+    if (!Number.isInteger(id)) return json({ ok: false, erro: "id invalido" }, 400);
+    const { data } = await admin.from("ocelot_precos_agendados").update({ status: "cancelado", obs: "cancelado na tela" })
+      .eq("id", id).eq("conta_id", OCELOT_CONTA).eq("status", "pendente").select("id");
+    return json({ ok: !!(data && data.length) });
+  }
+
+  // cron 'ocelot-precos-agendados' (a cada 15 min, so quando ha pendente): grava o preco agendado de cada
+  // anuncio cuja promocao ja terminou. Se o anuncio entrou em outra promocao, continua esperando.
+  if (body.acao === "aplicar_agendados") {
+    if (!(await segredoConfere(admin, "cron_precos", req.headers.get("x-cron-secret"))))
+      return json({ ok: false, erro: "nao autorizado" }, 401);
+    const { data: pend } = await admin.from("ocelot_precos_agendados").select("*")
+      .eq("conta_id", OCELOT_CONTA).eq("status", "pendente").order("criado_em").limit(30);
+    const out: any[] = [];
+    for (const ag of pend || []) {
+      const agora = new Date().toISOString();
+      const promos = await promocoesAtivas(admin, ag.item_id);
+      if (promos.erro) {
+        await admin.from("ocelot_precos_agendados").update({ verificado_em: agora, obs: `leitura das promoções falhou: ${promos.erro}` }).eq("id", ag.id);
+        out.push({ id: ag.id, espera: "erro_leitura" }); continue;
+      }
+      if ((promos.lista || []).length) {
+        const p = promos.lista![0];
+        await admin.from("ocelot_precos_agendados").update({
+          verificado_em: agora, obs: `aguardando fim da promoção ${p.nome || p.tipo}${p.fim ? " (até " + String(p.fim).slice(0, 10) + ")" : ""}`,
+        }).eq("id", ag.id);
+        out.push({ id: ag.id, espera: "em_promocao" }); continue;
+      }
+      const antes: any = await precoAtual(admin, ag.item_id);
+      let st = "erro", obs = "";
+      if (antes.erro) obs = antes.erro;
+      else if (antes.tabela > 0 && (Number(ag.preco) > antes.tabela * 2 || Number(ag.preco) < antes.tabela / 2))
+        obs = `preço fora da faixa segura (preço de tabela atual R$ ${antes.tabela.toFixed(2)}); não aplicado`;
+      else {
+        const g = await gravarPreco(admin, ag.item_id, Number(ag.preco), antes, ag.usuario_id, "agendado", null);
+        st = g.corpo.ok || g.corpo.depois ? "aplicado" : "erro";
+        obs = g.corpo.ok ? "gravado no ML após o fim da promoção" : (g.corpo.aviso || g.corpo.erro || "");
+      }
+      await admin.from("ocelot_precos_agendados").update({ status: st, verificado_em: agora, aplicado_em: agora, obs }).eq("id", ag.id);
+      out.push({ id: ag.id, status: st, obs });
+    }
+    return json({ ok: true, processados: out });
+  }
+
+  return json({ ok: false, erro: "acao invalida (use consultar|analisar|efetivar|agendados|cancelar_agendado)" }, 400);
 });
+
+// PUT do preco de tabela + releitura + log (efetivar direto, saindo da promocao, ou pelo agendamento)
+async function gravarPreco(admin: any, itemId: string, preco: number, a: any, uid: string | null, origem: string, orderId: unknown) {
+  // anuncio com variacoes: o preco vai em cada variacao (o ML exige o mesmo preco em todas)
+  let corpo: any = { price: preco };
+  if (a.n_variacoes > 0) {
+    const v = await ml(admin, OCELOT_CONTA, `/items/${itemId}?attributes=variations`);
+    corpo = { variations: (v.json?.variations || []).map((z: any) => ({ id: z.id, price: preco })) };
+  }
+  const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify(corpo) });
+  const depois: any = r.ok ? await precoAtual(admin, itemId) : null;
+  const ok = r.ok && depois && !depois.erro && Math.abs(Number(depois.tabela) - preco) < 0.01;
+  await admin.from("ocelot_precos_log").insert({
+    conta_id: OCELOT_CONTA, item_id: itemId, order_id: /^\d+$/.test(String(orderId || "")) ? Number(orderId) : null,
+    preco_anterior: a.tabela, preco_novo: preco, em_promocao: a.em_promocao, usuario_id: uid, ok, origem,
+    resposta: r.ok ? null : erroML(r),
+  });
+  if (!r.ok) return { http: 502, corpo: { ok: false, erro: erroML(r) } as any };
+  return { http: 200, corpo: { ok, antes: a, depois, aviso: ok ? null : "o ML aceitou, mas o preço relido ainda não é o novo (pode levar alguns minutos)" } as any };
+}
+
+// Promocoes ATIVAS (status started) do anuncio, pela API de promocoes do vendedor (v2).
+async function promocoesAtivas(admin: any, itemId: string): Promise<{ lista?: any[]; erro?: string }> {
+  const r = await ml(admin, OCELOT_CONTA, `/seller-promotions/items/${itemId}?app_version=v2`, { headers: { version: "v2" } });
+  if (r.status === 404) return { lista: [] };
+  if (!r.ok) return { erro: erroML(r) };
+  const lista = (Array.isArray(r.json) ? r.json : []).filter((p: any) => p?.status === "started").map((p: any) => ({
+    id: p.id ?? null, tipo: p.type ?? null, nome: p.name ?? null,
+    preco: num(p.price), original: num(p.original_price), inicio: p.start_date ?? null, fim: p.finish_date ?? p.end_date ?? null,
+    offer_id: p.offer_id ?? p.ref_id ?? null, meli_pct: num(p.meli_percentage), seller_pct: num(p.seller_percentage),
+  }));
+  return { lista };
+}
+
+// Tira o anuncio de cada promocao ativa (mesmo DELETE da tela Promocoes, acao sair) e confere relendo.
+async function sairPromocoes(admin: any, itemId: string, lista: any[]) {
+  const resultados: any[] = [];
+  for (const p of lista) {
+    const q = new URLSearchParams({ promotion_type: String(p.tipo || ""), app_version: "v2" });
+    if (p.id) q.set("promotion_id", String(p.id));
+    if (p.offer_id && POR_OFERTA.includes(p.tipo)) q.set("offer_id", String(p.offer_id));
+    const r = await ml(admin, OCELOT_CONTA, `/seller-promotions/items/${itemId}?${q}`, { method: "DELETE", headers: { version: "v2" } });
+    resultados.push({ id: p.id, tipo: p.tipo, ok: r.ok, erro: r.ok ? null : erroML(r) });
+  }
+  const falhas = resultados.filter((x) => !x.ok);
+  if (falhas.length) return { ok: false, erro: falhas.map((x) => `${x.tipo}: ${x.erro}`).join("; "), resultados };
+  // o ML pode levar alguns segundos para refletir a saida
+  for (let i = 0; i < 3; i++) {
+    await new Promise((ok) => setTimeout(ok, 1500));
+    const d = await promocoesAtivas(admin, itemId);
+    if (!d.erro && !(d.lista || []).length) return { ok: true, resultados };
+  }
+  return { ok: false, erro: "o ML aceitou a saída, mas a promoção ainda aparece ativa; tente de novo em alguns minutos", resultados };
+}
+
+async function cancelarPendentes(admin: any, itemId: string, obs: string) {
+  await admin.from("ocelot_precos_agendados").update({ status: "cancelado", obs })
+    .eq("conta_id", OCELOT_CONTA).eq("item_id", itemId).eq("status", "pendente");
+}
+
+async function agendadoPendente(admin: any, itemId: string) {
+  const { data } = await admin.from("ocelot_precos_agendados").select("id, preco, fim_previsto, criado_em")
+    .eq("conta_id", OCELOT_CONTA).eq("item_id", itemId).eq("status", "pendente").order("criado_em", { ascending: false }).limit(1);
+  return (data || [])[0] || null;
+}

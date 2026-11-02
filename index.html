@@ -794,7 +794,7 @@ async function salvarCusto(btn){
 }
 
 let ocelotSub=(function(){var s=localStorage.getItem('ocelot_sub');return (s==='entregas'||s==='fornecedores')?'config':(s==='dre'||s==='detalhada')?'sintetica':(s||'vendas');})();let OCELOT_CACHE=null;
-let OCELOT_ENTREGAS_CACHE=null;let OCELOT_DRE_CACHE=null;let OCELOT_ALT_CACHE=null;const OCELOT_CONTA_ID='30fa53d4-60c0-40f6-9832-63b4cb313797';let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
+let OCELOT_ENTREGAS_CACHE=null;let OCELOT_DRE_CACHE=null;let OCELOT_ALT_CACHE=null;let OCELOT_FOTOS_CACHE=null;const OCELOT_CONTA_ID='30fa53d4-60c0-40f6-9832-63b4cb313797';let ocelotEntregasFiltro=(localStorage.getItem('ocelot_ent_filtro')||'a_entregar');
 let ocelotEntregasStatusFiltro=(localStorage.getItem('ocelot_ent_status')||null);
 const ENT_STATUS_LABEL={pending:'Aguardando (fabricação/pagamento)',ready_to_ship:'Pronto para envio',shipped:'A caminho',delivered:'Entregue',not_delivered:'Tentativa de entrega falhou',cancelled:'Cancelado'};
 const ENT_STATUS_COR={pending:'#f59e0b',ready_to_ship:'#0891b2',shipped:'#1F4E79',delivered:'#16a34a',not_delivered:'#dc2626',cancelled:'#94a3b8'};
@@ -985,6 +985,65 @@ async function carregaOcelotAlt(mes){
   OCELOT_ALT_CACHE=Object.assign({itens:[]},OCELOT_ALT_CACHE||{},{chave:chave});
   renderOcelotBody();
 }
+// 02/11/2026: foto de cada venda no fechamento do repasse (receita, devolucao, tarifa, frete, liquido e CMV pago).
+// Serve para (a) congelar a DRE de um mes com repasse registrado e (b) calcular, no mes seguinte, o efeito das
+// vendas de meses anteriores que mudaram depois (devolvidas, cobertas pelo ML, que ficaram fora do fechamento).
+async function carregaOcelotFotos(){
+  try{
+    const {data,error}=await sb.rpc('ocelot_fotos_fechamento',{p_de:OCN_ESTORNO_DESDE,p_ate:'2999-01-01'});
+    if(error)throw error;
+    const m={};(data||[]).forEach(function(r){m[String(r.order_id)+'|'+r.item_id]=r;});
+    OCELOT_FOTOS_CACHE={porVenda:m};
+  }catch(e){OCELOT_FOTOS_CACHE={porVenda:{},erro:String(e&&e.message||e)};}
+  renderOcelotBody();
+}
+function ocelotFoto(it){const F=OCELOT_FOTOS_CACHE&&OCELOT_FOTOS_CACHE.porVenda;return F?(F[String(it.order_id)+'|'+it.item_id]||null):null;}
+// fornecedor da venda: o gravado no fechamento, senao o responsavel pelo CMV
+function ocelotFornDaVenda(it){
+  if(it.cmv_pago_fornecedor_id)return it.cmv_pago_fornecedor_id;
+  const k={miguel:'miguel',alan:'alan',ocelot:'tiago'}[it.responsavel_cmv];return k?OCN_FORN_ID[k]:null;
+}
+function ocelotRepRegistrado(fid,mes){const D=OCELOT_CACHE||{};return !!(D.repasses||[]).find(function(r){return r.fornecedor_id===fid&&r.mes_competencia===mes&&r.pago;});}
+// mes em que o acerto de uma venda anterior entra: o do registro (se ja aplicado), senao o 1o mes depois da venda
+// sem repasse registrado para aquele fornecedor -- o mesmo mes em que a aba Repasse mostra o desconto
+function ocelotMesDoAcerto(it,fid){
+  const ap=((OCELOT_CACHE||{}).estornos_aplicados||[]).find(function(a){return a.fornecedor_id===fid&&String(a.order_id)===String(it.order_id)&&a.item_id===it.item_id;});
+  if(ap)return {mes:ap.mes_absorcao,dif:Number(ap.diferenca||0)};
+  let m=ocelotMesSeguinte(it.mes_competencia);
+  for(let i=0;i<36&&ocelotRepRegistrado(fid,m);i++)m=ocelotMesSeguinte(m);
+  return {mes:m,dif:null};
+}
+// Acertos de vendas de meses anteriores que entram na DRE do mes: diferenca entre a venda hoje e a foto do fechamento.
+//  dev = repasse descontado do fornecedor (devolucao, cancelamento): a receita sai neste mes
+//  pag = repasse a pagar (venda que ficou fora do fechamento, mediacao coberta pelo ML): a receita entra neste mes
+function ocelotAcertosDoMes(mes){
+  const A=OCELOT_ALT_CACHE||{};const r={dev:{n:0,ef:0,tf:0,liq:0,rep:0,orig:{}},pag:{n:0,ef:0,tf:0,liq:0,rep:0,orig:{}},itens:[],semFoto:0};
+  (A.itens||[]).forEach(function(it){
+    if(!(it.mes_competencia<mes))return;
+    const fid=ocelotFornDaVenda(it);if(!fid)return;
+    const alvo=ocelotMesDoAcerto(it,fid);if(alvo.mes!==mes)return;
+    const pago=Number(it.cmv_pago_registrado||0),atual=Number(it.cmv_total||0);
+    const dif=alvo.dif!=null?alvo.dif:Math.round((pago-atual)*100)/100;
+    if(Math.abs(dif)<0.01)return;
+    const f=ocelotFoto(it);
+    // hoje
+    let ef1,liq1;
+    if(it.status==='cancelled'&&!it.devolucao_com_custo){ef1=0;liq1=0;}
+    else if(it.devolucao_com_custo){ef1=0;liq1=Number(it.valor_liquido||0);}
+    else{ef1=Number(it.valor_venda||0)-(f&&!it.ml_cobriu?Number(f.devolvido_hoje||0):0);liq1=Number(it.valor_liquido||0);} // coberta pelo ML: sem devolucao
+    // no fechamento (venda que ficou fora do fechamento: nada)
+    let ef0=0,liq0=0;
+    if(it.cmv_pago_registrado!=null){
+      if(f&&f.snap_venda!=null){ef0=Number(f.snap_venda)-Number(f.snap_devolvido||0);liq0=Number(f.snap_liquido||0);}
+      else{ef0=ef1;liq0=liq1;r.semFoto++;}
+    }
+    const g=dif>0?r.dev:r.pag;
+    g.n++;g.ef+=ef1-ef0;g.liq+=liq1-liq0;g.tf+=(ef1-ef0)-(liq1-liq0);g.rep+=dif;g.orig[it.mes_competencia]=1;
+    r.itens.push({it:it,dif:dif,def:ef1-ef0,dliq:liq1-liq0});
+  });
+  r.ef=r.dev.ef+r.pag.ef;r.liq=r.dev.liq+r.pag.liq;r.rep=r.dev.rep+r.pag.rep;
+  return r;
+}
 function ocelotMesExtenso(m){const d=new Date(m+'T00:00:00Z');return d.toLocaleDateString('pt-BR',{month:'long',year:'numeric',timeZone:'UTC'}).replace(' de ','/');}
 function ocelotRepasseDados(forn,mes){
   const D=OCELOT_CACHE||{},A=OCELOT_ALT_CACHE||{};
@@ -1032,7 +1091,8 @@ function ocelotRepasseDados(forn,mes){
       if(it.nao_incluida)sit='Venda de '+dreMesLabel(it.mes_competencia)+' que ficou fora do fechamento registrado — repasse de '+dreBRL(atual)+' a pagar agora';
       else if(it.ml_cobriu)sit='Mediação coberta pelo Mercado Livre — repasse ajustado de '+dreBRL(pago)+' para '+dreBRL(atual);
       else if(it.devolucao_com_custo)sit='Devolvida, com '+dreBRL(-Number(it.valor_liquido||0))+' de frete/tarifa cobrados pelo Mercado Livre — repasse pago '+dreBRL(pago);
-      else if(it.status==='cancelled')sit='Devolução finalizada com reembolso para o comprador';
+      else if(it.status==='cancelled'&&dif<0)sit='Devolução sem custo para a Ocelot (o ML estornou tarifa e frete) — o prejuízo de '+dreBRL(-pago)+' descontado no fechamento volta ao fornecedor';
+      else if(it.status==='cancelled')sit='Devolvida depois do fechamento (reembolso ao comprador) — repasse pago de '+dreBRL(pago)+' volta';
       else sit='Devolução parcial — repasse ajustado de '+dreBRL(pago)+' para '+dreBRL(atual);
       ajustes.push({data:it.data_venda,num:String(it.pack_id||it.order_id),order_id:it.order_id,item_id:it.item_id,produto:it.titulo,situacao:sit,valor:dif,
         mes_origem:it.mes_competencia,cmv_pago:pago,atual:atual});
@@ -1078,7 +1138,14 @@ function htmlOcelotRepasseAba(){
   // 1. resumo
   h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">1. Resumo do fechamento de '+mesNome.split('/')[0]+'</div><table style="width:100%;table-layout:auto;border-collapse:collapse;font-size:14px">';
   h+='<tr><td style="'+td+'">Repasse das vendas de '+mesNome.split('/')[0]+' ('+R.vendas.length+' vendas, '+R.un+' unidades)'+(R.reg&&Math.abs(R.totRep-R.totRepCalc)>=1?'<div class="noprint" style="font-size:11.5px;color:var(--muted)">recalculado hoje: '+dreBRL(R.totRepCalc)+'</div>':'')+'</td><td style="'+tdn+'">'+dreBRL(R.totRep)+'</td></tr>';
-  h+='<tr><td style="'+td+'">'+(R.totAj<0?'(+) Ajuste de vendas anteriores a pagar':'(−) Estorno/ajuste de vendas anteriores')+' — ver item 2</td><td style="'+tdn+';color:'+(R.totAj>0?'var(--down)':(R.totAj<0?'var(--up)':'inherit'))+'">'+dreBRL(-R.totAj)+'</td></tr>';
+  // 02/11/2026: acerto de vendas anteriores separado em "descontado" (devolucoes) e "a pagar" (vendas que passaram a valer)
+  const ajDev=R.ajustes.filter(function(a){return a.valor>0;}),ajPag=R.ajustes.filter(function(a){return a.valor<0;});
+  const totDev=ajDev.reduce(function(x,a){return x+a.valor;},0),totPag=ajPag.reduce(function(x,a){return x+a.valor;},0);
+  if(ajDev.length||ajPag.length){
+    h+='<tr><td style="'+td+'">(−) Devoluções de vendas anteriores — repasse já pago que volta ('+ajDev.length+') — ver item 2a</td><td style="'+tdn+';color:'+(totDev?'var(--down)':'inherit')+'">'+dreBRL(-totDev)+'</td></tr>';
+    h+='<tr><td style="'+td+'">(+) Vendas anteriores a pagar — ficaram fora do fechamento ou o ML cobriu ('+ajPag.length+') — ver item 2b</td><td style="'+tdn+';color:'+(totPag?'var(--up)':'inherit')+'">'+dreBRL(-totPag)+'</td></tr>';
+    if(R.reg&&Math.abs((totDev+totPag)-R.totAj)>=0.01)h+='<tr><td style="'+td+';font-size:12px;color:var(--muted)">Total de acertos registrado no fechamento</td><td style="'+tdn+';font-size:12px;color:var(--muted)">'+dreBRL(-R.totAj)+'</td></tr>';
+  }else h+='<tr><td style="'+td+'">(−) Acerto de vendas anteriores — ver item 2</td><td style="'+tdn+'">'+dreBRL(0)+'</td></tr>';
   h+='<tr><td style="'+td+'">(−) Adiantamentos';
   R.adiant.forEach(function(a){h+='<div style="font-size:12px;color:var(--muted)">'+(a.data?dBR(a.data)+' · ':'')+escH(a.observacao||'adiantamento')+' · '+dreBRL(a.valor)+(podeEd&&!R.reg?' <a class="noprint" href="javascript:void(0)" onclick="ocelotAdiantDel(\''+a.id+'\')" style="color:var(--down)">remover</a>':'')+'</div>';});
   if(podeEd&&!R.reg)h+='<div class="noprint" style="margin-top:4px"><a href="javascript:void(0)" onclick="ocelotAdiantAdd(\''+forn+'\',\''+mes+'\')" style="font-size:12px">+ lançar adiantamento</a></div>';
@@ -1093,13 +1160,21 @@ function htmlOcelotRepasseAba(){
   }
   h+='</div>';
   // 2. ajustes
-  h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">2. Vendas anteriores devolvidas ou ajustadas — descontadas neste fechamento</div>';
-  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Vendas que entraram (e foram pagas) num fechamento anterior e mudaram depois. O desconto é o repasse já pago menos o repasse que valeria hoje: devolução desconta o que foi pago (e o frete que o Mercado Livre cobrou); mediação coberta pelo Mercado Livre volta a valer o repasse normal (valor negativo = a pagar).</div>';
-  if(!R.ajustes.length)h+='<div style="padding:8px 12px 12px;color:var(--muted);font-size:13px">Nenhuma venda anterior ajustada.</div>';
+  h+='<div style="'+cardSt+'"><div style="padding:10px 12px;font-weight:700;border-bottom:1px solid var(--line)">2. Vendas de meses anteriores — acertos neste fechamento</div>';
+  h+='<div style="padding:6px 12px;font-size:12px;color:var(--muted)">Vendas de um mês já fechado que mudaram depois do fechamento. O acerto é o repasse já pago menos o repasse que vale hoje. <b>2a</b>: vendas devolvidas — o repasse que foi pago volta (desconta do fornecedor). <b>2b</b>: vendas que passaram a valer — ficaram fora do fechamento anterior, ou o Mercado Livre cobriu a mediação e o dinheiro ficou com a Ocelot — o repasse é pago agora.</div>';
+  if(!R.ajustes.length)h+='<div style="padding:8px 12px 12px;color:var(--muted);font-size:13px">Nenhuma venda anterior com acerto.</div>';
   else{
-    h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+'">Situação no Mercado Livre</th><th style="'+th+';text-align:right">Desconto</th></tr>';
-    R.ajustes.forEach(function(a){h+='<tr><td data-l="Data" style="'+td+'">'+dBR(a.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(a.num,a.order_id)+'</td><td class="mc-top" style="'+td+'">'+escH(a.produto||'')+'</td><td data-l="Situação no ML" style="'+td+';font-size:12px">'+escH(a.situacao||'')+'</td><td data-l="Desconto" style="'+tdn+';color:'+(a.valor<0?'var(--up)':'inherit')+'">'+dreBRL(a.valor)+'</td></tr>';});
-    h+='<tr><td colspan="4" class="mc-top" style="'+td+';text-align:right;font-weight:700">TOTAL DESCONTADO</td><td data-l="Desconto" style="'+tdn+';font-weight:700">'+dreBRL(R.totAj)+'</td></tr></table>';
+    const tabAj=function(lista,titulo,rotTot,tot,corV){
+      let t='<div style="padding:10px 12px 4px;font-weight:700;font-size:13.5px">'+titulo+'</div>';
+      if(!lista.length)return t+'<div style="padding:2px 12px 10px;color:var(--muted);font-size:13px">Nenhuma.</div>';
+      t+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+'">Situação no Mercado Livre</th><th style="'+th+';text-align:right">Valor</th></tr>';
+      lista.forEach(function(a){t+='<tr><td data-l="Data" style="'+td+'">'+dBR(a.data)+'</td><td data-l="N.º da venda" style="'+td+'">'+link(a.num,a.order_id)+'</td><td class="mc-top" style="'+td+'">'+escH(a.produto||'')+'</td><td data-l="Situação no ML" style="'+td+';font-size:12px">'+escH(a.situacao||'')+'</td><td data-l="Valor" style="'+tdn+';color:'+corV+'">'+dreBRL(Math.abs(a.valor))+'</td></tr>';});
+      t+='<tr><td colspan="4" class="mc-top" style="'+td+';text-align:right;font-weight:700">'+rotTot+'</td><td data-l="Total" style="'+tdn+';font-weight:700;color:'+corV+'">'+dreBRL(Math.abs(tot))+'</td></tr></table>';
+      return t;
+    };
+    h+=tabAj(ajDev,'2a. Devoluções — descontar do fornecedor ('+ajDev.length+')','TOTAL A DESCONTAR',totDev,'var(--down)');
+    h+=tabAj(ajPag,'2b. Vendas que passaram a valer — pagar ao fornecedor ('+ajPag.length+')','TOTAL A PAGAR',totPag,'var(--up)');
+    h+='<table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px"><tr><td style="'+td+';text-align:right;font-weight:800">DESCONTO LÍQUIDO NO REPASSE (2a − 2b)</td><td style="'+tdn+';font-weight:800">'+dreBRL(totDev+totPag)+'</td></tr></table>';
   }
   h+='</div>';
   // 3. vendas do mes
@@ -1276,14 +1351,22 @@ async function ocelotFornSet(body){
   if(!r.ok||j.error){alert('Erro: '+(j.error||r.status));return false;}
   return true;
 }
-function ocelotRepasseRecarrega(){OCELOT_ALT_CACHE=null;renderOcelot();}
+function ocelotRepasseRecarrega(){OCELOT_ALT_CACHE=null;OCELOT_FOTOS_CACHE=null;renderOcelot();}
 async function ocelotRegistrarFechamento(forn,mes){
   const R=ocelotRepasseDados(forn,mes);
   const itens=[];R.vendas.forEach(function(g){g.itens.forEach(function(x){itens.push({order_id:x.it.order_id,item_id:x.it.item_id,titulo:x.it.titulo,quantidade:x.it.quantidade,data_venda:x.it.data_venda,cmv:Math.round(x.rep*100)/100});});});
   const estornos=R.ajustes.map(function(a){return {order_id:a.order_id,item_id:a.item_id,data_venda:a.data,mes_origem:a.mes_origem,titulo:String(a.produto||'').slice(0,200)+' | '+a.situacao,cmv_pago:a.cmv_pago,prejuizo:-a.atual,total:a.valor};});
   if(!confirm('Registrar o fechamento de '+OCN_FORN_NOME[forn]+' — '+dreMesLabel(mes)+'?\n\nRepasse das vendas: '+dreBRL(R.totRepCalc)+' ('+R.vendas.length+' vendas)\nEstorno/ajustes: '+dreBRL(-R.totAj)+'\nAdiantamentos: '+dreBRL(-R.totAd)+'\nSaldo a pagar: '+dreBRL(R.totRepCalc-R.totAj-R.totAd)))return;
   if(await ocelotFornSet({tipo:'registrar_repasse',fornecedor:forn,mes_competencia:mes,itens:itens,estornos:estornos,
-      valor_produtos:Math.round(R.totRepCalc*100)/100,valor_estorno:Math.round(R.totAj*100)/100,valor_adiantamentos:Math.round(R.totAd*100)/100}))ocelotRepasseRecarrega();
+      valor_produtos:Math.round(R.totRepCalc*100)/100,valor_estorno:Math.round(R.totAj*100)/100,valor_adiantamentos:Math.round(R.totAd*100)/100})){
+    // 02/11/2026: foto de cada venda no fechamento -- congela a DRE do mes; o que mudar depois entra no mes seguinte
+    const fotos=[];R.vendas.forEach(function(g){g.itens.forEach(function(x){const it=x.it;
+      fotos.push({order_id:String(it.order_id),item_id:it.item_id,venda:Number(it.valor_venda||0),devolvido:Number(it.valor_devolvido||0),
+        taxa:Number(it.taxa_ml||0),frete:Number(it.frete_vendedor||0),liquido:Number(it.valor_liquido||0)});});});
+    try{const {error}=await sb.rpc('ocelot_gravar_foto_fechamento',{p_fornecedor_id:OCN_FORN_ID[forn],p_mes:mes,p_itens:fotos});if(error)throw error;}
+    catch(e){alert('Repasse registrado, mas a foto das vendas para a DRE não foi gravada: '+(e&&e.message||e)+'\nAvise o suporte.');}
+    ocelotRepasseRecarrega();
+  }
 }
 async function ocelotDesfazerFechamento(forn,mes){
   if(!confirm('Desfazer o registro do fechamento de '+OCN_FORN_NOME[forn]+' — '+dreMesLabel(mes)+'? O repasse gravado de cada venda e os ajustes aplicados neste mês serão apagados.'))return;
@@ -1327,9 +1410,28 @@ function htmlOcelotSintetica(){
   // Cancelamento sem custo (fatura do ML zerou) fica fora e oculto. Devolucao/mediacao depois do envio
   // (devolucao_com_custo) entra: receita = venda, devolucao = venda, tarifa/frete = o que o ML nao estornou,
   // CMV = esse prejuizo (vai pro fornecedor), igual a planilha.
+  // 02/11/2026: mes com repasse registrado fica CONGELADO -- cada venda paga no fechamento aparece como estava no
+  // fechamento (foto); venda que ficou fora do fechamento sai daqui e entra no mes seguinte. O que mudou depois do
+  // fechamento aparece no mes seguinte, em "Vendas de meses anteriores".
+  const congelado=['miguel','alan'].some(function(f){return ocelotRepRegistrado(OCN_FORN_ID[f],mes);});
+  let nForaFech=0,vForaFech=0;
+  const comoNoFechamento=function(it){
+    if(!congelado)return it;
+    const fid=ocelotFornDaVenda(it);
+    if(it.cmv_pago_registrado!=null){
+      const f=ocelotFoto(it);if(!f||f.snap_venda==null)return Object.assign({},it,{cmv_total:Number(it.cmv_pago_registrado)});
+      const venda=Number(f.snap_venda),dev=Number(f.snap_devolvido||0);
+      return Object.assign({},it,{status:dev>=venda-0.005?'cancelled':'paid',devolucao_com_custo:dev>=venda-0.005,valor_venda:venda,valor_devolvido:dev,
+        taxa_ml:Number(f.snap_taxa||0),frete_vendedor:Number(f.snap_frete||0),valor_liquido:Number(f.snap_liquido||0),
+        imposto_valor:Math.max(0,venda-dev)*impPct/100,cmv_total:Number(it.cmv_pago_registrado)});
+    }
+    if(fid&&fid!==OCN_FORN_ID.tiago&&ocelotRepRegistrado(fid,mes)&&(it.status!=='cancelled'||it.devolucao_com_custo)){nForaFech++;vForaFech+=Number(it.valor_venda||0);return null;}
+    return it;
+  };
   (D.pedidos||[]).forEach(function(p){
-    const ativos=(p.itens||[]).filter(function(it){return it.status!=='cancelled'||it.devolucao_com_custo;});
-    (p.itens||[]).forEach(function(it){if(it.status==='cancelled'&&!it.devolucao_com_custo){s.nCanc++;s.vCanc+=Number(it.valor_venda||0);}});
+    const itensP=(p.itens||[]).map(comoNoFechamento).filter(function(it){return !!it;});
+    const ativos=itensP.filter(function(it){return it.status!=='cancelled'||it.devolucao_com_custo;});
+    itensP.forEach(function(it){if(it.status==='cancelled'&&!it.devolucao_com_custo){s.nCanc++;s.vCanc+=Number(it.valor_venda||0);}});
     if(!ativos.length)return;
     if(ativos.some(function(it){return it.status!=='cancelled';}))nPed++;
     ativos.forEach(function(it){
@@ -1361,10 +1463,15 @@ function htmlOcelotSintetica(){
   const bruto=s.vendas+s.vCanc;
   const fatEfetivo=s.vendas-s.devol;
   const base=fatEfetivo;
-  const liqML=fatEfetivo-s.taxa-s.frete-totAjustes;
+  // 02/11/2026: vendas de meses anteriores que mudaram depois do fechamento (receita, tarifa/frete e repasse)
+  const AC=ocelotAcertosDoMes(mes);
+  const temAc=AC.dev.n+AC.pag.n>0;
+  const impAc=AC.ef*impPct/100;
+  const liqML=fatEfetivo-s.taxa-s.frete-totAjustes+AC.liq;
   const cmvTot=s.cmv.miguel+s.cmv.alan+s.cmv.ocelot+s.cmv.sem;
-  const mc=liqML-cmvTot;
-  const custosConta=adsReal+minhaPagina+s.imposto+custoFixo;
+  const mc=liqML-cmvTot+AC.rep;
+  const impostoTot=s.imposto+impAc;
+  const custosConta=adsReal+minhaPagina+impostoTot+custoFixo;
   const res=mc-custosConta;
   const pctN=function(v){return base?(v/base*100):0;};
   const pctT=function(v){if(!base)return '';var x=(v/base*100).toFixed(1);if(x==='-0.0')x='0.0';return x.replace('.',',')+'%';};
@@ -1395,6 +1502,9 @@ function htmlOcelotSintetica(){
   (D.meses_disponiveis||[]).forEach(function(m){h+='<option value="'+m+'"'+(m===mes?' selected':'')+'>'+dreMesLabel(m)+'</option>';});
   h+='</select></label><span style="color:var(--muted);font-size:12.5px">'+nPed+' pedido(s) válidos · '+s.nItens+' item(ns)</span></div>';
   h+=ocelotChecklistHTML();
+  const mesesAc=function(g){return Object.keys(g.orig).sort().map(dreMesLabel).join(', ');};
+  if(congelado)h+='<div style="background:rgba(37,99,235,0.10);border:1px solid rgba(37,99,235,0.40);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px"><b>Repasse de '+mesLbl+' registrado — DRE congelada como no fechamento.</b> Cada venda aparece como estava quando o repasse foi pago. Devoluções, mediações e vendas que mudaram depois entram no mês seguinte, em "Vendas de meses anteriores".'+(nForaFech?' '+nForaFech+' venda(s) deste mês ('+dreBRL(vForaFech)+') ficaram fora do fechamento e entram no mês seguinte.':'')+'</div>';
+  if(temAc)h+='<div style="background:rgba(8,145,178,0.10);border:1px solid rgba(8,145,178,0.40);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12.5px"><b>Este mês inclui acertos de vendas de meses anteriores</b> (mesmas vendas da seção 2 da aba Repasse a fornecedores): '+AC.dev.n+' devolvida(s) depois do fechamento'+(AC.dev.n?' ('+mesesAc(AC.dev)+')':'')+' e '+AC.pag.n+' que passaram a valer'+(AC.pag.n?' ('+mesesAc(AC.pag)+')':'')+'. Efeito no resultado: <b>'+dreBRL(AC.liq+AC.rep-impAc)+'</b>.'+(AC.semFoto?' <span style="color:var(--down)">'+AC.semFoto+' venda(s) sem foto do fechamento — só o repasse entra.</span>':'')+'</div>';
   if(aberto)h+='<div style="background:rgba(232,184,75,0.10);border:1px solid rgba(232,184,75,0.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:#b8901c;font-size:12.5px"><b>Mês não fechado.</b> Números ainda podem mudar (novas vendas, devoluções, fatura do ML). Se o mês está em curso, o custo fixo já entra cheio — a margem melhora conforme entram vendas.</div>';
   if(!temFatura)h+='<div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;color:var(--down);font-size:12.5px"><b>Fatura do ML não encontrada para '+mesLbl+'.</b> Ads usa o TACoS estimado e as tarifas extras / Minha Página ficam zeradas até a fatura sincronizar.</div>';
 
@@ -1402,7 +1512,7 @@ function htmlOcelotSintetica(){
   h+=card('Faturamento líquido',dreBRL(fatEfetivo),'bruto '+dreBRL(bruto)+' · '+nPed+' pedidos · ticket '+dreBRL(nPed?fatEfetivo/nPed:0));
   h+=card('Margem de contribuição',dreBRL(mc),fmtPct(pctN(mc))+' do fat. líquido');
   h+=card('Resultado líquido',dreBRL(res),fmtPct(pctN(res))+' do fat. líquido',res<0?'color:var(--down)':'color:var(--up)');
-  h+=card('Repasse fornecedores',dreBRL(s.cmv.miguel+s.cmv.alan),'Miguel '+dreBRL(s.cmv.miguel)+' · Alan '+dreBRL(s.cmv.alan));
+  h+=card('Repasse fornecedores',dreBRL(s.cmv.miguel+s.cmv.alan-AC.rep),temAc?('vendas do mês '+dreBRL(s.cmv.miguel+s.cmv.alan)+' · acertos anteriores '+dreBRL(-AC.rep)):('Miguel '+dreBRL(s.cmv.miguel)+' · Alan '+dreBRL(s.cmv.alan)));
   h+='</div>';
 
   h+='<table style="width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px">';
@@ -1419,17 +1529,30 @@ function htmlOcelotSintetica(){
   h+=L('(−) Frete pago pelo vendedor',-s.frete,'','pedidos','líquido: já descontada a parte paga pelo comprador');
   h+=L('(+/−) Ajustes e tarifas extras do ML',-totAjustes,'',temFatura?'fatura ML':'estimado','cobranças da fatura que não estão no pedido');
   ajustes.forEach(function(a){h+=L(escH(a.rot)+' ('+a.n+')',-a.valor,'sub');});
+  if(temAc){
+    h+=L('= Líquido das vendas do mês',liqML-AC.liq,'total');
+    h+=secao('VENDAS DE MESES ANTERIORES — ACERTOS DESTE MÊS');
+    h+=L('(−) Devoluções de vendas já fechadas',AC.dev.ef,'','pedidos',AC.dev.n+' venda(s)'+(AC.dev.n?' de '+mesesAc(AC.dev):'')+' devolvida(s) depois do fechamento — a receita sai neste mês');
+    if(Math.abs(AC.dev.tf)>=0.01)h+=L('(+) Tarifa e frete estornados pelo ML',-AC.dev.tf,'','pedidos','o ML devolve a tarifa e o frete dessas vendas (o que não devolveu fica como custo)');
+    h+=L('(+) Vendas anteriores que passaram a valer',AC.pag.ef,'','pedidos',AC.pag.n+' venda(s)'+(AC.pag.n?' de '+mesesAc(AC.pag):'')+' que ficaram fora do fechamento ou que o ML cobriu — a receita entra neste mês');
+    if(Math.abs(AC.pag.tf)>=0.01)h+=L('(+/−) Tarifa e frete dessas vendas',-AC.pag.tf,'','pedidos','o que o ML cobrou ou estornou dessas vendas depois do fechamento');
+    h+=L('= Efeito no líquido recebido',AC.liq,'total');
+  }
   h+=L('= Total líquido recebido (ML)',liqML,'total');
   h+=secao('CUSTO DA MERCADORIA (CMV)');
   h+=L('(−) CMV Miguel (concreto)',-s.cmv.miguel,'','pedidos',s.qtd.miguel+' un. · '+fmtPct(s.venda.miguel?s.cmv.miguel/s.venda.miguel*100:0)+' da venda desses produtos');
   h+=L('(−) CMV Alan (madeira)',-s.cmv.alan,'','pedidos',s.qtd.alan+' un. · '+fmtPct(s.venda.alan?s.cmv.alan/s.venda.alan*100:0)+' da venda desses produtos');
   h+=L('(−) CMV Tiago (produtos próprios)',-s.cmv.ocelot,'','pedidos',s.qtd.ocelot+' un. · pochete, copo térmico');
   if(Math.abs(s.cmv.sem)>=0.01||s.qtd.sem)h+=L('(−) CMV sem responsável',-s.cmv.sem,'','pedidos','<span style="color:var(--down)">'+s.qtd.sem+' un. sem dono — classifique o produto no Cadastro</span>');
+  if(temAc){
+    h+=L('(+) Repasse descontado do fornecedor — devoluções',AC.dev.rep,'','pedidos','repasse pago no fechamento anterior que volta agora (seção 2a da aba Repasse)');
+    h+=L('(−) Repasse a pagar — vendas anteriores que passaram a valer',AC.pag.rep,'','pedidos','seção 2b da aba Repasse');
+  }
   h+=L('= Margem de contribuição',mc,'total');
   h+=secao('CUSTOS DA CONTA');
   h+=L('(−) Ads (Mercado Ads)',-adsReal,'',temFatura?'fatura ML':'estimado',temFatura?('valor real da fatura · TACoS '+fmtPct(pctN(adsReal))):'estimado pelo TACoS — fatura do mês ainda não sincronizada');
   h+=L('(−) Minha Página',-minhaPagina,'',temFatura?'fatura ML':'estimado');
-  h+=L('(−) Imposto Simples ('+String(impPct).replace('.',',')+'%)',-s.imposto,'','parâmetro','sobre o faturamento efetivo');
+  h+=L('(−) Imposto Simples ('+String(impPct).replace('.',',')+'%)',-impostoTot,'','parâmetro','sobre o faturamento efetivo'+(temAc&&Math.abs(impAc)>=0.01?' · inclui '+dreBRL(impAc)+' das vendas de meses anteriores (devolução reduz a base)':''));
   h+=L('(−) Custo fixo (Elisa)',-custoFixo,'','parâmetro','custo fixo mensal cadastrado nos parâmetros do mês');
   h+=L('= Total dos custos da conta',-custosConta,'total');
   h+=L('= RESULTADO LÍQUIDO',res,'final');
@@ -1437,7 +1560,7 @@ function htmlOcelotSintetica(){
 
   // --- indicadores automaticos ---
   const custoML=s.taxa+s.frete+totAjustes;
-  const mcPct=pctN(mc), varPct=pctN(adsReal+s.imposto);
+  const mcPct=pctN(mc), varPct=pctN(adsReal+impostoTot);
   const fixos=minhaPagina+custoFixo;
   const margemPE=mcPct-varPct;
   const pe=margemPE>0?fixos/(margemPE/100):null;
@@ -1498,6 +1621,8 @@ function renderOcelotBody(){
     if(!ocelotMesFiltro){ocelotMesFiltro=(OCELOT_CACHE&&(OCELOT_CACHE.meses_disponiveis||[])[0])||ocelotMesAtual();renderOcelot();return;}
     if(!OCELOT_CACHE||OCELOT_CACHE.mes_filtro!==ocelotMesFiltro){renderOcelot();return;}
     if(!OCELOT_DRE_CACHE){renderOcelotDre();return;}
+    if(!OCELOT_ALT_CACHE||OCELOT_ALT_CACHE.chave!==ocelotAltChave(ocelotMesFiltro)){carregaOcelotAlt(ocelotMesFiltro);return;}
+    if(!OCELOT_FOTOS_CACHE){carregaOcelotFotos();return;}
   }
   if(ocelotSub==='repasse'){
     // 18/10/2026: abre no mes corrente; recarregar a pagina (F5) mantem o mes escolhido (sessionStorage = so esta aba)
@@ -2628,7 +2753,7 @@ async function atualizarOcelot(){
     const {data:{session}}=await sb.auth.getSession();
     await fetch(SB_URL+'/functions/v1/ml-ocelot-vendas?dias=30',{headers:{Authorization:'Bearer '+(session?session.access_token:'')}});
   }catch(e){}
-  OCELOT_DRE_CACHE=null;OCELOT_ALT_CACHE=null;
+  OCELOT_DRE_CACHE=null;OCELOT_ALT_CACHE=null;OCELOT_FOTOS_CACHE=null;
   renderOcelot();
 }
 function ocelotIrFecharMes(mes){ocelotParMes=mes;ocelotSubTab('config');setTimeout(function(){var e=document.getElementById('op_imposto');if(e)e.scrollIntoView({behavior:'smooth',block:'center'});},300);}

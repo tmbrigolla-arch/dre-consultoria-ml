@@ -25,6 +25,7 @@
 //   de um SKU (uma gravacao por produto).
 // v4 (13/10/2026): edicao de estoque DESLIGADA a pedido do Tiago -- o painel nao grava estoque no ML
 //   (acoes estoque e estoque_lote recusadas). Ler estoque e ativar/pausar continuam. Religar: ESTOQUE_LIGADO.
+// v6 (02/11/2026): devolve preco_original (original_price do ML) para a tela marcar anuncio em promocao.
 // v5 (14/10/2026): edicao de estoque RELIGADA a pedido do Tiago. O ML continua sendo a fonte da verdade: se o
 //   estoque mudar no ML (venda, ajuste feito direto la), a tela rele sozinha e mostra o saldo novo. Trava contra
 //   sobrescrever: a tela manda "esperado" (o saldo que ela mostrava) e, se o ML ja estiver diferente, a gravacao
@@ -33,7 +34,7 @@
 import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
-const CAMPOS = "id,title,price,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
+const CAMPOS = "id,title,price,original_price,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
 const ESTOQUE_LIGADO = true; // v5: religado (v4 tinha desligado)
 const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
@@ -52,6 +53,8 @@ function resumo(b: any) {
   return {
     item_id: b.id, titulo: b.title || null, status: b.status || null, sub_status: sub,
     preco: b.price == null ? null : Number(b.price),
+    // v6: preco "de" quando o anuncio esta com desconto (promocao); a tela usa so como indicacao
+    preco_original: b.original_price == null ? null : Number(b.original_price),
     estoque: vars.length ? vars.reduce((s: number, v: any) => s + v.estoque, 0) : Number(b.available_quantity ?? 0),
     variacoes: vars, full: b.shipping?.logistic_type === "fulfillment", permalink: b.permalink || null,
     user_product_id: b.user_product_id || null, family_id: b.family_id ?? null,
@@ -216,7 +219,7 @@ Deno.serve(async (req) => {
     const u = await exigirUsuario(admin, req, "alterar_ml");
     if (u instanceof Response) return u;
     if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
-    const ids = Array.from(new Set((Array.isArray(body.item_ids) ? body.item_ids : []).map((x: any) => String(x).trim().toUpperCase())))
+    const ids = Array.from(new Set<string>((Array.isArray(body.item_ids) ? body.item_ids : []).map((x: any) => String(x).trim().toUpperCase())))
       .filter((x) => /^MLB\d+$/.test(x)).slice(0, 60);
     if (!ids.length) return json({ ok: false, erro: "informe item_ids" }, 400);
     const lidos: any[] = [];

@@ -2089,6 +2089,7 @@ function ocelotLiveGarante(forcar){
       else{
         OCELOT_LIVE.itens=j.itens||{}; OCELOT_LIVE.excluidos=OCELOT_LIVE.excluidos.concat(j.excluidos||[]); OCELOT_LIVE.excluidosIds=j.excluidos_ids||[]; OCELOT_LIVE.pendentes=j.exclusoes_pendentes||[];
         OCELOT_LIVE.lidoEm=Date.now(); OCELOT_LIVE.aplicadoEm=null;
+        ocelotCarregaAgenda();
         if(j.lotes_com_erro)OCELOT_LIVE.erro=j.lotes_com_erro+' lote(s) sem resposta do ML';
       }
     }catch(e){OCELOT_LIVE.erro=String(e);}
@@ -2149,11 +2150,95 @@ function ocelotEstoqueCell(id){
   if(irm)h+='<div style="font-size:10px;color:var(--muted)" title="Mesmo produto no ML: o estoque é um só para estes anúncios">compartilhado c/ '+irm+' anúncio(s)</div>';
   return h+'<div id="esst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
 }
+// PRECO x PROMOCAO (02/11/2026, pedido do Tiago): anuncio com desconto mostra o preco de TABELA no campo e,
+// embaixo, o que o comprador paga. Ao mudar o preco de anuncio em promocao a tela pergunta: alterar agora (sai da
+// promocao) ou manter a promocao (o preco novo fica agendado e entra quando ela terminar). Ver ml-ocelot-preco v5.
+let OCELOT_AGENDA={};
+function ocelotPrecoPromoInfo(v){return !!(v&&v.preco_original!=null&&v.preco!=null&&Number(v.preco_original)>Number(v.preco)+0.004);}
+function ocelotAgendaHtml(id){
+  const g=OCELOT_AGENDA[id]; if(!g)return '';
+  if(g.status==='pendente')return '<div style="font-size:10.5px;color:#93c5fd;margin-top:2px" title="'+escH(g.obs||'Entra quando a promoção terminar (o painel confere a cada 15 min)')+'">agendado '+precoTxt(Number(g.preco))+' ao fim da promo'+(g.fim_previsto?' ('+String(g.fim_previsto).slice(8,10)+'/'+String(g.fim_previsto).slice(5,7)+')':'')
+    +(pode('alterar_ml')?' <a href="#" onclick="event.preventDefault();event.stopPropagation();ocelotCancelaAgenda(\''+id+'\','+g.id+')" style="color:#f87171">cancelar</a>':'')+'</div>';
+  if(g.status==='aplicado')return '<div style="font-size:10.5px;color:#34d399;margin-top:2px" title="'+escH(g.obs||'')+'">agendado aplicado: '+precoTxt(Number(g.preco))+'</div>';
+  if(g.status==='erro')return '<div style="font-size:10.5px;color:#f87171;margin-top:2px" title="'+escH(g.obs||'')+'">agendamento falhou: '+escH(String(g.obs||'').slice(0,60))+'</div>';
+  return '';
+}
 function ocelotPrecoCell(a){
-  const v=OCELOT_LIVE.itens[a.item_id];
-  if(!v||v.status==='closed'||!pode('alterar_ml'))return precoTxt(v?v.preco:a.preco);
-  return '<input type="text" inputmode="decimal" value="'+(v.preco!=null?Number(v.preco).toFixed(2).replace('.',','):'')+'" data-p="'+(v.preco==null?'':v.preco)+'" onclick="event.stopPropagation()" onchange="ocelotSalvaPreco(this,\''+a.item_id+'\')" title="Preço de tabela no ML" style="width:82px;text-align:right;padding:2px 5px;font-size:12px">'
-    +'<div id="prst_'+a.item_id+'" style="font-size:10.5px;min-height:12px"></div>';
+  const v=OCELOT_LIVE.itens[a.item_id], promo=ocelotPrecoPromoInfo(v);
+  const tab=v?(promo?Number(v.preco_original):v.preco):null;
+  const extra='<span id="prpromo_'+a.item_id+'">'+(promo?'<div style="font-size:10.5px;color:#fbbf24;margin-top:2px" title="Preço de tabela '+precoTxt(tab)+'; em promoção o comprador paga '+precoTxt(v.preco)+'">promo: '+precoTxt(v.preco)+'</div>':'')+'</span><span id="prag_'+a.item_id+'">'+ocelotAgendaHtml(a.item_id)+'</span>';
+  if(!v||v.status==='closed'||!pode('alterar_ml'))return precoTxt(v?tab:a.preco)+extra;
+  return '<input type="text" inputmode="decimal" value="'+(tab!=null?Number(tab).toFixed(2).replace('.',','):'')+'" data-p="'+(tab==null?'':tab)+'" onclick="event.stopPropagation()" onchange="ocelotSalvaPreco(this,\''+a.item_id+'\')" title="Preço de tabela no ML" style="width:82px;text-align:right;padding:2px 5px;font-size:12px">'
+    +'<div id="prst_'+a.item_id+'" style="font-size:10.5px;min-height:12px"></div>'+extra;
+}
+async function ocelotPrecoPost(corpo){
+  const {data:{session}}=await sb.auth.getSession();
+  const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-preco',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify(corpo)});
+  const j=await r.json().catch(function(){return {};});
+  return {r:r,j:j};
+}
+async function ocelotCarregaAgenda(){
+  try{
+    const x=await ocelotPrecoPost({acao:'agendados'}); if(!x.r.ok||!x.j.ok)return;
+    const m={};(x.j.agendados||[]).forEach(function(g){if(!m[g.item_id]||g.status==='pendente'&&m[g.item_id].status!=='pendente')m[g.item_id]=g;});
+    OCELOT_AGENDA=m;
+    for(const id in OCELOT_LIVE.itens){const el=document.getElementById('prag_'+id);if(el)el.innerHTML=ocelotAgendaHtml(id);}
+  }catch(e){}
+}
+async function ocelotCancelaAgenda(id,agId){
+  const g=OCELOT_AGENDA[id];
+  if(!confirm('Cancelar o preço agendado'+(g?' de '+precoTxt(Number(g.preco)):'')+' para o anúncio '+id+'?\n\nO preço atual e a promoção continuam como estão.'))return;
+  const x=await ocelotPrecoPost({acao:'cancelar_agendado',id:agId});
+  if(!x.j.ok){alert('Não cancelou (talvez já tenha sido aplicado). Atualize a tela.');return;}
+  delete OCELOT_AGENDA[id];
+  const el=document.getElementById('prag_'+id); if(el)el.innerHTML='';
+}
+function ocelotMargemTxt(m){
+  if(!m||m.resultado_pct==null)return '<span style="color:var(--muted)">sem cálculo</span>';
+  const cor=m.resultado_pct<0?'#f87171':(m.resultado_pct<3?'#fbbf24':'#34d399');
+  return '<b style="color:'+cor+'">'+String(m.resultado_pct).replace('.',',')+'%</b> <span style="color:var(--muted)">('+precoTxt(m.resultado)+'/un)</span>';
+}
+const OCN_CMV_ORIGEM={formula:'repasse pela fórmula',piso:'piso R$ 40 (Ocelot paga)',custo_cadastrado:'custo cadastrado',sem_regra:'sem regra de repasse',sem_dados:'sem dados do ML'};
+function ocelotLinhaMargem(rot,m){
+  if(!m)return '';
+  return '<tr><td style="padding:4px 6px">'+rot+'</td><td style="padding:4px 6px;text-align:right">'+precoTxt(m.preco)+'</td>'
+    +'<td style="padding:4px 6px;text-align:right" title="'+escH(OCN_CMV_ORIGEM[m.cmv_origem]||m.cmv_origem||'')+'">'+(m.cmv==null?'—':precoTxt(m.cmv))+'</td>'
+    +'<td style="padding:4px 6px;text-align:right">'+ocelotMargemTxt(m)+'</td></tr>';
+}
+function ocelotDataBr(d){if(!d)return '';const x=new Date(d);return isNaN(x)?String(d).slice(0,10):x.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+// Pergunta do anuncio em promocao. Devolve 'remover' (alterar agora), 'manter' (agendar) ou null (cancelar).
+function ocelotModalPromo(id,novo,j){
+  return new Promise(function(resolve){
+    const a=j.antes||{}, ps=j.promocoes||[], m=j.margem||{}, tab=Number(a.tabela||0);
+    const v=OCELOT_LIVE.itens[id]||{};
+    let h='<div class="adm-modal" style="max-width:560px;max-height:90vh;overflow:auto">';
+    h+='<h3>Anúncio em promoção</h3>';
+    h+='<div style="font-size:12.5px;color:var(--muted)">'+id+' &middot; '+escH(String(v.titulo||'').slice(0,70))+'</div>';
+    h+='<div style="font-size:13px;line-height:1.6">Preço de tabela: <b>'+precoTxt(tab)+'</b><br>Na promoção o cliente paga: <b style="color:#fbbf24">'+precoTxt(j.preco_promocao)+'</b>'+(tab&&j.preco_promocao?' <span style="color:var(--muted)">(-'+((1-j.preco_promocao/tab)*100).toFixed(1).replace('.',',')+'%)</span>':'');
+    ps.forEach(function(p){h+='<br><span style="font-size:12px;color:var(--muted)">'+escH(p.nome||p.tipo||'promoção')+' ('+escH(p.tipo||'')+')'+(p.fim?' &middot; até '+ocelotDataBr(p.fim):'')+'</span>';});
+    if(!ps.length)h+='<br><span style="font-size:12px;color:#f87171">'+escH(j.promocoes_erro?('Não consegui ler as promoções no ML: '+j.promocoes_erro):'O ML mostra desconto, mas sem promoção ativa na API do vendedor.')+'</span>';
+    h+='<br>Preço novo digitado: <b>'+precoTxt(novo)+'</b>'+(tab?' <span style="color:var(--muted)">('+(novo>tab?'+':'')+((novo/tab-1)*100).toFixed(1).replace('.',',')+'% sobre a tabela)</span>':'')+'</div>';
+    h+='<div style="font-size:12.5px;font-weight:600;margin-top:4px">Margem da Ocelot por unidade</div>';
+    if(m.erro)h+='<div style="font-size:12px;color:#f87171">'+escH(m.erro)+'</div>';
+    else h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px"></th><th style="text-align:right;padding:3px 6px">Preço</th><th style="text-align:right;padding:3px 6px">CMV/repasse</th><th style="text-align:right;padding:3px 6px">Margem</th></tr>'
+      +ocelotLinhaMargem('Promoção atual',m.promocao)+ocelotLinhaMargem('Preço novo, sem promoção',m.novo)+ocelotLinhaMargem('Tabela atual, sem promoção',m.tabela)+'</table>'
+      +'<div style="font-size:11px;color:var(--muted)">Margem = resultado da Ocelot (líquido do ML − CMV − imposto, Ads e custo fixo do mês) ÷ preço.'+((m.novo&&m.novo.cmv_origem==='formula')?' Com CMV pela fórmula o desconto sai do repasse do fornecedor.':'')+'</div>';
+    if(j.agendado)h+='<div style="font-size:12px;color:#93c5fd">Já existe um preço agendado de '+precoTxt(Number(j.agendado.preco))+' neste anúncio: a escolha abaixo substitui.</div>';
+    h+='<div style="font-size:14px;font-weight:600;margin-top:6px">Alterar o preço agora?</div>';
+    const bt='display:block;width:100%;text-align:left;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:13px;margin-top:6px;';
+    h+='<button data-r="remover" style="'+bt+'background:var(--accent);color:#fff;border:none"><b>Sim, alterar</b><br><span style="font-size:11.5px;opacity:.9">Tira o anúncio da promoção agora e grava '+precoTxt(novo)+' no ML.</span></button>';
+    h+='<button data-r="manter" '+(ps.length?'':'disabled ')+'style="'+bt+'background:transparent;color:var(--ink);border:1px solid var(--line)'+(ps.length?'':';opacity:.5;cursor:not-allowed')+'"><b>Não, manter a promoção</b><br><span style="font-size:11.5px;color:var(--muted)">A promoção continua; '+precoTxt(novo)+' entra sozinho quando ela terminar.</span></button>';
+    h+='<button data-r="" style="'+bt+'background:transparent;color:var(--muted);border:none;text-align:center">Cancelar</button>';
+    h+='</div>';
+    const fundo=document.createElement('div');
+    fundo.style.cssText='position:fixed;inset:0;background:rgba(2,6,23,.7);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px';
+    fundo.innerHTML=h;
+    const fim=function(r){fundo.remove();document.removeEventListener('keydown',esc);resolve(r||null);};
+    const esc=function(e){if(e.key==='Escape')fim(null);};
+    document.addEventListener('keydown',esc);
+    fundo.addEventListener('click',function(e){const b=e.target.closest('button[data-r]');if(b&&!b.disabled)fim(b.getAttribute('data-r'));else if(e.target===fundo)fim(null);});
+    document.body.appendChild(fundo);
+  });
 }
 function ocelotConfirmaExclusoes(){
   const P=OCELOT_LIVE.pendentes; if(!P.length)return;
@@ -2250,26 +2335,51 @@ function ocelotRepintaPrecoLinha(id){
 }
 async function ocelotSalvaPreco(inp,id){
   const antS=inp.getAttribute('data-p'), ant=antS===''?null:Number(antS);
-  const volta=function(){inp.value=ant==null?'':ant.toFixed(2).replace('.',',');};
+  const volta=function(){inp.value=ant==null?'':ant.toFixed(2).replace('.',',');inp.disabled=false;};
   const bruto=String(inp.value||'').trim().replace(/\s|R\$/g,'');
   const novo=Math.round(Number(bruto.indexOf(',')>=0?bruto.replace(/\./g,'').replace(',','.'):bruto)*100)/100;
   if(!(novo>0)){alert('Preço inválido.');volta();return;}
   if(ant!=null&&Math.abs(novo-ant)<0.005){volta();return;}
   const v=OCELOT_LIVE.itens[id]||{};
-  if(!confirm('Mudar o preço de tabela do anúncio '+id+' no Mercado Livre?\n\n'+String(v.titulo||'')+'\n\nHoje: '+precoTxt(ant)+'\nNovo: '+precoTxt(novo)+(ant?(' ('+(novo>ant?'+':'')+((novo/ant-1)*100).toFixed(1).replace('.',',')+'%)'):''))){volta();return;}
-  const st=document.getElementById('prst_'+id); inp.disabled=true;
-  if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
+  const st=document.getElementById('prst_'+id), msg=function(t,c){if(st){st.textContent=t;st.style.color=c||'var(--muted)';}};
+  inp.disabled=true; msg('consultando o ML…');
   try{
-    const {data:{session}}=await sb.auth.getSession();
-    const r=await fetch(SB_URL+'/functions/v1/ml-ocelot-preco',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?session.access_token:'')},body:JSON.stringify({acao:'efetivar',item_id:id,preco:novo})});
-    const j=await r.json().catch(function(){return {};});
-    inp.disabled=false;
-    if(!r.ok||(!j.ok&&!j.depois)){if(st){st.textContent=j.erro||('erro '+r.status);st.style.color='#f87171';}volta();return;}
-    inp.setAttribute('data-p',novo);
-    if(st){st.textContent=j.ok?('gravado no ML'+(j.depois&&j.depois.em_promocao?' · em promoção: cliente paga '+precoTxt(j.depois.comprador):'')):(j.aviso||'enviado');st.style.color=j.ok?'#34d399':'#fbbf24';}
-    if(OCELOT_LIVE.itens[id]){OCELOT_LIVE.itens[id].preco=novo;OCELOT_LIVE.aplicadoEm=null;ocelotLiveAplica();}
+    // 1) le ao vivo: preco de tabela, promocao ativa e margem no preco novo
+    const an=await ocelotPrecoPost({acao:'analisar',item_id:id,preco:novo});
+    if(!an.r.ok||!an.j.ok){msg(an.j.erro||('erro '+an.r.status),'#f87171');volta();return;}
+    const J=an.j, tab=J.antes?Number(J.antes.tabela):ant;
+    if(J.fora_faixa){alert(J.fora_faixa);msg('');volta();return;}
+    let escolha=null;
+    if(J.em_promocao){
+      msg('');
+      escolha=await ocelotModalPromo(id,novo,J);
+      if(!escolha){volta();return;}
+    }else{
+      const mg=J.margem&&J.margem.novo&&J.margem.novo.resultado_pct!=null?('\n\nMargem da Ocelot no preço novo: '+String(J.margem.novo.resultado_pct).replace('.',',')+'% ('+precoTxt(J.margem.novo.resultado)+'/un)'+(J.margem.tabela&&J.margem.tabela.resultado_pct!=null?' | hoje: '+String(J.margem.tabela.resultado_pct).replace('.',',')+'%':'')):'';
+      if(!confirm('Mudar o preço de tabela do anúncio '+id+' no Mercado Livre?\n\n'+String(v.titulo||'')+'\n\nHoje: '+precoTxt(tab)+'\nNovo: '+precoTxt(novo)+(tab?(' ('+(novo>tab?'+':'')+((novo/tab-1)*100).toFixed(1).replace('.',',')+'%)'):'')+mg+(J.agendado?'\n\nO preço agendado de '+precoTxt(Number(J.agendado.preco))+' será cancelado.':''))){msg('');volta();return;}
+    }
+    msg(escolha==='remover'?'saindo da promoção…':(escolha==='manter'?'agendando…':'gravando…'));
+    const corpo={acao:'efetivar',item_id:id,preco:novo}; if(escolha)corpo.promocao=escolha;
+    const x=await ocelotPrecoPost(corpo), j=x.j;
+    if(j.agendado){
+      OCELOT_AGENDA[id]=Object.assign({status:'pendente'},j.agendado);
+      const el=document.getElementById('prag_'+id); if(el)el.innerHTML=ocelotAgendaHtml(id);
+      msg('promoção mantida','#93c5fd'); volta(); return;
+    }
+    if(j.em_promocao){msg('entrou em promoção agora: tente de novo','#fbbf24');volta();return;}
+    if(!x.r.ok||(!j.ok&&!j.depois)){msg(j.erro||('erro '+x.r.status),'#f87171');volta();return;}
+    inp.setAttribute('data-p',novo); inp.disabled=false; inp.value=novo.toFixed(2).replace('.',',');
+    const saiu=(j.promocoes_removidas||[]).length;
+    msg(j.ok?((saiu?'saiu da promoção e ':'')+'gravado no ML'+(j.depois&&j.depois.em_promocao?' · ainda em promoção: cliente paga '+precoTxt(j.depois.comprador):'')):(j.aviso||'enviado'),j.ok?'#34d399':'#fbbf24');
+    delete OCELOT_AGENDA[id]; const el=document.getElementById('prag_'+id); if(el)el.innerHTML='';
+    const pp=document.getElementById('prpromo_'+id); if(pp)pp.innerHTML=(j.depois&&j.depois.em_promocao)?'<div style="font-size:10.5px;color:#fbbf24;margin-top:2px">promo: '+precoTxt(j.depois.comprador)+'</div>':'';
+    if(OCELOT_LIVE.itens[id]){
+      const L=OCELOT_LIVE.itens[id]; L.preco=j.depois&&j.depois.comprador!=null?Number(j.depois.comprador):novo;
+      L.preco_original=j.depois&&j.depois.em_promocao?Number(j.depois.tabela):null;
+      OCELOT_LIVE.aplicadoEm=null; ocelotLiveAplica();
+    }
     ocelotRepintaPrecoLinha(id);
-  }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}inp.disabled=false;volta();}
+  }catch(e){msg('erro de rede','#f87171');volta();}
 }
 /* ============================================================
    TABELA UNIFICADA DE PRODUTOS (09/09/2026)

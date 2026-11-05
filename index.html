@@ -4850,7 +4850,7 @@ async function proTirarBalancos(){
   PRO.limpandoBal=true;PRO.balMsg=null;proRender();
   try{
     const r=await proPost({acao:'remover_balancos'}),rm=r.removidos||[],fa=r.falhas||[];
-    PRO.balMsg={erro:fa.length>0&&!rm.length,x:r.verificados+' balanço(s) verificados. Saíram de promoção: '+rm.length+'.'+(fa.length?' Falharam: '+fa.length+'.':''),
+    PRO.balMsg={erro:fa.length>0&&!rm.length,x:r.verificados+' balanço(s) verificados'+(r.ignorados?' ('+r.ignorados+' encerrados/inativos, fora de promoção)':'')+'. Saíram de promoção: '+rm.length+'.'+(fa.length?' Falharam: '+fa.length+'.':''),
       d:rm.map(x=>x.item_id+' ('+(PRO_TIPOS[x.promotion_type]||x.promotion_type)+')').concat(fa.map(x=>x.item_id+' falhou: '+x.erro)).join(' · ')};
     if(rm.length){PRO.camp=null;PRO.aberta=null;proCarregar();}
   }catch(e){PRO.balMsg={erro:true,x:'Falha ao tirar os balanços.',d:e.message};}

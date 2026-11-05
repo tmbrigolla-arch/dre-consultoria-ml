@@ -440,18 +440,29 @@ async function removerBalancos(admin: ReturnType<typeof adminClient>, uid: strin
   }
   // confirma pelo titulo ao vivo (sem titulo ao vivo, vale o da base)
   const ids = [...cand].filter((x) => /^MLB\d+$/.test(x));
-  const titulos: Record<string, string> = {};
+  const titulos: Record<string, string> = {}, statusItem: Record<string, string> = {};
   for (const r of base || []) if (r.titulo) titulos[r.item_id] = r.titulo;
   for (let i = 0; i < ids.length; i += 20) {
-    const r = await mlc(`/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title`);
-    for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id && x.body.title) titulos[x.body.id] = x.body.title;
+    const r = await mlc(`/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,status`);
+    for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id) {
+      if (x.body.title) titulos[x.body.id] = x.body.title;
+      if (x.body.status) statusItem[x.body.id] = String(x.body.status);
+    }
   }
   const balancos = ids.filter((id) => ehBalanco(titulos[id]));
+  // encerrado/inativo nao fica em promocao (o ML nem responde): so conta como ignorado
+  const ignorados = balancos.filter((id) => ["closed", "inactive"].includes(statusItem[id]));
+  const vivos = balancos.filter((id) => !ignorados.includes(id));
 
   const removidos: any[] = [], falhas: any[] = [];
-  await emLotes(balancos, 3, async (id) => {
-    const r = await mlc(`/seller-promotions/items/${id}?app_version=v2`);
-    if (!r.ok) { falhas.push({ item_id: id, erro: erroML(r) }); return; }
+  await emLotes(vivos, 2, async (id) => {
+    let r = await mlc(`/seller-promotions/items/${id}?app_version=v2`);
+    // 409/429/5xx costuma ser instavel do lado do ML: tenta de novo uma vez
+    if (!r.ok && (r.status === 409 || r.status === 429 || r.status >= 500)) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      r = await mlc(`/seller-promotions/items/${id}?app_version=v2`);
+    }
+    if (!r.ok) { falhas.push({ item_id: id, titulo: titulos[id], status_anuncio: statusItem[id] ?? null, erro: erroML(r) }); return; }
     const promos = (Array.isArray(r.json) ? r.json : []).filter((p: any) => ST_ATIVO.includes(String(p?.status)));
     for (const p of promos) {
       const tipo = String(p.type || ""), pid = p.id ? String(p.id) : "";
@@ -460,7 +471,7 @@ async function removerBalancos(admin: ReturnType<typeof adminClient>, uid: strin
       const oferta = p.offer_id ?? p.ref_id ?? null;
       if (oferta && POR_OFERTA.includes(tipo)) q.set("offer_id", String(oferta));
       let d = await mlc(`/seller-promotions/items/${id}?${q}`, { method: "DELETE" });
-      if (!d.ok && d.status >= 500) {
+      if (!d.ok && (d.status === 409 || d.status === 429 || d.status >= 500)) {
         await new Promise((ok) => setTimeout(ok, 1500));
         d = await mlc(`/seller-promotions/items/${id}?${q}`, { method: "DELETE" });
       }
@@ -472,5 +483,5 @@ async function removerBalancos(admin: ReturnType<typeof adminClient>, uid: strin
       });
     }
   });
-  return { ok: true, verificados: balancos.length, removidos, falhas };
+  return { ok: true, verificados: balancos.length, ignorados: ignorados.length, removidos, falhas };
 }

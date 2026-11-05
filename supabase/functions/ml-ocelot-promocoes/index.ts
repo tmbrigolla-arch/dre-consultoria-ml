@@ -1,4 +1,6 @@
-// ml-ocelot-promocoes v6 (30/10/2026: relampago LIGHTNING aplica o desconto minimo mesmo quando o convite traz price (o ML manda price de referencia com menos de 5%), limite da tela abaixo do min do ML tem erro proprio, ML 5xx tenta de novo 1 vez; v5 25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
+// ml-ocelot-promocoes v7 (05/11/2026: TRAVA DO BALANCO, pedido do Tiago: anuncio de balanco nunca entra em promocao,
+// nem com forcar; acao remover_balancos tira os balancos de toda campanha em que estejam (botao na tela e cron de hora
+// em hora, porque o ML pode colocar sozinho nas automaticas ou alguem pode aderir pelo site do ML); v6 30/10/2026: relampago LIGHTNING aplica o desconto minimo mesmo quando o convite traz price (o ML manda price de referencia com menos de 5%), limite da tela abaixo do min do ML tem erro proprio, ML 5xx tenta de novo 1 vez; v5 25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
 // Promocoes do antoninho-comissoes, com o CMV da Ocelot = REPASSE ao fornecedor pela regra do mes corrente.
 //
@@ -7,6 +9,11 @@
 // POST { acao:"itens", promotion_id, promotion_type, status?, cursor? }      -> { ok, itens[], total, cursor, pct }
 // POST { acao:"participar"|"sair", promotion_id, promotion_type, item_ids[], forcar?, estoque_max? } -> { ok, resultados[] }
 //   relampago (LIGHTNING, SMART_LIGHTNING): reserva o estoque do anuncio, limitado ao max do ML e a estoque_max
+// POST { acao:"remover_balancos" }  (usuario com "alterar_ml", ou cron com x-cron-secret = app_segredos cron_promocoes)
+//   -> { ok, verificados, removidos[], falhas[] }: todo anuncio de balanco que estiver ativo/programado em promocao sai
+//
+// TRAVA DO BALANCO: anuncio cujo titulo COMECA com "balanco" (sem acento) nao participa de promocao nenhuma. Acessorio
+// que so cita o balanco ("Corda ... Para Balanco") nao e barrado. Vale no servidor, sem forcar.
 //
 // Conta por unidade, no preco da campanha P (e o mesmo no preco cheio, para comparar):
 //   comissao = tarifa do ML em P (/sites/MLB/listing_prices) - parte que o ML banca (meli_percentage do
@@ -25,7 +32,7 @@
 // Permissoes: ler = menu "ocelot_promocoes"; participar/sair = tambem a acao "alterar_ml" (a mesma que troca
 // preco/estoque no Cadastro). Usuario ligado a fornecedor (ocelot_usuario_fornecedor) nao usa esta tela.
 // Toda tentativa de participar/sair vai para ocelot_promocoes_log. Token do ML so no servidor.
-import { adminClient, CORS, erroML, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
+import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const MIGUEL_ID = "9e88add9-8405-46db-8bd4-e128ee9ce65a";
@@ -51,6 +58,9 @@ const SO_NO_ML = ["PRICE_DISCOUNT", "DOD", "VOLUME", "PRE_NEGOTIATED", "BANK"];
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const semAcento = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+// trava do balanco: o titulo comeca com "balanco" (o produto e o balanco, nao um acessorio dele)
+const ehBalanco = (titulo: string | null | undefined) => /^balanco/.test(semAcento(titulo || "").trim());
+const ST_ATIVO = ["started", "pending"];
 
 async function emLotes<T, R>(lista: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(lista.length);
@@ -73,6 +83,13 @@ Deno.serve(async (req) => {
   let body: any = {};
   try { body = await req.json(); } catch (_) { /* vazio */ }
   const acao = String(body?.acao || "");
+
+  // cron da trava do balanco: so a acao remover_balancos, com o segredo proprio
+  const viaCron = acao === "remover_balancos" && await segredoConfere(admin, "cron_promocoes", req.headers.get("x-cron-secret"));
+  if (viaCron) {
+    try { return json(await removerBalancos(admin, null)); }
+    catch (e) { return json({ ok: false, erro: String((e as Error)?.message || e) }, 500); }
+  }
 
   const u = await exigirUsuario(admin, req, "ocelot_promocoes");
   if (u instanceof Response) return u;
@@ -117,11 +134,12 @@ Deno.serve(async (req) => {
 
     // SKU, dono do anuncio e custo cadastrado do mes
     const [{ data: skuRows }, { data: fornRows }] = await Promise.all([
-      ids.length ? admin.from("ocelot_itens_sku").select("item_id, sku").eq("conta_id", OCELOT_CONTA).in("item_id", ids) : { data: [] },
+      ids.length ? admin.from("ocelot_itens_sku").select("item_id, sku, titulo").eq("conta_id", OCELOT_CONTA).in("item_id", ids) : { data: [] },
       ids.length ? admin.from("ocelot_item_fornecedor").select("item_id, fornecedor_id").eq("conta_id", OCELOT_CONTA).in("item_id", ids) : { data: [] },
     ]);
     const skuPorItem: Record<string, string> = {};
-    for (const r of skuRows || []) if (r.sku) skuPorItem[r.item_id] = r.sku;
+    const tituloBase: Record<string, string> = {};
+    for (const r of skuRows || []) { if (r.sku) skuPorItem[r.item_id] = r.sku; if (r.titulo) tituloBase[r.item_id] = r.titulo; }
     const fornPorItem: Record<string, string> = {};
     for (const r of fornRows || []) if (r.fornecedor_id) fornPorItem[r.item_id] = r.fornecedor_id;
     for (const id of ids) {
@@ -174,7 +192,8 @@ Deno.serve(async (req) => {
     return await emLotes(lista, 6, async (x) => {
       const id = String(x.id);
       const v = vivo[id] || {};
-      const titulo = v.title || null;
+      const titulo = v.title || tituloBase[id] || null;
+      const bloqueado = ehBalanco(v.title) || ehBalanco(tituloBase[id]) ? "balanco" : null;
       const sku = skuPorItem[id] || null;
       const fornId = fornPorItem[id] || null;
       const t = semAcento(titulo || "");
@@ -208,6 +227,7 @@ Deno.serve(async (req) => {
       const atual = contaEm(cheio, tarCheio, freteEm(cheio), ctx);
 
       const avisos: string[] = [];
+      if (bloqueado) avisos.push("balanco_bloqueado");
       if (camp?.origem === "piso") avisos.push("piso_ocelot_paga");
       if (camp?.origem === "custo_cadastrado") avisos.push("custo_cadastrado_ocelot_paga");
       if (!fornId) avisos.push("sem_fornecedor");
@@ -232,7 +252,7 @@ Deno.serve(async (req) => {
         repasse_perde: camp?.cmv != null && atual?.cmv != null ? r2(atual.cmv - camp.cmv) : null,
         inicio: x.start_date ?? null, fim: x.end_date ?? null,
         estoque_min: num(x.stock?.min), estoque_max: num(x.stock?.max),
-        avisos,
+        bloqueado, avisos,
       };
     });
   }
@@ -334,6 +354,8 @@ Deno.serve(async (req) => {
           res.resultado_pct = c?.resultado_pct ?? null;
           res.cmv = c?.cmv ?? null;
           if (v.p.status !== "candidate") { res.erro = `ja_${v.p.status}`; await logar(res); return res; }
+          // trava do balanco: barra sempre, forcar nao passa por cima (se o calculo falhou, nao entra tambem)
+          if (!c || c.bloqueado) { res.erro = c ? "balanco_bloqueado" : "sem_resultado_calculado"; await logar(res); return res; }
           if (!forcar && (c?.resultado_pct == null || c.resultado_pct < MARGEM_MINIMA)) {
             res.erro = c?.resultado_pct == null ? "sem_resultado_calculado" : "abaixo_margem_minima";
             await logar(res); return res;
@@ -383,8 +405,83 @@ Deno.serve(async (req) => {
       return json({ ok: true, resultados, margem_minima: MARGEM_MINIMA });
     }
 
-    return json({ ok: false, erro: "acao invalida (use campanhas|itens|participar|sair)" }, 400);
+    // ------------------------------------------------ trava do balanco: tira de tudo
+    if (acao === "remover_balancos") {
+      const { data: podeAlterar } = await admin.rpc("app_pode", { p_uid: uid, p_chave: "alterar_ml" });
+      if (podeAlterar !== true) return json({ ok: false, erro: "sem permissao para alterar anuncios no ML" }, 403);
+      return json(await removerBalancos(admin, uid));
+    }
+
+    return json({ ok: false, erro: "acao invalida (use campanhas|itens|participar|sair|remover_balancos)" }, 400);
   } catch (e) {
     return json({ ok: false, erro: String((e as Error)?.message || e) }, 500);
   }
 });
+
+// Trava do balanco: acha todos os anuncios de balanco da Ocelot (base de SKUs + busca no ML), confere o titulo ao vivo e
+// tira cada um de toda promocao ativa ou programada (inclusive desconto proprio e as automaticas do ML).
+// uid null = cron. Cada saida vai para ocelot_promocoes_log (acao "sair_trava_balanco").
+async function removerBalancos(admin: ReturnType<typeof adminClient>, uid: string | null) {
+  const { data: conta } = await admin.from("contas_ml").select("ml_user_id").eq("id", OCELOT_CONTA).maybeSingle();
+  const uidML = conta?.ml_user_id;
+  if (!uidML) return { ok: false, erro: "conta Ocelot sem usuario do ML" };
+  const mlc = (caminho: string, init: RequestInit = {}) =>
+    ml(admin, OCELOT_CONTA, caminho, { ...init, headers: { version: "v2", ...(init.headers || {}) } });
+
+  const cand = new Set<string>();
+  const { data: base } = await admin.from("ocelot_itens_sku").select("item_id, titulo").eq("conta_id", OCELOT_CONTA).ilike("titulo", "%balan%");
+  for (const r of base || []) if (r.item_id) cand.add(String(r.item_id));
+  // anuncio novo que ainda nao esta na base: busca no ML
+  for (let off = 0; off < 1000; off += 50) {
+    const r = await mlc(`/users/${uidML}/items/search?q=balanco&limit=50&offset=${off}`);
+    const res = r.ok && Array.isArray(r.json?.results) ? r.json.results : [];
+    for (const id of res) cand.add(String(id));
+    if (!res.length || off + 50 >= (num(r.json?.paging?.total) ?? 0)) break;
+  }
+  // confirma pelo titulo ao vivo (sem titulo ao vivo, vale o da base)
+  const ids = [...cand].filter((x) => /^MLB\d+$/.test(x));
+  const titulos: Record<string, string> = {}, statusItem: Record<string, string> = {};
+  for (const r of base || []) if (r.titulo) titulos[r.item_id] = r.titulo;
+  for (let i = 0; i < ids.length; i += 20) {
+    const r = await mlc(`/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,status`);
+    for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id) {
+      if (x.body.title) titulos[x.body.id] = x.body.title;
+      if (x.body.status) statusItem[x.body.id] = String(x.body.status);
+    }
+  }
+  const balancos = ids.filter((id) => ehBalanco(titulos[id]));
+  // encerrado/inativo nao fica em promocao (o ML nem responde): so conta como ignorado
+  const ignorados = balancos.filter((id) => ["closed", "inactive"].includes(statusItem[id]));
+  const vivos = balancos.filter((id) => !ignorados.includes(id));
+
+  const removidos: any[] = [], falhas: any[] = [];
+  await emLotes(vivos, 2, async (id) => {
+    let r = await mlc(`/seller-promotions/items/${id}?app_version=v2`);
+    // 409/429/5xx costuma ser instavel do lado do ML: tenta de novo uma vez
+    if (!r.ok && (r.status === 409 || r.status === 429 || r.status >= 500)) {
+      await new Promise((ok) => setTimeout(ok, 2000));
+      r = await mlc(`/seller-promotions/items/${id}?app_version=v2`);
+    }
+    if (!r.ok) { falhas.push({ item_id: id, titulo: titulos[id], status_anuncio: statusItem[id] ?? null, erro: erroML(r) }); return; }
+    const promos = (Array.isArray(r.json) ? r.json : []).filter((p: any) => ST_ATIVO.includes(String(p?.status)));
+    for (const p of promos) {
+      const tipo = String(p.type || ""), pid = p.id ? String(p.id) : "";
+      const q = new URLSearchParams({ promotion_type: tipo, app_version: "v2" });
+      if (pid) q.set("promotion_id", pid);
+      const oferta = p.offer_id ?? p.ref_id ?? null;
+      if (oferta && POR_OFERTA.includes(tipo)) q.set("offer_id", String(oferta));
+      let d = await mlc(`/seller-promotions/items/${id}?${q}`, { method: "DELETE" });
+      if (!d.ok && (d.status === 409 || d.status === 429 || d.status >= 500)) {
+        await new Promise((ok) => setTimeout(ok, 1500));
+        d = await mlc(`/seller-promotions/items/${id}?${q}`, { method: "DELETE" });
+      }
+      const linha = { item_id: id, titulo: titulos[id], promotion_id: pid || null, promotion_type: tipo, status: p.status };
+      if (d.ok) removidos.push(linha); else falhas.push({ ...linha, erro: erroML(d) });
+      await admin.from("ocelot_promocoes_log").insert({
+        conta_id: OCELOT_CONTA, item_id: id, promotion_id: pid, promotion_type: tipo, acao: "sair_trava_balanco",
+        preco: num(p.price), forcado: false, usuario_id: uid, ok: d.ok, erro: d.ok ? null : erroML(d),
+      });
+    }
+  });
+  return { ok: true, verificados: balancos.length, ignorados: ignorados.length, removidos, falhas };
+}

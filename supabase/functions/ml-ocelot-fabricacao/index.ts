@@ -1,19 +1,15 @@
-// ml-ocelot-fabricacao v2 (25/10/2026) - calculadora de custo de producao do fornecedor (tela "Custo de producao"
+// ml-ocelot-fabricacao v3 (17/11/2026) - calculadora de custo de producao do fornecedor (tela "Custo de producao"
 // da Gestao Ocelot). Feita para o Miguel (cubas de concreto); usada por ele e pela Elisangela.
-// v2: a receita e da PECA do cadastro (SKU, ou o MLB do anuncio sem SKU), sem o passo de "modelo" da v1; e o
-// resultado do mes fica em ocelot_fab_historico.
+// v2: a receita e da PECA do cadastro (SKU, ou o MLB do anuncio sem SKU), sem o passo de "modelo" da v1.
+// v3: a tela e do fabricante: nao cruza mais com vendas/repasse; o historico e das alteracoes de preco dos insumos
+// (ocelot_fab_precos_hist), gravado no salvar_insumo.
 //
-// POST { acao:"dados", mes? }  -> { ok, fornecedor, mes, mes_aberto, congelado, gravado_em, insumos[], receitas[],
-//                                   produtos[], historico[] }
+// POST { acao:"dados" }  -> { ok, fornecedor, unidades, insumos[], receitas[], produtos[], precos_hist[] }
 //   insumos com custo por unidade (preco / embalagem); receitas com itens e custo da peca;
-//   produtos = pecas do fornecedor no cadastro (ocelot_itens_sku + ocelot_item_fornecedor) e as vendidas nos ultimos
-//   3 meses, com receita_id, unidades e repasse do mes (ocelot_vendas_calc, so vendas cujo CMV e do fornecedor;
-//   cancelada so conta se o ML cobriu) e custo do mes = unidades x custo da peca.
-//   Historico: mes corrente e regravado a cada chamada; mes passado ja gravado volta congelado (custo da epoca);
-//   mes passado sem gravacao volta calculado com os precos atuais (congelado=false) ate alguem gravar.
+//   produtos = pecas do fornecedor no cadastro (ocelot_itens_sku + ocelot_item_fornecedor) e as que tem receita,
+//   com anuncios, receita_id e custo_peca; precos_hist = ultimas 300 alteracoes de preco, mais recentes primeiro.
 // POST { acao:"salvar_insumo", id?, nome, unidade, qtd_embalagem, preco }  | { acao:"excluir_insumo", id }
 // POST { acao:"salvar_peca", chave, titulo?, itens:[{insumo_id, quantidade}] }  | { acao:"excluir_peca", chave }
-// POST { acao:"gravar_historico", mes }   (regrava o mes com os precos atuais)
 //
 // Permissao: menu "ocelot_fabricacao" (ler e editar). Fornecedor: o do usuario em ocelot_usuario_fornecedor
 // (Miguel); quem nao e usuario de fornecedor (Elisangela, admin) ve o do Miguel. Nada de DRE, custo fixo ou outros
@@ -24,29 +20,12 @@ const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const MIGUEL_ID = "9e88add9-8405-46db-8bd4-e128ee9ce65a";
 const ALAN_ID = "e7e5a84c-9294-4d80-a251-d3f36dc83d46";
 const TIAGO_ID = "91c31303-ab54-43c0-9b36-88b7bd8d5c54";
-// responsavel_cmv de ocelot_vendas_calc por fornecedor (mesmo mapa de ml-ocelot-dados)
-const COD_FORN: Record<string, string> = { [MIGUEL_ID]: "miguel", [ALAN_ID]: "alan", [TIAGO_ID]: "ocelot" };
 const NOME_FORN: Record<string, string> = { [MIGUEL_ID]: "Miguel", [ALAN_ID]: "Alan", [TIAGO_ID]: "Tiago" };
 const UNIDADES = ["kg", "g", "L", "ml", "un", "m", "m²", "cm"];
 
 const num = (v: unknown) => (v == null || v === "" || !isFinite(Number(v)) ? null : Number(v));
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r4 = (v: number) => Math.round(v * 10000) / 10000;
-
-function mesCorrente() {
-  // competencia pelo horario de Brasilia (UTC-3)
-  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7) + "-01";
-}
-function somaMeses(mes: string, n: number) {
-  const d = new Date(mes + "T12:00:00Z");
-  d.setUTCMonth(d.getUTCMonth() + n, 1);
-  return d.toISOString().slice(0, 10);
-}
-function fimDoMes(mes: string) {
-  const d = new Date(somaMeses(mes, 1) + "T12:00:00Z");
-  d.setUTCDate(0);
-  return d.toISOString().slice(0, 10);
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -60,8 +39,6 @@ Deno.serve(async (req) => {
   if (u instanceof Response) return u;
   const { data: uf } = await admin.from("ocelot_usuario_fornecedor").select("fornecedor_id").eq("user_id", u.id).maybeSingle();
   const forn: string = uf?.fornecedor_id || MIGUEL_ID;
-  const cod = COD_FORN[forn];
-  if (!cod) return json({ ok: false, erro: "fornecedor sem codigo de repasse" }, 400);
   const uid = u.id;
   const quem = { atualizado_em: new Date().toISOString(), atualizado_por: uid };
 
@@ -86,15 +63,15 @@ Deno.serve(async (req) => {
       return { id: r.id, nome: r.nome, atualizado_em: r.atualizado_em, itens,
         custo_peca: r2(itens.reduce((s: number, x: any) => s + (x.custo || 0), 0)) };
     });
-    const custoRec: Record<string, number> = {};
-    for (const r of receitas) custoRec[r.id] = r.custo_peca;
+    const custoRec: Record<string, number> = {}, nomeRec: Record<string, string> = {};
+    for (const r of receitas) { custoRec[r.id] = r.custo_peca; nomeRec[r.id] = r.nome; }
     const vinc: Record<string, string> = {};
     for (const v of vincs || []) vinc[v.chave] = v.receita_id;
-    return { insumos, receitas, custoRec, vinc };
+    return { insumos, receitas, custoRec, nomeRec, vinc };
   }
 
-  // pecas do cadastro + vendidas nos 3 meses ate o mes, com unidades/repasse/custo do mes pelos precos atuais
-  async function calcularMes(mes: string, b: Awaited<ReturnType<typeof base>>) {
+  // pecas do cadastro (anuncios do fornecedor) + as que tem receita, com o custo da peca pelos precos atuais
+  async function pecas(b: Awaited<ReturnType<typeof base>>) {
     const prod: Record<string, any> = {};
     // anuncios do fornecedor (dono gravado em ocelot_item_fornecedor; sem FK entre as tabelas, entao em 2 consultas)
     const { data: donos } = await admin.from("ocelot_item_fornecedor").select("item_id").eq("conta_id", OCELOT_CONTA).eq("fornecedor_id", forn).range(0, 4999);
@@ -107,85 +84,47 @@ Deno.serve(async (req) => {
     }
     for (const c of cad) {
       const chave = c.sku || c.item_id;
-      const p = prod[chave] ||= { chave, sem_sku: !c.sku, titulo: c.titulo, anuncios: 0, unidades: 0, repasse: 0 };
+      const p = prod[chave] ||= { chave, sem_sku: !c.sku, titulo: c.titulo, anuncios: 0 };
       p.anuncios++;
       // titulo mais curto entre os anuncios do SKU (as cores costumam so acrescentar palavras)
       if (c.titulo && (!p.titulo || c.titulo.length < p.titulo.length)) p.titulo = c.titulo;
     }
-    const { data: vendas, error } = await admin.rpc("ocelot_vendas_calc", { p_conta: OCELOT_CONTA, p_de: somaMeses(mes, -2), p_ate: fimDoMes(mes) });
-    if (error) throw new Error("vendas: " + error.message);
-    for (const v of vendas || []) {
-      if (v.responsavel_cmv !== cod) continue;
-      const chave = v.sku || v.item_id;
-      const p = prod[chave] ||= { chave, sem_sku: !v.sku, titulo: v.titulo, anuncios: 0, unidades: 0, repasse: 0 };
-      if (!p.titulo && v.titulo) p.titulo = v.titulo;
-      if (String(v.data_venda) < mes) continue;
-      if (v.status === "cancelled" && !v.ml_cobriu) continue;
-      p.unidades += Number(v.quantidade) || 0;
-      p.repasse += Number(v.cmv) || 0;
+    const semTitulo = Object.keys(b.vinc).filter((k) => !prod[k]);
+    if (semTitulo.length) {
+      // peca com receita que saiu do cadastro: usa o nome gravado na receita
+      for (const k of semTitulo) prod[k] = { chave: k, sem_sku: /^MLB\d+$/.test(k), titulo: b.nomeRec[b.vinc[k]] || null, anuncios: 0 };
     }
-    for (const chave of Object.keys(b.vinc)) prod[chave] ||= { chave, sem_sku: /^MLB\d+$/.test(chave), titulo: null, anuncios: 0, unidades: 0, repasse: 0 };
     return Object.values(prod).map((p: any) => {
-      const rid = b.vinc[p.chave] || null, cp = rid ? b.custoRec[rid] ?? null : null;
-      return { ...p, repasse: r2(p.repasse), receita_id: rid, custo_peca: cp, custo_mes: cp != null ? r2(cp * p.unidades) : null };
-    }).sort((a: any, z: any) => z.unidades - a.unidades || String(a.chave).localeCompare(String(z.chave)));
+      const rid = b.vinc[p.chave] || null;
+      return { ...p, receita_id: rid, custo_peca: rid ? b.custoRec[rid] ?? null : null };
+    }).sort((a: any, z: any) => String(a.chave).localeCompare(String(z.chave), "pt-BR", { numeric: true }));
   }
 
-  // grava o mes no historico (substitui o que havia): so pecas com venda no mes ou com receita
-  async function gravar(mes: string, produtos: any[]) {
-    const linhas = produtos.filter((p) => p.unidades > 0 || p.receita_id).map((p) => ({
-      fornecedor_id: forn, mes, chave: p.chave, titulo: p.titulo, unidades: p.unidades, custo_peca: p.custo_peca,
-      custo_mes: p.custo_mes, repasse: p.repasse, gravado_em: new Date().toISOString(), gravado_por: uid,
-    }));
-    const d = await admin.from("ocelot_fab_historico").delete().eq("fornecedor_id", forn).eq("mes", mes);
-    if (d.error) throw new Error(d.error.message);
-    if (linhas.length) {
-      const i = await admin.from("ocelot_fab_historico").insert(linhas);
-      if (i.error) throw new Error(i.error.message);
+  async function precosHist() {
+    const { data } = await admin.from("ocelot_fab_precos_hist")
+      .select("id, insumo_id, insumo_nome, unidade, qtd_embalagem, preco, custo_unidade, preco_anterior, qtd_embalagem_anterior, unidade_anterior, custo_unidade_anterior, alterado_em, alterado_por")
+      .eq("fornecedor_id", forn).order("alterado_em", { ascending: false }).limit(300);
+    const ids = [...new Set((data || []).map((h: any) => h.alterado_por).filter(Boolean))];
+    const nomes: Record<string, string> = {};
+    if (ids.length) {
+      const { data: us } = await admin.from("app_usuarios").select("user_id, nome, email").in("user_id", ids);
+      for (const x of us || []) nomes[x.user_id] = x.nome || String(x.email || "").split("@")[0];
     }
-  }
-
-  async function historico() {
-    const { data } = await admin.from("ocelot_fab_historico").select("mes, unidades, custo_mes, repasse, gravado_em").eq("fornecedor_id", forn).range(0, 9999);
-    const m: Record<string, any> = {};
-    for (const h of data || []) {
-      const x = m[h.mes] ||= { mes: h.mes, unidades: 0, custo: 0, repasse: 0, repasse_com_custo: 0, unidades_sem_custo: 0, gravado_em: h.gravado_em };
-      x.unidades += h.unidades; x.repasse += Number(h.repasse) || 0;
-      if (h.custo_mes != null) { x.custo += Number(h.custo_mes); x.repasse_com_custo += Number(h.repasse) || 0; } else x.unidades_sem_custo += h.unidades;
-      if (h.gravado_em > x.gravado_em) x.gravado_em = h.gravado_em;
-    }
-    return Object.values(m).map((x: any) => ({ ...x, custo: r2(x.custo), repasse: r2(x.repasse), sobra: r2(x.repasse_com_custo - x.custo) }))
-      .sort((a: any, z: any) => String(z.mes).localeCompare(String(a.mes)));
+    return (data || []).map((h: any) => {
+      const n = (v: any) => (v == null ? null : Number(v));
+      return { ...h, qtd_embalagem: n(h.qtd_embalagem), preco: n(h.preco), custo_unidade: n(h.custo_unidade), preco_anterior: n(h.preco_anterior),
+        qtd_embalagem_anterior: n(h.qtd_embalagem_anterior), custo_unidade_anterior: n(h.custo_unidade_anterior),
+        alterado_por_nome: h.alterado_por ? nomes[h.alterado_por] || null : null };
+    });
   }
 
   try {
     // ---------------------------------------------------------------- dados
-    if (acao === "dados" || acao === "gravar_historico") {
-      const mes = /^\d{4}-\d{2}-01$/.test(String(body?.mes || "")) ? String(body.mes) : mesCorrente();
-      const aberto = mes >= mesCorrente();
+    if (acao === "dados") {
       const b = await base();
-      let produtos = await calcularMes(mes, b);
-      let congelado = false, gravado_em: string | null = null;
-      if (aberto || acao === "gravar_historico") {
-        await gravar(mes, produtos);
-        gravado_em = new Date().toISOString();
-      } else {
-        // mes passado: o gravado vale (custo da epoca); a lista de pecas continua a do cadastro
-        const { data: h } = await admin.from("ocelot_fab_historico").select("chave, titulo, unidades, custo_peca, custo_mes, repasse, gravado_em")
-          .eq("fornecedor_id", forn).eq("mes", mes).range(0, 9999);
-        if (h && h.length) {
-          congelado = true;
-          const porChave: Record<string, any> = {};
-          for (const x of h) { porChave[x.chave] = x; if (!gravado_em || x.gravado_em > gravado_em) gravado_em = x.gravado_em; }
-          produtos = produtos.map((p: any) => {
-            const x = porChave[p.chave];
-            return x ? { ...p, unidades: x.unidades, repasse: Number(x.repasse), custo_peca: x.custo_peca == null ? null : Number(x.custo_peca),
-              custo_mes: x.custo_mes == null ? null : Number(x.custo_mes) } : { ...p, unidades: 0, repasse: 0, custo_mes: null };
-          });
-        }
-      }
-      return json({ ok: true, fornecedor: { id: forn, nome: NOME_FORN[forn] || "" }, mes, mes_aberto: aberto, congelado, gravado_em,
-        unidades: UNIDADES, insumos: b.insumos, receitas: b.receitas, produtos, historico: await historico() });
+      const [produtos, precos_hist] = await Promise.all([pecas(b), precosHist()]);
+      return json({ ok: true, fornecedor: { id: forn, nome: NOME_FORN[forn] || "" }, unidades: UNIDADES,
+        insumos: b.insumos, receitas: b.receitas, produtos, precos_hist });
     }
 
     // --------------------------------------------------------------- insumos
@@ -198,11 +137,28 @@ Deno.serve(async (req) => {
       if (qtd == null || qtd <= 0) return json({ ok: false, erro: "quantidade da embalagem deve ser maior que zero" }, 400);
       if (preco == null || preco < 0) return json({ ok: false, erro: "preco invalido" }, 400);
       const linha = { nome, unidade, qtd_embalagem: qtd, preco, ...quem };
+      let antes: any = null;
+      if (body?.id) {
+        const a = await admin.from("ocelot_fab_insumos").select("unidade, qtd_embalagem, preco").eq("id", String(body.id)).eq("fornecedor_id", forn).maybeSingle();
+        antes = a.data;
+      }
       const r = body?.id
         ? await admin.from("ocelot_fab_insumos").update(linha).eq("id", String(body.id)).eq("fornecedor_id", forn).select("id").maybeSingle()
         : await admin.from("ocelot_fab_insumos").insert({ ...linha, fornecedor_id: forn }).select("id").maybeSingle();
       if (r.error) return json({ ok: false, erro: r.error.message }, 500);
       if (!r.data) return json({ ok: false, erro: "insumo nao encontrado" }, 404);
+      // historico: so quando muda o que mexe no custo (preco, embalagem ou unidade); renomear nao grava
+      const mudou = !antes || Number(antes.preco) !== preco || Number(antes.qtd_embalagem) !== qtd || antes.unidade !== unidade;
+      if (mudou) {
+        const h = await admin.from("ocelot_fab_precos_hist").insert({
+          fornecedor_id: forn, insumo_id: r.data.id, insumo_nome: nome, unidade, qtd_embalagem: qtd, preco, custo_unidade: r4(preco / qtd),
+          preco_anterior: antes ? Number(antes.preco) : null, qtd_embalagem_anterior: antes ? Number(antes.qtd_embalagem) : null,
+          unidade_anterior: antes ? antes.unidade : null,
+          custo_unidade_anterior: antes && Number(antes.qtd_embalagem) > 0 ? r4(Number(antes.preco) / Number(antes.qtd_embalagem)) : null,
+          alterado_por: uid,
+        });
+        if (h.error) return json({ ok: false, erro: "salvou o insumo, mas nao gravou o historico: " + h.error.message }, 500);
+      }
       return json({ ok: true, id: r.data.id });
     }
     if (acao === "excluir_insumo") {
@@ -260,7 +216,7 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    return json({ ok: false, erro: "acao invalida (use dados|gravar_historico|salvar_insumo|excluir_insumo|salvar_peca|excluir_peca)" }, 400);
+    return json({ ok: false, erro: "acao invalida (use dados|salvar_insumo|excluir_insumo|salvar_peca|excluir_peca)" }, 400);
   } catch (e) {
     return json({ ok: false, erro: String((e as Error)?.message || e) }, 500);
   }

@@ -5066,7 +5066,7 @@ function fabRender(){
     +'<button class="pri" onclick="fabCarregar()"'+(FAB.carregando?' disabled':'')+'>'+(FAB.carregando?'Carregando…':'↻ Atualizar')+'</button></div>';
   if(FAB.erro)h+='<div class="dv-alerta">'+escH(FAB.erro)+'</div>';
   if(!D){app.innerHTML=h+'<div class="empty">'+(FAB.carregando?'Carregando…':'')+'</div></div>';return;}
-  h+='<div id="fabResumo">'+fabHtmlResumo()+'</div>'+fabHtmlInsumos()+fabHtmlPeca()+'<div id="fabProdutos">'+fabHtmlProdutos()+'</div>';
+  h+='<div id="fabResumo">'+fabHtmlResumo()+'</div>'+fabHtmlInsumos()+fabHtmlPeca()+'<div id="fabProdutos">'+fabHtmlProdutos()+'</div><div id="fabHist">'+fabHtmlPrecos()+'</div>';
   app.innerHTML=h+'</div>';
   fabRecCalc('peca');
   if(FAB.rolar){FAB.rolar=false;const b=document.getElementById('fabPasso2');if(b)b.scrollIntoView({behavior:'smooth',block:'start'});}
@@ -5130,7 +5130,7 @@ async function fabAutoIns(k){
   const antes={nome:i.nome,unidade:i.unidade,qtd_embalagem:i.qtd_embalagem,preco:i.preco};
   Object.assign(i,{nome:nome,unidade:un,qtd_embalagem:q,preco:p,custo_unidade:q>0?p/q:null});fabSyncInsumo(k);
   aviso('salvando…','var(--muted)');
-  try{await fabPost({acao:'salvar_insumo',id:k,nome:nome,unidade:un,qtd_embalagem:q,preco:p});aviso('salvo ✓','#34d399');}
+  try{await fabPost({acao:'salvar_insumo',id:k,nome:nome,unidade:un,qtd_embalagem:q,preco:p});aviso('salvo ✓','#34d399');fabAtualizaHist();}
   catch(e){Object.assign(i,antes,{custo_unidade:antes.qtd_embalagem>0?antes.preco/antes.qtd_embalagem:null});fabSyncInsumo(k);aviso('não salvou','#f87171');toast('Não salvou: '+e.message);}
 }
 async function fabSalvaIns(k){
@@ -5204,6 +5204,30 @@ async function fabExcluiPeca(){
   try{await fabPost({acao:'excluir_peca',chave:p.chave});delete FAB.rasc[p.chave];fabCarregar();}catch(e){toast('Não excluiu: '+e.message);}
 }
 function fabEditar(chave){FAB.sel=chave;FAB.rolar=true;fabRender();}
+// passo 4: alteracoes de preco dos insumos (gravadas pelo servidor ao salvar o insumo)
+async function fabAtualizaHist(){
+  try{const d=await fabPost({acao:'dados'});if(FAB.d){FAB.d.precos_hist=d.precos_hist;const b=document.getElementById('fabHist');if(b)b.innerHTML=fabHtmlPrecos();}}catch(e){}
+}
+function fabHtmlPrecos(){
+  const H=FAB.d.precos_hist||[];
+  let h='<div class="dv-sec"><h3>4. Histórico de preços</h3><div class="sub">Cada vez que o preço pago, a embalagem ou a unidade de um insumo muda, fica uma linha aqui. Mostra as últimas 300 alterações.</div>';
+  if(!H.length)return h+'<div class="empty">Nenhuma alteração de preço ainda.</div></div>';
+  const dh=s=>new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const emb=(q,u)=>q==null?'':dvN(q)+' '+escH(u||'');
+  h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">Data</th><th class="l">Insumo</th><th>Preço antes</th><th>Preço novo</th><th>Custo por unidade</th><th>Variação</th><th class="l">Quem</th></tr></thead><tbody>';
+  H.forEach(x=>{
+    const ini=x.preco_anterior==null,a=x.custo_unidade_anterior,n=x.custo_unidade,v=(!ini&&a>0&&n!=null)?(n-a)/a*100:null;
+    const embMudou=!ini&&(x.qtd_embalagem_anterior!==x.qtd_embalagem||x.unidade_anterior!==x.unidade);
+    h+='<tr><td class="l" data-l="Data" style="white-space:nowrap;font-size:12.5px">'+escH(dh(x.alterado_em))+'</td>'
+      +'<td class="l fab-full" data-l="Insumo" style="font-weight:600">'+escH(x.insumo_nome)+'</td>'
+      +'<td data-l="Preço antes">'+(ini?'<span style="color:var(--muted)">cadastro</span>':dvR(x.preco_anterior)+(embMudou?'<div style="font-size:11px;color:var(--muted)">'+emb(x.qtd_embalagem_anterior,x.unidade_anterior)+'</div>':''))+'</td>'
+      +'<td data-l="Preço novo">'+dvR(x.preco)+'<div style="font-size:11px;color:var(--muted)">'+emb(x.qtd_embalagem,x.unidade)+'</div></td>'
+      +'<td data-l="Custo por unidade">'+(ini||a==null?'':fabR4(a)+' → ')+(n!=null?fabR4(n):'—')+' <span style="color:var(--muted);font-size:12px">/'+escH(x.unidade)+'</span></td>'
+      +'<td data-l="Variação" style="font-weight:700;color:'+(v==null?'var(--muted)':v>0?'#f87171':v<0?'#22c55e':'var(--muted)')+'">'+(v==null?'—':(v>0?'+':'')+v.toLocaleString('pt-BR',{maximumFractionDigits:1})+'%')+'</td>'
+      +'<td class="l" data-l="Quem" style="font-size:12.5px;color:var(--muted)">'+escH(x.alterado_por_nome||'')+'</td></tr>';
+  });
+  return h+'</tbody></table></div></div>';
+}
 // passo 3: custo de cada peca anunciada
 function fabHtmlProdutos(){
   const P=fabPecas();

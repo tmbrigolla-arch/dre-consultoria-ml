@@ -5214,13 +5214,13 @@ async function fabExcluiPeca(){
 function fabEditar(chave){FAB.sel=chave;FAB.rolar=true;fabRender();}
 // passo 3: resultado do mes, sem nada para escolher
 function fabHtmlProdutos(){
-  const D=FAB.d,P=(D.produtos||[]).filter(p=>p.unidades>0||p.receita_id);
+  const D=FAB.d,P=(D.produtos||[]).filter(p=>p.unidades>0||p.receita_id||p.anuncios>0);
   const dh=s=>s?new Date(s).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
-  let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu) × custo da receita. Para cadastrar ou mudar uma receita, use o passo 2 (ou o botão na linha).</div>';
+  let h='<div class="dv-sec"><h3>3. Produtos e custo do mês</h3><div class="sub">Todas as peças anunciadas; peças vendidas em '+escH(ocelotMesExtenso(FAB.mes))+' (cancelada só conta se o ML cobriu) × custo da receita. As que não venderam no mês ficam no fim, com 0. Para cadastrar ou mudar uma receita, use o passo 2 (ou o botão na linha).</div>';
   if(D.mes_aberto)h+='<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">Mês aberto: gravado no histórico automaticamente cada vez que a tela abre. Quando o mês virar, fica o último cálculo.</div>';
   else if(D.congelado)h+='<div class="dv-aviso">Mês gravado no histórico em '+escH(dh(D.gravado_em))+', com o custo daquela época (mudar preço ou receita agora não altera este mês). <button onclick="fabGravarHist()" style="'+FAB_BTN+';margin-left:6px">Regravar com os preços atuais</button></div>';
   else h+='<div class="dv-aviso">Calculado com os preços e receitas atuais; este mês ainda não está no histórico. <button onclick="fabGravarHist()" style="'+FAB_BTN+';margin-left:6px">Gravar no histórico</button></div>';
-  if(!P.length)return h+'<div class="empty">Nenhuma venda neste mês.</div></div>';
+  if(!P.length)return h+'<div class="empty">Nenhuma peça anunciada ou vendida neste mês.</div></div>';
   h+='<div style="overflow-x:auto"><table class="fab-tab"><thead><tr><th class="l">SKU</th><th class="l">Produto</th><th class="l">Receita</th><th>Peças no mês</th><th>Custo da peça</th><th>Custo no mês</th><th>Repasse</th><th>Sobra</th></tr></thead><tbody>';
   let tu=0,tc=0,tr=0,ts=0;
   P.forEach(p=>{
@@ -5230,7 +5230,7 @@ function fabHtmlProdutos(){
       +'<td class="l fab-full" data-l="Produto" style="min-width:220px">'+escH(p.titulo||'—')+'</td>'
       +'<td class="l" data-l="Receita">'+(p.receita_id?'<button onclick="fabEditar(\''+escH(p.chave)+'\')" style="'+FAB_BTN+'">✓ editar</button>'
         :'<button onclick="fabEditar(\''+escH(p.chave)+'\')" style="'+FAB_BTN+';border-color:#f59e0b;color:#fcd34d">cadastrar</button>')+'</td>'
-      +'<td data-l="Peças no mês">'+dvN(p.unidades)+'</td><td data-l="Custo da peça">'+dvR(c.peca)+'</td><td data-l="Custo no mês">'+dvR(c.mes)+'</td><td data-l="Repasse">'+dvR(p.repasse)+'</td>'
+      +'<td data-l="Peças no mês"'+(p.unidades?'':' style="color:var(--muted)"')+'>'+dvN(p.unidades)+'</td><td data-l="Custo da peça">'+dvR(c.peca)+'</td><td data-l="Custo no mês">'+dvR(c.mes)+'</td><td data-l="Repasse">'+dvR(p.repasse)+'</td>'
       +'<td data-l="Sobra" style="font-weight:700;color:'+(sobra==null?'var(--muted)':sobra<0?'#f87171':'#22c55e')+'">'+dvR(sobra)+'</td></tr>';
   });
   h+='<tr style="font-weight:700"><td class="l fab-full" colspan="3">Total</td><td data-l="Peças no mês">'+dvN(tu)+'</td><td class="fab-hide-m"></td><td data-l="Custo no mês">'+dvR(tc)+'</td><td data-l="Repasse">'+dvR(tr)+'</td><td data-l="Sobra">'+dvR(ts)+'</td></tr>';

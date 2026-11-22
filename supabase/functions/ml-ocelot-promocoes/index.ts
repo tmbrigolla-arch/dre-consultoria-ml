@@ -1,4 +1,5 @@
-// ml-ocelot-promocoes v7 (05/11/2026: TRAVA DO BALANCO, pedido do Tiago: anuncio de balanco nunca entra em promocao,
+// ml-ocelot-promocoes v8 (22/11/2026: repasse minimo do produto (Cadastro) e o piso do repasse -- substitui os R$ 40 e
+// vale em qualquer produto, como em ml-ocelot-dados; sem minimo, R$ 40 em cuba do Miguel e balanco do Alan); v7 (05/11/2026: TRAVA DO BALANCO, pedido do Tiago: anuncio de balanco nunca entra em promocao,
 // nem com forcar; acao remover_balancos tira os balancos de toda campanha em que estejam (botao na tela e cron de hora
 // em hora, porque o ML pode colocar sozinho nas automaticas ou alguem pode aderir pelo site do ML); v6 30/10/2026: relampago LIGHTNING aplica o desconto minimo mesmo quando o convite traz price (o ML manda price de referencia com menos de 5%), limite da tela abaixo do min do ML tem erro proprio, ML 5xx tenta de novo 1 vez; v5 25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
 // nelas e os botoes de participar / sair (sempre pelo usuario, nunca automatico). Mesma ideia da tela
@@ -154,6 +155,10 @@ Deno.serve(async (req) => {
       if (c.sku) custoSku[c.sku] = Number(c.custo_unitario);
       else if (c.item_id) custoMlb[c.item_id] = Number(c.custo_unitario);
     }
+    // v8: repasse minimo atual do produto (SKU, senao o anuncio) -- e o piso do repasse de uma venda feita agora
+    const { data: minimos } = await admin.from("ocelot_repasse_minimo").select("tipo, chave, valor").eq("conta_id", OCELOT_CONTA).limit(5000);
+    const minSku: Record<string, number> = {}, minMlb: Record<string, number> = {};
+    for (const r of minimos || []) (r.tipo === "sku" ? minSku : minMlb)[r.chave] = Number(r.valor);
 
     // tarifa (cache por preco/tipo/categoria) e frete gratis do vendedor no preco atual
     const tarifas: Record<string, number | null> = {};
@@ -180,7 +185,7 @@ Deno.serve(async (req) => {
       else if (pct.repasse == null) { cmv = null; origem = "sem_regra"; }
       else {
         const formula = liquido - P * pct.repasse / 100;
-        if (ctx.temPiso && formula < CMV_PISO) { cmv = CMV_PISO; origem = "piso"; }
+        if (ctx.piso != null && formula < ctx.piso) { cmv = ctx.piso; origem = "piso"; }
         else { cmv = formula; origem = "formula"; }
       }
       if (cmv == null) return { liquido, cmv: null, origem, resultado: null, resultado_pct: null, retencoes: null };
@@ -222,7 +227,8 @@ Deno.serve(async (req) => {
       const tarCamp = await tarifa(precoCampanha, tipo, cat);
       const tarCheio = await tarifa(cheio, tipo, cat);
       const comissao = tarCamp == null ? null : r2(Math.max(0, tarCamp - parteMl));
-      const ctx = { custoManual, temPiso };
+      const minCad = sku && minSku[sku] != null ? minSku[sku] : (minMlb[id] ?? null);
+      const ctx = { custoManual, piso: minCad ?? (temPiso ? CMV_PISO : null) };
       const camp = contaEm(precoCampanha, comissao, freteEm(precoCampanha), ctx);
       const atual = contaEm(cheio, tarCheio, freteEm(cheio), ctx);
 

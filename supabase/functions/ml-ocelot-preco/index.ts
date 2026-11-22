@@ -9,7 +9,8 @@
 // v5.2 (02/11/2026, pedido do Tiago): REPASSE MINIMO por SKU (ou anuncio sem SKU), padrao R$ 40, em
 //   ocelot_repasse_minimo. POST { acao:"minimos" } (ocelot) lista; { acao:"minimo_set", sku|item_id, valor|null }
 //   (editar_cadastro) grava/apaga. "analisar" devolve margem.repasse_minimo e a tela avisa quando o preco novo ou a
-//   promocao deixam o repasse (o que o preco gera, antes do piso) abaixo do minimo. So aviso: nao muda o pagamento.
+//   promocao deixam o repasse (o que o preco gera, antes do piso) abaixo do minimo. Desde 22/11/2026 o minimo
+//   TAMBEM e o piso do pagamento (vendas a partir do cadastro/alteracao; ver ml-ocelot-dados v31 e ocelot_vendas_calc).
 // v5.1 (02/11/2026): analisar devolve tambem o fornecedor do repasse (margem.fornecedor) -- a tela mostra o repasse.
 // v5 (02/11/2026, pedido do Tiago): anuncio em PROMOCAO. A tela chama "analisar" (promocoes ativas, preco que o
 //   comprador paga e a margem da Ocelot no preco novo e na promocao) e pergunta: sair da promocao e gravar agora

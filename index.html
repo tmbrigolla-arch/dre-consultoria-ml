@@ -1194,7 +1194,7 @@ function htmlOcelotRepasseAba(){
   const pisoDe=function(it){return ocelotPisoInfo(it,mes,_rp);};
   let nPiso=0,extraPiso=0;
   R.vendas.forEach(function(g){g.itens.forEach(function(x){const pz=pisoDe(x.it);if(pz){nPiso++;if(pz.extra!=null)extraPiso+=pz.extra;}});});
-  if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso de R$ 40/un</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
+  if(nPiso)h+='<div class="noprint" style="margin:0 12px 8px;padding:8px 12px;border-radius:8px;background:rgba(8,145,178,.12);border:1px solid rgba(8,145,178,.45);font-size:13px"><b>'+nPiso+' item(ns) pagos pelo piso (repasse mínimo do produto ou R$ 40/un)</b>'+(extraPiso?' — pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou <b>'+dreBRL(extraPiso)+'</b> ao repasse (sai da parte da Ocelot).':'.')+' Linhas destacadas abaixo.</div>';
   h+='<table class="mcards" style="width:100%;table-layout:auto;border-collapse:collapse;font-size:13px"><tr class="mc-h"><th style="'+th+'">Data</th><th style="'+th+'">N.º da venda</th><th style="'+th+'">Produto</th><th style="'+th+';text-align:right">Un.</th><th style="'+th+';text-align:right">Venda</th><th style="'+th+';text-align:right" title="Taxa do ML, frete, imposto, Ads e custo fixo">Custos</th><th style="'+th+';text-align:right" title="Parte da Ocelot">Gestão</th><th style="'+th+';text-align:right">Repasse</th></tr>';
   let tv=0,tl=0,tc=0,tg=0;
   // 18/10/2026 (pedido do Tiago): custos e gestao por venda; venda - custos - gestao = repasse. So na tela:
@@ -1220,7 +1220,7 @@ function htmlOcelotRepasseAba(){
   const _parR=(D.parametros||[]).find(function(p){return p.mes_competencia===mes;})||{};
   const _fonte=(D.tacos_fonte_por_mes&&D.tacos_fonte_por_mes[mes])||'';
   h+='<div class="foot noprint" style="text-align:left">Repasse de cada venda = líquido do ML − '+_rp.toFixed(2).replace('.',',')+'% da venda'
-    +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ faturamento do mês'+(_parR.fechado?', valores reais gravados no fechamento':' — <b>provisório</b>: '+(_fonte.indexOf('provisorio')===0?'usando o TACoS e o custo fixo do último mês fechado':'estimado')+' até o mês ser fechado')+'); piso de R$ 40 por unidade em cuba do Miguel e balanço do Alan')
+    +(_novo?(' (imposto + gestão 5,5% + Ads/TACoS do mês + custo fixo ÷ faturamento do mês'+(_parR.fechado?', valores reais gravados no fechamento':' — <b>provisório</b>: '+(_fonte.indexOf('provisorio')===0?'usando o TACoS e o custo fixo do último mês fechado':'estimado')+' até o mês ser fechado')+'); piso por unidade: o repasse mínimo cadastrado no produto (vale para as vendas feitas depois do cadastro ou da alteração); sem mínimo cadastrado, R$ 40 em cuba do Miguel e balanço do Alan')
           :' (piso de R$ 40 por cuba)')+'. Mês registrado mostra o repasse gravado no fechamento; os ajustes de vendas pagas valem a partir de '+dreMesLabel(OCN_ESTORNO_DESDE)+' (set/2026 foi importado dos PDFs de fechamento).</div>';
   return h+'</div>';
 }
@@ -1230,7 +1230,7 @@ function htmlOcelotRepasseAba(){
 // venda efetiva) e quanto o piso acrescentou. Antes de set/2026 a formula era outra: so marca o piso.
 function ocelotPisoInfo(it,mes,rp){
   if(it.cmv_origem!=='formula_piso')return null;
-  const q=Number(it.quantidade)||1, piso=40*q;
+  const q=Number(it.quantidade)||1, piso=(Number(it.piso_unitario)||40)*q; // 22/11/2026: piso do item (repasse minimo do produto ou R$ 40)
   if(mes<'2026-09-01')return {q:q,piso:piso,f:null,extra:null};
   const ef=Math.max(0,Number(it.valor_venda||0)-Number(it.valor_devolvido||0));
   const f=Number(it.valor_liquido||0)-ef*rp/100;
@@ -1332,7 +1332,7 @@ function ocelotRepasseExcel(){
     rows.push([T('TOTAL DESCONTADO',1),null,null,null,null,null,T(R.totAj,3)]);
   }
   rows.push([]);
-  rows.push([T('3. Vendas de '+mesCurto+' — detalhamento (linhas em azul = pagas pelo piso de R$ 40/un)',1)]);
+  rows.push([T('3. Vendas de '+mesCurto+' — detalhamento (linhas em azul = pagas pelo piso: repasse mínimo do produto ou R$ 40/un)',1)]);
   rows.push([T('Data',6),T('N.º da venda',6),T('Produto',6),T('Un.',6),T('Venda',6),T('Líquido ML',6),T('Repasse',6),T('Piso',6),T('Repasse pela fórmula',6),T('Acréscimo pelo piso',6),T('Observação',6)]);
   let nPiso=0,extra=0,tv=0,tl=0,tr=0,tu=0;
   const linha=function(g,x,obs){
@@ -1346,7 +1346,7 @@ function ocelotRepasseExcel(){
   R.vendas.forEach(function(g){g.itens.forEach(function(x){linha(g,x,'');tv+=Number(x.it.valor_venda||0);tl+=Number(x.it.valor_liquido||0);tr+=x.rep;tu+=Number(x.it.quantidade||0);});});
   R.foraFech.forEach(function(g){g.itens.forEach(function(x){linha(g,x,'ficou fora deste fechamento — entra como valor a pagar no próximo');});});
   rows.push([T('TOTAL ('+R.vendas.length+' vendas)',1),null,null,T(tu,1),T(tv,3),T(tl,3),T(tr,3),T(nPiso?nPiso+' item(ns)':'',1),null,T(extra||'',3)]);
-  if(nPiso)rows.push([T(nPiso+' item(ns) pagos pelo piso de R$ 40/un: pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou R$ '+extra.toFixed(2).replace('.',',')+' ao repasse (sai da parte da Ocelot).',11)]);
+  if(nPiso)rows.push([T(nPiso+' item(ns) pagos pelo piso (repasse mínimo do produto ou R$ 40/un): pela fórmula o repasse teria ficado abaixo do piso; o piso acrescentou R$ '+extra.toFixed(2).replace('.',',')+' ao repasse (sai da parte da Ocelot).',11)]);
   const blob=xlsxGerar('Repasse '+nome,[12,22,60,6,13,13,13,7,16,16,40],rows);
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='repasse_'+forn+'_'+mes.slice(0,7)+'.xlsx';document.body.appendChild(a);a.click();
@@ -2268,7 +2268,7 @@ function ocelotMargemTxt(m){
   const cor=m.resultado_pct<0?'#f87171':(m.resultado_pct<3?'#fbbf24':'#34d399');
   return '<b style="color:'+cor+'">'+String(m.resultado_pct).replace('.',',')+'%</b> <span style="color:var(--muted)">('+precoTxt(m.resultado)+'/un)</span>';
 }
-const OCN_CMV_ORIGEM={formula:'repasse pela fórmula',piso:'piso R$ 40 (Ocelot paga)',custo_cadastrado:'custo cadastrado',sem_regra:'sem regra de repasse',sem_dados:'sem dados do ML'};
+const OCN_CMV_ORIGEM={formula:'repasse pela fórmula',piso:'piso: repasse mínimo (Ocelot paga)',custo_cadastrado:'custo cadastrado',sem_regra:'sem regra de repasse',sem_dados:'sem dados do ML'};
 // Uma linha da tabela de margem: preco, liquido do ML, REPASSE ao fornecedor (= CMV da Ocelot), quanto o
 // repasse muda contra o preco de tabela atual e o resultado da Ocelot.
 function ocelotLinhaMargem(rot,m,ref,min){
@@ -2318,7 +2318,7 @@ function ocelotModalPromo(id,novo,j){
     h+='<div style="font-size:12.5px;font-weight:600;margin-top:4px">Por unidade: repasse ao fornecedor e margem da Ocelot</div>';
     if(m.erro)h+='<div style="font-size:12px;color:#f87171">'+escH(m.erro)+'</div>';
     else h+=ocelotTabelaMargem(m)
-      +'<div style="font-size:11px;color:var(--muted)">Repasse = CMV da Ocelot, pela regra do mês'+(m.pct&&m.pct.repasse!=null?' (fórmula: líquido − '+String(m.pct.repasse).replace('.',',')+'% do preço; piso R$ 40 em cuba do Miguel e balanço do Alan; custo cadastrado no mês tem prioridade)':'')+'. Ocelot = líquido − repasse − imposto, Ads e custo fixo do mês.'+((m.novo&&m.novo.cmv_origem==='formula')?' Pela fórmula, a diferença de preço cai no repasse do fornecedor.':'')+'</div>';
+      +'<div style="font-size:11px;color:var(--muted)">Repasse = CMV da Ocelot, pela regra do mês'+(m.pct&&m.pct.repasse!=null?' (fórmula: líquido − '+String(m.pct.repasse).replace('.',',')+'% do preço; piso = repasse mínimo do produto (sem mínimo, R$ 40 em cuba do Miguel e balanço do Alan); custo cadastrado no mês tem prioridade)':'')+'. Ocelot = líquido − repasse − imposto, Ads e custo fixo do mês.'+((m.novo&&m.novo.cmv_origem==='formula')?' Pela fórmula, a diferença de preço cai no repasse do fornecedor.':'')+'</div>';
     if(j.agendado)h+='<div style="font-size:12px;color:#93c5fd">Já existe um preço agendado de '+precoTxt(Number(j.agendado.preco))+' neste anúncio: a escolha abaixo substitui.</div>';
     h+='<div style="font-size:14px;font-weight:600;margin-top:6px">Alterar o preço agora?</div>';
     const bt='display:block;width:100%;text-align:left;padding:9px 12px;border-radius:9px;cursor:pointer;font-size:13px;margin-top:6px;';
@@ -2451,7 +2451,7 @@ async function ocelotSalvaPreco(inp,id){
     if(J.fora_faixa){
       const M=J.margem||{}, nv=M.novo, at=(J.em_promocao&&M.promocao)?M.promocao:M.tabela;
       const pAt=(J.em_promocao&&J.preco_promocao)?J.preco_promocao:tab;
-      const rp=function(m){return m&&m.cmv!=null?precoTxt(m.cmv)+(m.cmv_origem==='piso'?' (piso R$ 40)':''):'—';};
+      const rp=function(m){return m&&m.cmv!=null?precoTxt(m.cmv)+(m.cmv_origem==='piso'?' (piso)':''):'—';};
       const mg=function(m){return m&&m.resultado_pct!=null?' · Ocelot '+String(m.resultado_pct).replace('.',',')+'%':'';};
       let t='O preço novo está FORA DA FAIXA SEGURA (de metade ao dobro do preço de tabela).\n\n'+id+' · '+String(v.titulo||'').slice(0,60)
         +'\nPreço de tabela: '+precoTxt(tab)+(J.em_promocao&&J.preco_promocao?'  ·  na promoção o cliente paga '+precoTxt(J.preco_promocao):'')
@@ -2772,7 +2772,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. Vazio = padrão R$ 40. O sistema avisa quando um preço ou promoção deixa o repasse abaixo dele.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. É o piso do pagamento: nas vendas feitas depois do cadastro ou da alteração, o repasse nunca fica abaixo dele (a Ocelot completa). Vazio = sem mínimo (R$ 40 em cuba do Miguel e balanço do Alan); os avisos de preço usam R$ 40.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
   const q=ocelotBuscaNorm(), bates={};
   if(q){
@@ -4741,7 +4741,7 @@ const PRO_TIPOS={DEAL:'Campanha tradicional (DEAL)',MARKETPLACE_CAMPAIGN:'Co-par
   PRICE_MATCHING:'Preço competitivo',PRICE_MATCHING_MELI_ALL:'Preço competitivo (100% ML)',PRICE_DISCOUNT:'Desconto próprio',LIGHTNING:'Oferta relâmpago',DOD:'Oferta do dia',
   VOLUME:'Desconto por volume',SELLER_CAMPAIGN:'Campanha do vendedor',SELLER_COUPON_CAMPAIGN:'Cupom do vendedor',UNHEALTHY_STOCK:'Estoque parado (Full)',PRE_NEGOTIATED:'Pré-negociada',BANK:'Desconto no Pix/banco'};
 const PRO_ST={candidate:'Convidado',pending:'Programado',started:'Ativo',finished:'Encerrado'};
-const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso de R$ 40: o desconto sai da parte da Ocelot',custo_cadastrado_ocelot_paga:'CMV é custo cadastrado: o desconto sai da parte da Ocelot',
+const PRO_AVISOS={piso_ocelot_paga:'Repasse no piso (repasse mínimo do produto): o desconto sai da parte da Ocelot',custo_cadastrado_ocelot_paga:'CMV é custo cadastrado: o desconto sai da parte da Ocelot',
   sem_fornecedor:'Anúncio sem fornecedor gravado',abaixo_79_frete_referencia:'Abaixo de R$ 79: frete de referência de R$ 11,05',cupom_so_acima_do_minimo:'Cupom: só vale acima da compra mínima',
   comissao_indisponivel:'ML não devolveu a comissão',frete_indisponivel:'ML não devolveu o frete',preco_sugerido:'Convite sem preço fixo: usado o menor desconto aceito pelo ML',
   desconto_minimo_ml:'Preço baixado para passar do desconto mínimo que o ML exige (relâmpago: mais de 5%)',
@@ -4882,7 +4882,7 @@ function proRender(){
   h+='<div class="dv-aviso">🔒 <b>Trava do balanço:</b> anúncio de balanço não entra em promoção (o servidor barra, nem "forçar" passa). Se o ML ou alguém pelo site colocar, a varredura de hora em hora tira.</div>';
   if(PRO.balMsg)h+='<div class="dv-'+(PRO.balMsg.erro?'alerta':'aviso')+'">'+escH(PRO.balMsg.x)+(PRO.balMsg.d?'<div style="font-size:12px;opacity:.85;margin-top:4px;overflow-wrap:anywhere">'+escH(PRO.balMsg.d)+'</div>':'')+'</div>';
   if(P)h+='<div class="dv-aviso">CMV = repasse ao fornecedor pela regra de <b>'+escH(ocelotMesExtenso(P.mes))+'</b>: '+(P.repasse!=null?Number(P.repasse).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%':'sem %')
-    +' (imposto '+P.imposto+'% + gestão '+P.gestao+'% + Ads '+Number(P.ads).toLocaleString('pt-BR',{maximumFractionDigits:2})+'% + custo fixo '+Number(P.fixo).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%), piso de R$ 40/un em cuba do Miguel e balanço do Alan.'
+    +' (imposto '+P.imposto+'% + gestão '+P.gestao+'% + Ads '+Number(P.ads).toLocaleString('pt-BR',{maximumFractionDigits:2})+'% + custo fixo '+Number(P.fixo).toLocaleString('pt-BR',{maximumFractionDigits:2})+'%), piso = repasse mínimo do produto (sem mínimo, R$ 40/un em cuba do Miguel e balanço do Alan).'
     +(P.fechado?'':' <b>Provisório:</b> muda quando o mês for fechado.')+' Pela fórmula o desconto sai do repasse do fornecedor e a Ocelot fica com a gestão; ela só perde quando o repasse cai no piso ou o CMV é custo cadastrado.</div>';
   if(PRO.erro)h+='<div class="dv-alerta">Não foi possível ler as campanhas: '+escH(PRO.erro)+'</div>';
   if(!PRO.camp){app.innerHTML=h+'<div class="empty">'+(PRO.carregando?'Consultando o Mercado Livre…':'')+'</div></div>';return;}
@@ -4928,7 +4928,7 @@ function proHtmlItens(){
   if(!F.length)h+='<tr><td class="l" colspan="'+(ed?18:16)+'">Nenhum item neste filtro.</td></tr>';
   F.forEach(i=>{
     const pct=v=>v==null?'':'<div style="font-size:11.5px">'+Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+'%</div>';
-    const orig=i.cmv_origem==='piso'?'piso R$ 40':i.cmv_origem==='custo_cadastrado'?'custo cadastrado':i.cmv_origem==='formula'?'fórmula':(i.cmv_origem||'');
+    const orig=i.cmv_origem==='piso'?'piso (mínimo)':i.cmv_origem==='custo_cadastrado'?'custo cadastrado':i.cmv_origem==='formula'?'fórmula':(i.cmv_origem||'');
     h+='<tr>'+(ed?'<td><input type="checkbox"'+(PRO.marc[i.item_id]?' checked':'')+' onclick="proMarca(\''+i.item_id+'\')"></td>':'')
       +'<td class="l" style="min-width:240px">'+(i.permalink?'<a href="'+escH(i.permalink)+'" target="_blank" rel="noopener">'+escH(i.item_id)+'</a>':escH(i.item_id))+' '+escH(i.titulo||'')
       +'<div style="font-size:11.5px;color:var(--muted)">SKU '+escH(i.sku||'—')+'</div>'

@@ -56,6 +56,14 @@ const CMV_PISO=40, CMV_TETO=90;
 // (~R$ 11,05), entao no pacote ele leva o frete da ultima venda avulsa do mesmo anuncio antes desta (pedido
 // sozinho, frete > 0; sem venda avulsa anterior, R$ 11,05). O resto do frete vai para os itens de R$ 79 ou mais,
 // pelo valor; se os fretes de referencia passarem do frete do pacote, ele e dividido entre eles na proporcao.
+// v31 (22/11/2026, pedido do Tiago): REPASSE MINIMO do produto (Cadastro, ocelot_repasse_minimo; SKU, senao o
+// anuncio) passa a valer no pagamento, desde nov/2026: o repasse por unidade nunca fica abaixo dele, em qualquer
+// produto do fornecedor, e ele substitui o piso de R$ 40. Sem minimo cadastrado, como antes (R$ 40 em cuba do
+// Miguel e balanco do Alan). Custo cadastrado do mes continua com prioridade. Piso em pacote compara a soma da
+// formula com a soma dos pisos de cada item. Item pago pelo piso traz piso_unitario. Mesma regra em ocelot_vendas_calc.
+// VIGENCIA: vale o minimo em vigor na hora da venda (ocelot_repasse_minimo_hist, gravado por trigger): cadastrado ou
+// alterado vale das vendas daquele momento em diante; apagado (valor null) tambem.
+const REPMIN_DESDE="2026-11-01";
 const REPASSE_DESDE="2026-09-01", REPASSE_PADRAO=17.5, REPASSE_SOMA_DESDE="2026-10-01";
 const FRETE79_DESDE="2026-10-01", FRETE_MIN_ITEM=79, PISO_PACOTE_DESDE="2026-10-01", FRETE_REF_PADRAO=11.05;
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization,content-type,apikey","Access-Control-Allow-Methods":"GET,POST,OPTIONS"};
@@ -118,6 +126,15 @@ Deno.serve(async(req)=>{
   const {data:parametros}=await supabase.from("ocelot_parametros").select("*").eq("conta_id",OCELOT_CONTA).order("mes_competencia",{ascending:false});
   const {data:mesesRows}=await supabase.from("ocelot_vendas_itens").select("data_venda").eq("conta_id",OCELOT_CONTA);
   const mesesDisponiveis=Array.from(new Set((mesesRows||[]).map((r:any)=>mesDe(r.data_venda)))).sort().reverse();
+  const {data:minimosRows}=await supabase.from("ocelot_repasse_minimo_hist").select("tipo,chave,valor,vigente_desde,id").eq("conta_id",OCELOT_CONTA).order("vigente_desde",{ascending:true}).order("id",{ascending:true}).limit(20000);
+  const minimoHist:Record<string,{t:number,v:number|null}[]>={};
+  for(const r of (minimosRows||[]))(minimoHist[r.tipo+"|"+r.chave]=minimoHist[r.tipo+"|"+r.chave]||[]).push({t:Date.parse(r.vigente_desde),v:r.valor==null?null:Number(r.valor)});
+  // minimo em vigor no instante t (ultima alteracao ate t); undefined = nada vigente
+  const minimoEm=(tipo:string,chave:string|null,t:number):number|undefined=>{
+    const h=chave?minimoHist[tipo+"|"+chave]:undefined; if(!h)return undefined;
+    let v:number|null|undefined=undefined; for(const x of h){if(x.t<=t)v=x.v;else break;}
+    return v==null?undefined:v;
+  };
   const {data:mapaFornecedor}=await supabase.from("ocelot_item_fornecedor").select("item_id,fornecedor_id").eq("conta_id",OCELOT_CONTA);
   const fornecedorPorItem:Record<string,string|null>={};
   for(const m of (mapaFornecedor||[]))fornecedorPorItem[m.item_id]=m.fornecedor_id;
@@ -355,7 +372,7 @@ Deno.serve(async(req)=>{
     const responsavel_cmv=v.responsavel_cmv||COD_FORN[fornecedorPorItem[v.item_id]||""]||classifyResponsavel(v.titulo);
     let cmv_origem:string,cmv_unitario:number,cmv_total:number,ads_pct_usado:number|null=null;
     let imposto_valor:number|null=null,ads_valor:number|null=null,custofixo_valor:number|null=null,resultado:number;
-    let pisoPacote:any=null;
+    let pisoPacote:any=null, piso_unitario:number|null=null;
     if(v.status==="cancelled"){
       const cc=custoCancelado[String(v.order_id)];
       const shareP=vendaPorPedido[String(v.order_id)]>0?valorVenda/vendaPorPedido[String(v.order_id)]:1;
@@ -402,14 +419,18 @@ Deno.serve(async(req)=>{
       const tituloLow=(v.titulo||"").toLowerCase();
       const ehCubaMiguel=(responsavel_cmv==="miguel"&&tituloLow.indexOf("cuba")!==-1)
         ||(mes>=REPASSE_SOMA_DESDE&&responsavel_cmv==="alan"&&tituloLow.indexOf("balan")!==-1);
-      if(ehCubaMiguel&&cmv_unit_bruto<CMV_PISO){
-        cmv_unitario=CMV_PISO;cmv_origem="formula_piso";
+      // v31: minimo cadastrado do produto (SKU, senao anuncio) substitui o piso de R$ 40, desde nov/2026
+      const tVenda=v.data_venda_ts?Date.parse(v.data_venda_ts):Date.parse(v.data_venda+"T23:59:59-03:00");
+      const minCad=mes>=REPMIN_DESDE?(minimoEm("sku",skuItem,tVenda)??minimoEm("mlb",v.item_id,tVenda)):undefined;
+      const pisoUn:number|null=minCad!=null?minCad:(ehCubaMiguel?CMV_PISO:null);
+      if(pisoUn!=null&&cmv_unit_bruto<pisoUn){
+        cmv_unitario=pisoUn;cmv_origem="formula_piso";piso_unitario=pisoUn;
       }else{
         cmv_origem="formula";cmv_unitario=cmv_unit_bruto;
       }
       cmv_total=Number(v.quantidade)>0?cmv_unitario*Number(v.quantidade):cmv_unitario;
       // v27: guarda a formula para a regra do piso por pacote
-      if(ehCubaMiguel&&mes>=PISO_PACOTE_DESDE&&v.status!=="partially_refunded")pisoPacote={formula:cmv_total_bruto};
+      if(pisoUn!=null&&mes>=PISO_PACOTE_DESDE&&v.status!=="partially_refunded")pisoPacote={formula:cmv_total_bruto,piso:pisoUn};
     }else{
       const gestao_valor=valorVendaEfetivo*Number(p.gestao_pct)/100;
       const retencao=imposto_valor+ads_valor+custofixo_valor+gestao_valor;
@@ -418,7 +439,7 @@ Deno.serve(async(req)=>{
       const fidFornecedor=fornecedorPorItem[v.item_id];
       const podeAplicarPisoTeto=elegivelPisoTeto(v.titulo,fidFornecedor);
       if(podeAplicarPisoTeto&&cmv_unit_bruto<CMV_PISO){
-        cmv_unitario=CMV_PISO;cmv_origem="formula_piso";
+        cmv_unitario=CMV_PISO;cmv_origem="formula_piso";piso_unitario=CMV_PISO;
       }else if(podeAplicarPisoTeto&&cmv_unit_bruto>CMV_TETO){
         cmv_unitario=CMV_TETO;cmv_origem="formula_teto";
       }else{
@@ -427,10 +448,10 @@ Deno.serve(async(req)=>{
       cmv_total=Number(v.quantidade)>0?cmv_unitario*Number(v.quantidade):cmv_unitario;
     }
     if(v.status==="partially_refunded"&&(responsavel_cmv==="miguel"||responsavel_cmv==="alan")&&cmv_total>0){
-      cmv_origem="estorno_fornecedor";cmv_unitario=0;cmv_total=0;
+      cmv_origem="estorno_fornecedor";cmv_unitario=0;cmv_total=0;piso_unitario=null;
     }
     resultado=valorLiquido-cmv_total-imposto_valor-ads_valor-custofixo_valor;
-    return {...v,sku:skuItem,cmv_chave,mes_competencia:mes,cmv_origem,cmv_unitario,cmv_total,resultado,ads_pct_usado,imposto_valor,ads_valor,custofixo_valor,responsavel_cmv,_pisoPacote:pisoPacote};
+    return {...v,sku:skuItem,cmv_chave,mes_competencia:mes,cmv_origem,cmv_unitario,cmv_total,resultado,ads_pct_usado,imposto_valor,ads_valor,custofixo_valor,responsavel_cmv,piso_unitario,_pisoPacote:pisoPacote};
   }
   const vendasCalc0=vendas.map(calcItem);
   // v27: piso por pacote -- se os itens com piso do mesmo pacote e fornecedor somam R$ 40/un ou mais pela
@@ -441,13 +462,13 @@ Deno.serve(async(req)=>{
     const g=gruposPiso[k];
     if(g.length<2)continue;
     const soma=g.reduce((s:number,v:any)=>s+Number(v._pisoPacote.formula),0);
-    const un=g.reduce((s:number,v:any)=>s+(Number(v.quantidade)||1),0);
-    if(soma<CMV_PISO*un)continue;
+    const pisos=g.reduce((s:number,v:any)=>s+Number(v._pisoPacote.piso)*(Number(v.quantidade)||1),0);
+    if(soma<pisos)continue;
     for(const v of g){
       if(v.cmv_origem!=="formula_piso")continue;
       const novo=Number(v._pisoPacote.formula);
       v.resultado=Number(v.resultado)+Number(v.cmv_total)-novo;
-      v.cmv_total=novo;v.cmv_unitario=Number(v.quantidade)>0?novo/Number(v.quantidade):novo;v.cmv_origem="formula";
+      v.cmv_total=novo;v.cmv_unitario=Number(v.quantidade)>0?novo/Number(v.quantidade):novo;v.cmv_origem="formula";v.piso_unitario=null;
     }
   }
   for(const v of vendasCalc0)delete v._pisoPacote;

@@ -4,7 +4,8 @@
 //   frete    = frete gratis do vendedor (/users/{id}/shipping_options/free) se P >= R$ 79; abaixo, R$ 11,05;
 //   liquido  = P - comissao - frete;
 //   CMV      = custo cadastrado do SKU/anuncio no mes corrente; senao liquido - repasse% x P (regra do mes),
-//              com piso de R$ 40/un em cuba do Miguel e balanco do Alan;
+//              com piso = repasse minimo do produto (Cadastro, SKU senao anuncio; desde 22/11/2026 vale no pagamento);
+//              sem minimo cadastrado, R$ 40/un em cuba do Miguel e balanco do Alan;
 //   resultado = liquido - CMV - (imposto + Ads + custo fixo)% x P;  margem = resultado / P.
 // repasse% = imposto + gestao + Ads + custo fixo (ocelot_repasse_pct): pela formula a Ocelot fica com a gestao.
 import { ml } from "./ocelot.ts";
@@ -39,6 +40,11 @@ export async function contextoMargem(admin: any, conta: string, itemId: string) 
     admin.from("ocelot_itens_sku").select("sku").eq("conta_id", conta).eq("item_id", itemId).maybeSingle(),
     admin.from("ocelot_item_fornecedor").select("fornecedor_id").eq("conta_id", conta).eq("item_id", itemId).maybeSingle(),
   ]);
+  // repasse minimo atual do produto: SKU, senao o anuncio
+  const minQ = (tipo: string, chave: string) => admin.from("ocelot_repasse_minimo").select("valor")
+    .eq("conta_id", conta).eq("tipo", tipo).eq("chave", chave).maybeSingle();
+  const [{ data: minSku }, { data: minMlb }] = await Promise.all([
+    skuRow?.sku ? minQ("sku", skuRow.sku) : Promise.resolve({ data: null }), minQ("mlb", itemId)]);
   const pm: any = (pctRows || [])[0] || {};
   const pct = {
     mes, repasse: num(rpData), imposto: num(pm.imposto_pct) ?? 0, gestao: num(pm.gestao_pct) ?? 0,
@@ -53,6 +59,7 @@ export async function contextoMargem(admin: any, conta: string, itemId: string) 
   }
   const t = semAcento(v.title || "");
   const temPiso = (fornId === MIGUEL_ID && t.includes("cuba")) || (fornId === ALAN_ID && t.includes("balan"));
+  const piso: number | null = num((minSku || minMlb)?.valor) ?? (temPiso ? CMV_PISO : null);
   let custoManual: number | null = null;
   {
     const base = () => admin.from("ocelot_custos_sku").select("sku, item_id, custo_unitario").eq("conta_id", conta).eq("mes_competencia", mes);
@@ -93,7 +100,7 @@ export async function contextoMargem(admin: any, conta: string, itemId: string) 
     else {
       const formula = liquido - P * pct.repasse / 100;
       repassePreco = r2(formula);
-      if (temPiso && formula < CMV_PISO) { cmv = CMV_PISO; origem = "piso"; } else { cmv = formula; origem = "formula"; }
+      if (piso != null && formula < piso) { cmv = piso; origem = "piso"; } else { cmv = formula; origem = "formula"; }
     }
     if (cmv == null) return { ...vazio, liquido, cmv_origem: origem, repasse_formula: repasseFormula };
     const retencoes = r2(P * (pct.imposto + pct.ads + pct.fixo) / 100);
@@ -101,7 +108,7 @@ export async function contextoMargem(admin: any, conta: string, itemId: string) 
     return { preco: P, comissao, frete, liquido, cmv: r2(cmv), cmv_origem: origem, repasse_preco: repassePreco, repasse_formula: repasseFormula, retencoes, resultado, resultado_pct: P ? r2(resultado / P * 100) : null };
   }
   return {
-    pct, sku, custoManual, contaEm, tipo: v.listing_type_id || null, preco_atual: num(v.price),
+    pct, sku, custoManual, contaEm, piso, tipo: v.listing_type_id || null, preco_atual: num(v.price),
     fornecedor: fornId ? (FORN_NOME[fornId] || "outro") : null, fornecedor_sugerido: !fornRow?.fornecedor_id && !!fornId,
   };
 }

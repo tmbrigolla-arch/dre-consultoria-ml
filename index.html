@@ -2592,6 +2592,7 @@ async function ocelotSalvaPreco(inp,id){
    ============================================================ */
 let ocelotCustoMes=(new Date().toISOString().slice(0,7));
 let ocelotSoSemCusto=false;
+let ocelotSoComPrazo=false; // 28/11/2026: filtro "so com prazo de fabricacao" (pelo prazo lido ao vivo no ML)
 // BUSCA (02/11/2026, pedido do Tiago): filtra a tabela por MLB, SKU ou nome. MLB acha o produto (SKU) que
 // tem aquele anuncio, abre a linha e destaca o anuncio -- e la que se muda preco/estoque/situacao no ML.
 // Aceita "MLB123...", "mlb-123..." ou so os numeros (6+ digitos, para nao confundir com SKU tipo 00005).
@@ -2670,6 +2671,8 @@ function ocelotMesSel(){return ocelotCustoMes+'-01';}
 function mesBr(m){const p=String(m).slice(0,7).split('-');return p[1]+'/'+p[0];}
 function ocelotSetCustoMes(v){if(!v)return;ocelotCustoMes=String(v).slice(0,7);renderOcelotBody();}
 function ocelotToggleSemCusto(chk){ocelotSoSemCusto=!!chk.checked;renderOcelotBody();}
+function ocelotToggleComPrazo(chk){ocelotSoComPrazo=!!chk.checked;renderOcelotBody();}
+function ocelotLinhaTemPrazo(l){const r=ocelotPrazoLinha(l);return !!(r&&r.com);}
 function ocelotCustosDe(l){
   const custos=(OCELOT_CACHE&&OCELOT_CACHE.custos)||[], out=[];
   for(let i=0;i<custos.length;i++){
@@ -2854,6 +2857,8 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px">M&ecirc;s de compet&ecirc;ncia<br><input type="month" value="'+ocelotCustoMes+'" onchange="ocelotSetCustoMes(this.value)" style="width:158px"></label>';
   h+='<div><button id="btnAplicarCustoRef" onclick="aplicarTodosCustoRef()"'+(repetir?'':' disabled style="display:none"')+' style="background:var(--accent);color:#fff;border:none;padding:7px 14px;border-radius:7px;cursor:pointer;height:34px">Repetir '+repetir+' custo(s) do m&ecirc;s anterior em '+mesBr(mes)+'</button> <span id="stAplicarCustoRef" style="font-size:12px;color:var(--muted)"></span></div>';
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
+  const pzc=ocelotPrazoContagem();
+  h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px" title="Mostra só os produtos com pelo menos um anúncio com prazo de fabricação no ML"><input type="checkbox"'+(ocelotSoComPrazo?' checked':'')+' onchange="ocelotToggleComPrazo(this)"> s&oacute; com prazo de fabrica&ccedil;&atilde;o'+(OCELOT_LIVE.lidoEm?' <span style="color:var(--muted)">('+pzc.com+' an&uacute;ncio(s))</span>':'')+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
   h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+'<th class="n" title="Prazo de fabricação no ML (dias) dos anúncios deste produto. — = pronta entrega. Para alterar, clique no produto.">Prazo fab.</th>'+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. É o piso do pagamento: nas vendas feitas depois do cadastro ou da alteração, o repasse nunca fica abaixo dele (a Ocelot completa). Vazio = sem mínimo (R$ 40 em cuba do Miguel e balanço do Alan); os avisos de preço usam R$ 40.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
@@ -2861,13 +2866,14 @@ function htmlOcelotProdutos(){
   const q=ocelotBuscaNorm(), bates={};
   if(q){
     let nMlb=0;
-    for(let i=0;i<linhas.length;i++){const b=ocelotBuscaBate(linhas[i],q);bates[linhas[i].k]=b;if(b.mlb&&!(ocelotSoSemCusto&&linhas[i].atual))nMlb++;}
+    for(let i=0;i<linhas.length;i++){const b=ocelotBuscaBate(linhas[i],q);bates[linhas[i].k]=b;if(b.mlb&&!(ocelotSoSemCusto&&linhas[i].atual)&&!(ocelotSoComPrazo&&!ocelotLinhaTemPrazo(linhas[i])))nMlb++;}
     // busca por MLB com poucos resultados: abre a linha para mostrar o anuncio (e o campo de preco)
     if(nMlb&&nMlb<=5)for(const kk in bates)if(bates[kk].mlb)ocelotSkuAberto[kk]=true;
   }
   for(let i=0;i<linhas.length;i++){
     const l=linhas[i], k=l.k;
     if(ocelotSoSemCusto&&l.atual)continue;
+    if(ocelotSoComPrazo&&!ocelotLinhaTemPrazo(l))continue;
     if(q&&!bates[k].ok)continue;
     mostradas++;
     const selo=(l.tipo==='mlb')?' <span style="font-size:10px;background:#33455f;color:#cbd5e1;padding:1px 5px;border-radius:4px">sem SKU</span>':'';
@@ -2891,7 +2897,7 @@ function htmlOcelotProdutos(){
       +'<td id="resp_'+k+'" style="white-space:nowrap">'+ocelotRespResumo(l)+'</td></tr>';
     h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="11" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
-  if(!mostradas)h+='<tr><td class="m" colspan="11" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
+  if(!mostradas)h+='<tr><td class="m" colspan="11" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(ocelotSoComPrazo&&!OCELOT_LIVE.lidoEm?' (o prazo ainda está sendo lido no ML, aguarde alguns segundos)':'')+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
   h+='</tbody></table></div>';
   setTimeout(ocelotSugPedirAbertos,0);
   if(q&&mostradas)h+='<div class="foot" style="text-align:left;margin-top:6px">Busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;: '+mostradas+' de '+linhas.length+' linhas.</div>';

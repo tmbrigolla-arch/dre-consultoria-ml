@@ -32,7 +32,7 @@
 //   sobrescrever: a tela manda "esperado" (o saldo que ela mostrava) e, se o ML ja estiver diferente, a gravacao
 //   e recusada (409) com o saldo atual -- a pessoa revisa e confirma de novo. "+N"/"-N" vai como somar:N e e
 //   aplicado sobre o saldo LIDO NA HORA no ML (nao sobre o da tela).
-import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
+import { adminClient, CORS, erroML, exigirUsuario, itensML, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const CAMPOS = "id,title,price,original_price,listing_type_id,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
@@ -136,10 +136,10 @@ Deno.serve(async (req) => {
     const ehExcluido = (code: number, b: any) => code === 404 || (b?.status === "closed" && Array.isArray(b?.sub_status) && b.sub_status.includes("deleted"));
     for (let i = 0; i < lotes.length; i += 4) {
       await Promise.all(lotes.slice(i, i + 4).map(async (lote) => {
-        let r = await ml(admin, OCELOT_CONTA, `/items?ids=${lote.join(",")}&attributes=${CAMPOS}`);
-        if (r.status === 429) { await new Promise((ok) => setTimeout(ok, 1500)); r = await ml(admin, OCELOT_CONTA, `/items?ids=${lote.join(",")}&attributes=${CAMPOS}`); }
-        if (!r.ok || !Array.isArray(r.json)) { lotesErro++; return; }
-        r.json.forEach((e: any, k: number) => {
+        // itensML: lote do ML com busca individual de reserva (o multiget esta sendo desligado pelo ML)
+        const lidos = await itensML(admin, OCELOT_CONTA, lote, CAMPOS);
+        if (lidos.some((e) => e.code !== 200 && e.code !== 404)) lotesErro++;
+        lidos.forEach((e: any, k: number) => {
           const id = e?.body?.id || lote[k];
           if (e?.code !== 404 && (e?.code !== 200 || !e.body?.id)) return; // outro erro: nao conclui nada
           if (ehExcluido(e.code, e.body)) {
@@ -226,11 +226,11 @@ Deno.serve(async (req) => {
       .filter((x) => /^MLB\d+$/.test(x)).slice(0, 60);
     if (!ids.length) return json({ ok: false, erro: "informe item_ids" }, 400);
     const lidos: any[] = [];
-    for (let i = 0; i < ids.length; i += 20) {
-      const r = await ml(admin, OCELOT_CONTA, `/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=${CAMPOS}`);
-      if (!r.ok || !Array.isArray(r.json)) return json({ ok: false, erro: erroML(r) }, 502);
-      for (const e of r.json) if (e?.code === 200 && e.body?.id) lidos.push(resumo(e.body));
-    }
+    // itensML: lote do ML com busca individual de reserva (o multiget esta sendo desligado pelo ML)
+    const vindos = await itensML(admin, OCELOT_CONTA, ids, CAMPOS);
+    const falhou = vindos.find((e) => e.code !== 200 && e.code !== 404);
+    if (falhou && !vindos.some((e) => e.code === 200)) return json({ ok: false, erro: `ML ${falhou.code}: anuncios nao lidos` }, 502);
+    for (const e of vindos) if (e?.code === 200 && e.body?.id) lidos.push(resumo(e.body));
     const resultados: any[] = [], feitos = new Set<string>();
     for (const it of lidos) {
       const grupo = it.user_product_id || it.item_id;

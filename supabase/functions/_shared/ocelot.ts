@@ -140,3 +140,46 @@ export function erroML(r: { status: number; json: any }): string {
   const txt = [m, causas].filter(Boolean).join(" - ");
   return `ML ${r.status}${txt ? ": " + String(txt).slice(0, 300) : ""}`;
 }
+
+// Anuncios do ML por id, no formato do multiget ([{ code, body }] na mesma ordem de ids).
+// 28/11/2026: o ML comecou a desligar o multiget GET /items?ids= (403 "Resource deprecated - client no longer
+// allowed", intermitente). Tenta o lote (20 por chamada) e o que nao vier (403, 429, 5xx, falha de rede) busca
+// anuncio por anuncio em GET /items/{id}, com nova tentativa. Quando o lote sumir de vez, segue funcionando.
+export async function itensML(admin: SupabaseClient, contaId: string, ids: string[], campos: string): Promise<{ code: number; body: any }[]> {
+  const out: Record<string, { code: number; body: any }> = {};
+  const pausa = (ms: number) => new Promise((ok) => setTimeout(ok, ms));
+  const instavel = (s: number) => s === 0 || s === 429 || s >= 500;
+  async function ler(caminho: string) {
+    let r: { status: number; ok: boolean; json: any } = { status: 0, ok: false, json: null };
+    for (let t = 0; t < 3; t++) {
+      if (t) await pausa(600 * t);
+      try { r = await ml(admin, contaId, caminho); } catch (e) { r = { status: 0, ok: false, json: { message: String((e as Error)?.message || e) } }; continue; }
+      if (!instavel(r.status)) break;
+    }
+    return r;
+  }
+  const lotes: string[][] = [];
+  for (let i = 0; i < ids.length; i += 20) lotes.push(ids.slice(i, i + 20));
+  let k = 0;
+  await Promise.all(Array.from({ length: Math.min(3, lotes.length) }, async () => {
+    while (k < lotes.length) {
+      const lote = lotes[k++];
+      const r = await ler(`/items?ids=${lote.join(",")}&attributes=${campos}`);
+      if (!r.ok || !Array.isArray(r.json)) continue; // lote recusado: vai tudo para a busca individual
+      r.json.forEach((e: any, j: number) => {
+        const id = String(e?.body?.id || lote[j]);
+        if (e?.code === 200 || e?.code === 404) out[id] = { code: e.code, body: e.body ?? null };
+      });
+    }
+  }));
+  const faltam = ids.filter((id) => !out[id]);
+  let f = 0;
+  await Promise.all(Array.from({ length: Math.min(6, faltam.length) }, async () => {
+    while (f < faltam.length) {
+      const id = faltam[f++];
+      const r = await ler(`/items/${id}?attributes=${campos}`);
+      out[id] = { code: r.status, body: r.json };
+    }
+  }));
+  return ids.map((id) => out[id]);
+}

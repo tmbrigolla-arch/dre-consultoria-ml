@@ -27,7 +27,7 @@
 //     ja foi respondida: sai da fila e e marcada como lida no ML (log 'marcar_lida', texto
 //     "respondida fora do painel").
 //   contar e listar usam a mesma regra, entao o contador bate com a tela.
-import { adminClient, Conta, contasOcelot, CORS, erroML, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
+import { adminClient, Conta, contasOcelot, CORS, erroML, exigirUsuario, itensML, json, ml } from "../_shared/ocelot.ts";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -151,10 +151,9 @@ Deno.serve(async (req) => {
           const qs = await perguntasPendentes(c, tr);
           const ids = [...new Set(qs.map((x: any) => x.item_id).filter(Boolean))] as string[];
           const itens: Record<string, any> = {};
-          for (let i = 0; i < ids.length; i += 20) {
-            const r = await ml(admin, c.id, `/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,thumbnail,permalink,price,available_quantity`);
-            for (const it of (r.json || [])) if (it?.body?.id) itens[it.body.id] = it.body;
-          }
+          // itensML: lote do ML com busca individual de reserva (o multiget esta sendo desligado pelo ML)
+          for (const it of await itensML(admin, c.id, ids, "id,title,thumbnail,permalink,price,available_quantity"))
+            if (it?.code === 200 && it.body?.id) itens[it.body.id] = it.body;
           for (const x of qs) {
             const it = itens[x.item_id] || {};
             perguntas.push({

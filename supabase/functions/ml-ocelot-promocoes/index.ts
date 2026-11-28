@@ -1,4 +1,5 @@
-// ml-ocelot-promocoes v8 (22/11/2026: repasse minimo do produto (Cadastro) e o piso do repasse -- substitui os R$ 40 e
+// ml-ocelot-promocoes v9 (28/11/2026: leituras do calculo tentam de novo em 429/5xx e o erro
+// "sem resultado calculado" diz o que faltou); v8 (22/11/2026: repasse minimo do produto (Cadastro) e o piso do repasse -- substitui os R$ 40 e
 // vale em qualquer produto, como em ml-ocelot-dados; sem minimo, R$ 40 em cuba do Miguel e balanco do Alan); v7 (05/11/2026: TRAVA DO BALANCO, pedido do Tiago: anuncio de balanco nunca entra em promocao,
 // nem com forcar; acao remover_balancos tira os balancos de toda campanha em que estejam (botao na tela e cron de hora
 // em hora, porque o ML pode colocar sozinho nas automaticas ou alguem pode aderir pelo site do ML); v6 30/10/2026: relampago LIGHTNING aplica o desconto minimo mesmo quando o convite traz price (o ML manda price de referencia com menos de 5%), limite da tela abaixo do min do ML tem erro proprio, ML 5xx tenta de novo 1 vez; v5 25/10/2026: relampago respeita desconto minimo de 5% do ML; v4: erro de estoque diz qual teto barrou; v3: oferta relampago pelo painel, com estoque reservado; v2: relampago co-participada manda stock, erro do ML com cause; v1 18/10/2026) - campanhas de promocao do ML da conta Ocelot, o resultado de cada item
@@ -120,6 +121,18 @@ Deno.serve(async (req) => {
   const mlc = (caminho: string, init: RequestInit = {}) =>
     ml(admin, OCELOT_CONTA, caminho, { ...init, headers: { version: "v2", ...(init.headers || {}) } });
 
+  // leitura no ML com nova tentativa: depois de carregar uma lista grande o ML devolve 429 por alguns segundos
+  // (28/11/2026: adesao SMART logo apos abrir a lista barrou 30 itens por "sem resultado calculado")
+  async function mlLer(caminho: string) {
+    let r: any = null;
+    for (let t = 0; t < 4; t++) {
+      if (t) await new Promise((ok) => setTimeout(ok, 500 * 2 ** (t - 1)));
+      try { r = await mlc(caminho); } catch (e) { r = { ok: false, status: 0, json: { message: String((e as Error)?.message || e) } }; continue; }
+      if (r.ok || (r.status !== 429 && r.status < 500 && r.status !== 0)) return r;
+    }
+    return r;
+  }
+
   // resultado de cada item cru da API de promocoes (lista de /promotions/{id}/items ou montada de /items/{id})
   async function calcular(lista: any[], promotion_type = "") {
     const ids = [...new Set(lista.map((x) => String(x.id)))];
@@ -129,7 +142,7 @@ Deno.serve(async (req) => {
     const blocos: string[][] = [];
     for (let i = 0; i < ids.length; i += 20) blocos.push(ids.slice(i, i + 20));
     await emLotes(blocos, 4, async (b) => {
-      const r = await mlc(`/items?ids=${b.join(",")}&attributes=id,title,price,category_id,listing_type_id,permalink,thumbnail,available_quantity`);
+      const r = await mlLer(`/items?ids=${b.join(",")}&attributes=id,title,price,category_id,listing_type_id,permalink,thumbnail,available_quantity`);
       for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id) vivo[x.body.id] = x.body;
     });
 
@@ -166,13 +179,15 @@ Deno.serve(async (req) => {
       if (!preco || !tipo || !cat) return null;
       const k = `${preco}|${tipo}|${cat}`;
       if (k in tarifas) return tarifas[k];
-      const r = await mlc(`/sites/MLB/listing_prices?price=${preco}&listing_type_id=${tipo}&category_id=${cat}`);
+      const r = await mlLer(`/sites/MLB/listing_prices?price=${preco}&listing_type_id=${tipo}&category_id=${cat}`);
       const o = Array.isArray(r.json) ? r.json.find((x: any) => x.listing_type_id === tipo) || r.json[0] : r.json;
-      return (tarifas[k] = r.ok ? num(o?.sale_fee_amount) : null);
+      const v = r.ok ? num(o?.sale_fee_amount) : null;
+      if (v != null) tarifas[k] = v; // falha nao fica no cache: o proximo item tenta de novo
+      return v;
     }
     const fretes: Record<string, number | null> = {};
     await emLotes(ids, 6, async (id) => {
-      const r = await mlc(`/users/${uidML}/shipping_options/free?item_id=${id}`);
+      const r = await mlLer(`/users/${uidML}/shipping_options/free?item_id=${id}`);
       fretes[id] = r.ok ? num(r.json?.coverage?.all_country?.list_cost) : null;
     });
 
@@ -243,6 +258,13 @@ Deno.serve(async (req) => {
       if (freteGratis == null && !(precoCampanha != null && precoCampanha < FRETE_GRATIS_MIN)) avisos.push("frete_indisponivel");
       if (!num(x.price) && precoCampanha != null && !ajustadoMin) avisos.push("preco_sugerido");
       if (ajustadoMin) avisos.push("desconto_minimo_ml");
+      // o que faltou quando nao deu para calcular (vai no erro da adesao)
+      const falta: string[] = [];
+      if (precoCampanha == null) falta.push("preco");
+      if (!tipo || !cat) falta.push("anuncio");
+      else if (tarCamp == null) falta.push("comissao");
+      if (freteEm(precoCampanha) == null && precoCampanha != null) falta.push("frete");
+      if (camp && camp.cmv == null) falta.push("repasse");
 
       return {
         item_id: id, status: x.status ?? null, offer_id: x.offer_id ?? x.ref_id ?? null,
@@ -258,7 +280,7 @@ Deno.serve(async (req) => {
         repasse_perde: camp?.cmv != null && atual?.cmv != null ? r2(atual.cmv - camp.cmv) : null,
         inicio: x.start_date ?? null, fim: x.end_date ?? null,
         estoque_min: num(x.stock?.min), estoque_max: num(x.stock?.max),
-        bloqueado, avisos,
+        bloqueado, avisos, falta,
       };
     });
   }
@@ -363,7 +385,9 @@ Deno.serve(async (req) => {
           // trava do balanco: barra sempre, forcar nao passa por cima (se o calculo falhou, nao entra tambem)
           if (!c || c.bloqueado) { res.erro = c ? "balanco_bloqueado" : "sem_resultado_calculado"; await logar(res); return res; }
           if (!forcar && (c?.resultado_pct == null || c.resultado_pct < MARGEM_MINIMA)) {
-            res.erro = c?.resultado_pct == null ? "sem_resultado_calculado" : "abaixo_margem_minima";
+            res.erro = c?.resultado_pct == null
+              ? "sem_resultado_calculado" + (c?.falta?.length ? ` (falta: ${c.falta.join(", ")})` : "")
+              : "abaixo_margem_minima";
             await logar(res); return res;
           }
           const corpo: any = POR_PRECO_ESTOQUE.includes(promotion_type) ? { promotion_type } : { promotion_id, promotion_type };

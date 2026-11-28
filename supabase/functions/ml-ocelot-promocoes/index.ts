@@ -1,4 +1,5 @@
-// ml-ocelot-promocoes v9 (28/11/2026: leituras do calculo tentam de novo em 429/5xx e o erro
+// ml-ocelot-promocoes v10 (28/11/2026: anuncio ao vivo por itensML -- o ML esta desligando o multiget /items?ids=);
+// v9 (28/11/2026: leituras do calculo tentam de novo em 429/5xx e o erro
 // "sem resultado calculado" diz o que faltou); v8 (22/11/2026: repasse minimo do produto (Cadastro) e o piso do repasse -- substitui os R$ 40 e
 // vale em qualquer produto, como em ml-ocelot-dados; sem minimo, R$ 40 em cuba do Miguel e balanco do Alan); v7 (05/11/2026: TRAVA DO BALANCO, pedido do Tiago: anuncio de balanco nunca entra em promocao,
 // nem com forcar; acao remover_balancos tira os balancos de toda campanha em que estejam (botao na tela e cron de hora
@@ -34,7 +35,7 @@
 // Permissoes: ler = menu "ocelot_promocoes"; participar/sair = tambem a acao "alterar_ml" (a mesma que troca
 // preco/estoque no Cadastro). Usuario ligado a fornecedor (ocelot_usuario_fornecedor) nao usa esta tela.
 // Toda tentativa de participar/sair vai para ocelot_promocoes_log. Token do ML so no servidor.
-import { adminClient, CORS, erroML, exigirUsuario, json, ml, segredoConfere } from "../_shared/ocelot.ts";
+import { adminClient, CORS, erroML, exigirUsuario, itensML, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const MIGUEL_ID = "9e88add9-8405-46db-8bd4-e128ee9ce65a";
@@ -138,13 +139,11 @@ Deno.serve(async (req) => {
     const ids = [...new Set(lista.map((x) => String(x.id)))];
 
     // anuncio ao vivo (titulo, preco, categoria, tipo)
+    // v10: itensML tenta o lote e busca um a um o que faltar (o ML esta desligando o multiget: 403 "Resource
+    // deprecated" intermitente, que deixava o anuncio sem categoria/tipo e o item "sem resultado calculado")
     const vivo: Record<string, any> = {};
-    const blocos: string[][] = [];
-    for (let i = 0; i < ids.length; i += 20) blocos.push(ids.slice(i, i + 20));
-    await emLotes(blocos, 4, async (b) => {
-      const r = await mlLer(`/items?ids=${b.join(",")}&attributes=id,title,price,category_id,listing_type_id,permalink,thumbnail,available_quantity`);
-      for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id) vivo[x.body.id] = x.body;
-    });
+    for (const x of await itensML(admin, OCELOT_CONTA, ids, "id,title,price,category_id,listing_type_id,permalink,thumbnail,available_quantity"))
+      if (x?.code === 200 && x.body?.id) vivo[x.body.id] = x.body;
 
     // SKU, dono do anuncio e custo cadastrado do mes
     const [{ data: skuRows }, { data: fornRows }] = await Promise.all([
@@ -472,12 +471,9 @@ async function removerBalancos(admin: ReturnType<typeof adminClient>, uid: strin
   const ids = [...cand].filter((x) => /^MLB\d+$/.test(x));
   const titulos: Record<string, string> = {}, statusItem: Record<string, string> = {};
   for (const r of base || []) if (r.titulo) titulos[r.item_id] = r.titulo;
-  for (let i = 0; i < ids.length; i += 20) {
-    const r = await mlc(`/items?ids=${ids.slice(i, i + 20).join(",")}&attributes=id,title,status`);
-    for (const x of Array.isArray(r.json) ? r.json : []) if (x?.code === 200 && x.body?.id) {
-      if (x.body.title) titulos[x.body.id] = x.body.title;
-      if (x.body.status) statusItem[x.body.id] = String(x.body.status);
-    }
+  for (const x of await itensML(admin, OCELOT_CONTA, ids, "id,title,status")) if (x?.code === 200 && x.body?.id) {
+    if (x.body.title) titulos[x.body.id] = x.body.title;
+    if (x.body.status) statusItem[x.body.id] = String(x.body.status);
   }
   const balancos = ids.filter((id) => ehBalanco(titulos[id]));
   // encerrado/inativo nao fica em promocao (o ML nem responde): so conta como ignorado

@@ -22,7 +22,7 @@
 //      em ocelot_entregas tem mais de CACHE_MIN minutos -- entregue/cancelado nao e consultado de novo;
 //   4. repasse estimado = cmv de ocelot_vendas_calc (mesma regra da DRE por venda e do Repasse).
 // So leitura no ML. Filtro por data de envio e feito na tela (a lista e pequena).
-import { adminClient, CORS, exigirUsuario, json, ml } from "../_shared/ocelot.ts";
+import { adminClient, CORS, exigirUsuario, itensML, json, ml } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
 const DIAS = 30;                 // venda paga ha mais de 30 dias e ainda nao entregue = caso de mediacao, nao de expedicao
@@ -168,13 +168,11 @@ Deno.serve(async (req) => {
     const info: Record<string, any> = {};
     for (const i of infos || []) info[i.item_id] = i;
     const semInfo = itemIds.filter((id) => !info[id]?.permalink);
-    for (let i = 0; i < semInfo.length; i += 20) {
-      const r = await ml(admin, OCELOT_CONTA, `/items?ids=${semInfo.slice(i, i + 20).join(",")}&attributes=id,title,thumbnail,permalink`);
-      for (const x of (Array.isArray(r.json) ? r.json : [])) {
-        const b = x.body; if (x.code !== 200 || !b) continue;
-        info[b.id] = { item_id: b.id, titulo: b.title, thumbnail: b.thumbnail, permalink: b.permalink };
-        await admin.from("ocelot_itens_info").upsert({ ...info[b.id], atualizado_em: new Date().toISOString() }, { onConflict: "item_id" });
-      }
+    // itensML: lote do ML com busca individual de reserva (o multiget esta sendo desligado pelo ML)
+    for (const x of await itensML(admin, OCELOT_CONTA, semInfo, "id,title,thumbnail,permalink")) {
+      const b = x.body; if (x.code !== 200 || !b?.id) continue;
+      info[b.id] = { item_id: b.id, titulo: b.title, thumbnail: b.thumbnail, permalink: b.permalink };
+      await admin.from("ocelot_itens_info").upsert({ ...info[b.id], atualizado_em: new Date().toISOString() }, { onConflict: "item_id" });
     }
     const linkAnuncio = (id: string) => info[id]?.permalink || `https://produto.mercadolivre.com.br/${id.replace(/^MLB/, "MLB-")}`;
 

@@ -2124,7 +2124,8 @@ function ocelotLiveInfo(){
   const n=OCELOT_LIVE.excluidos.length;
   const P=OCELOT_LIVE.pendentes;
   const pend=P.length?'<div style="margin:6px 0;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.5)"><b>Trava:</b> o ML diz que <b>'+P.length+' anúncios</b> foram excluídos de uma vez. Por segurança <b>nada foi tirado do cadastro</b> — confira no Mercado Livre antes de confirmar.<div style="font-size:11.5px;color:var(--muted);margin:4px 0">'+P.slice(0,30).map(function(x){return escH(x.item_id);}).join(', ')+(P.length>30?' …':'')+'</div>'+(pode('alterar_ml')?'<button onclick="ocelotConfirmaExclusoes()" style="padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;background:transparent;color:#fbbf24;cursor:pointer;font-size:12px">Confirmo: tirar estes '+P.length+' do cadastro</button>':'')+'</div>':'';
-  return pend+'Situação, estoque e preço <b>ao vivo do ML</b> (lido às '+h+', relê sozinho a cada 2 min)'+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
+  const pz=ocelotPrazoContagem();
+  return pend+'Situação, estoque, preço e prazo de fabricação <b>ao vivo do ML</b> (lido às '+h+', relê sozinho a cada 2 min)'+(pz.com?' · <span style="color:#fbbf24">'+pz.com+' de '+pz.n+' anúncio(s) com prazo de fabricação</span>':'')+(n?' · <span style="color:#fbbf24">'+n+' anúncio(s) excluído(s) no ML saíram do cadastro</span>':'')+(OCELOT_LIVE.erro?' · <span style="color:#fbbf24">'+escH(OCELOT_LIVE.erro)+'</span>':'');
 }
 // estoque somado dos anuncios de uma linha do cadastro (null = ainda sem leitura do ML)
 function ocelotEstoqueLinha(l){
@@ -2158,6 +2159,79 @@ function ocelotEstoqueCell(id){
   let irm=0; if(v.user_product_id)for(const k in OCELOT_LIVE.itens)if(k!==id&&OCELOT_LIVE.itens[k].user_product_id===v.user_product_id&&OCELOT_LIVE.itens[k].status!=='closed')irm++;
   if(irm)h+='<div style="font-size:10px;color:var(--muted)" title="Mesmo produto no ML: o estoque é um só para estes anúncios">compartilhado c/ '+irm+' anúncio(s)</div>';
   return h+'<div id="esst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
+}
+// PRAZO DE FABRICACAO (28/11/2026, pedido do Tiago): sale_terms MANUFACTURING_TIME do anuncio, lido ao vivo
+// (ml-ocelot-anuncios v8, campo prazo_dias; null = pronta entrega). Editavel por anuncio e em lote por SKU
+// (acoes prazo / prazo_lote, permissao alterar_ml). 0 ou vazio = tira o prazo. O backend tambem guarda o prazo
+// em ocelot_itens_sku.prazo_fabricacao_dias para cruzar com vendas.
+function ocelotPrazoLinha(l){ // resumo do prazo dos anuncios de uma linha do cadastro (null = ainda sem leitura)
+  if(!OCELOT_LIVE.lidoEm)return null;
+  const ids=l.tipo==='sku'?(l.anuncios||[]).map(function(a){return a.item_id;}):[l.chave];
+  let n=0,com=0,mn=null,mx=null;
+  ids.forEach(function(id){const v=OCELOT_LIVE.itens[id];if(!v||v.status==='closed')return;n++;const d=v.prazo_dias;if(d==null)return;com++;mn=mn==null?d:Math.min(mn,d);mx=mx==null?d:Math.max(mx,d);});
+  return n?{n:n,com:com,mn:mn,mx:mx}:null;
+}
+function ocelotPrazoResumoHtml(l){
+  const r=ocelotPrazoLinha(l);
+  if(!r)return '<span style="color:var(--muted)">'+(OCELOT_LIVE.carregando?'&hellip;':'&mdash;')+'</span>';
+  if(!r.com)return '<span style="color:var(--muted)" title="Nenhum anúncio com prazo de fabricação (pronta entrega)">&mdash;</span>';
+  const faixa=r.mn===r.mx?(r.mn+'&nbsp;d'):(r.mn+'&ndash;'+r.mx+'&nbsp;d');
+  return '<span style="color:#fbbf24;font-weight:600" title="Prazo de fabricação no ML: '+r.com+' de '+r.n+' anúncio(s) deste produto">'+faixa+'</span>'+(r.com<r.n?'<div style="font-size:10px;color:var(--muted)">'+r.com+' de '+r.n+'</div>':'');
+}
+function ocelotPrazoCell(id){
+  const v=OCELOT_LIVE.itens[id];
+  if(!v)return '<span style="color:var(--muted)">'+(OCELOT_LIVE.carregando?'…':'—')+'</span>';
+  const d=v.prazo_dias==null?'':v.prazo_dias;
+  if(v.status==='closed')return '<span style="color:var(--muted)">'+(d===''?'—':d+' d')+'</span>';
+  const ro=pode('alterar_ml')?'':' disabled';
+  return '<div style="white-space:nowrap"><input type="number" min="0" max="90" step="1" value="'+d+'" data-d="'+d+'" placeholder="—"'+ro+' onclick="event.stopPropagation()" onchange="ocelotSalvaPrazo(this,\''+id+'\')" title="Prazo de fabricação no ML, em dias (vazio ou 0 = pronta entrega)" style="width:52px;text-align:right;padding:2px 5px;font-size:12px'+(d!==''?';border-color:#f59e0b':'')+'"> <span style="font-size:10.5px;color:var(--muted)">d</span></div>'
+    +'<div id="pzst_'+id+'" style="font-size:10.5px;min-height:12px"></div>';
+}
+function ocelotPrazoContagem(){
+  let n=0,com=0;for(const k in OCELOT_LIVE.itens){const v=OCELOT_LIVE.itens[k];if(!v||v.status==='closed')continue;n++;if(v.prazo_dias!=null)com++;}
+  return {n:n,com:com};
+}
+function ocelotPrazoValor(bruto){ // '' ou 0 = tirar prazo; devolve null se invalido
+  bruto=String(bruto==null?'':bruto).trim();
+  if(bruto==='')return 0;
+  const d=Number(bruto);
+  return Number.isInteger(d)&&d>=0&&d<=90?d:null;
+}
+async function ocelotSalvaPrazo(inp,id){
+  const ant=inp.getAttribute('data-d'), d=ocelotPrazoValor(inp.value);
+  if(d==null){alert('Prazo inválido: use um número inteiro de dias, de 0 a 90 (vazio ou 0 = pronta entrega).');inp.value=ant;return;}
+  const antN=ant===''?0:Number(ant);
+  if(d===antN){inp.value=ant;return;}
+  const v=OCELOT_LIVE.itens[id]||{};
+  const msg=(d===0?'TIRAR o prazo de fabricação (pronta entrega)':'Gravar prazo de fabricação de '+d+' dia(s)')+' no anúncio '+id+' no Mercado Livre?\n\n'+String(v.titulo||'')+'\n\nHoje: '+(antN?antN+' dia(s)':'sem prazo')+(d>0?'\n\nCom prazo, o ML soma esses dias à data de entrega mostrada ao comprador.':'');
+  if(!confirm(msg)){inp.value=ant;return;}
+  const st=document.getElementById('pzst_'+id); inp.disabled=true;
+  if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
+  try{
+    const x=await ocelotAnunciosPost({acao:'prazo',item_id:id,dias:d});
+    if(!x.r.ok||(!x.j.ok&&!x.j.depois)){if(st){st.textContent=x.j.erro||('erro '+x.r.status);st.style.color='#f87171';}inp.value=ant;inp.disabled=false;return;}
+    const g=x.j.depois&&!x.j.depois.erro?x.j.depois.prazo_dias:(d||null);
+    if(st){st.textContent=x.j.ok?'gravado no ML':(x.j.aviso||'enviado');st.style.color=x.j.ok?'#34d399':'#fbbf24';}
+    inp.value=g==null?'':g; inp.setAttribute('data-d',inp.value); inp.disabled=false;
+    ocelotLiveAtualiza(id,x.j.depois);
+  }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}inp.value=ant;inp.disabled=false;}
+}
+async function ocelotPrazoLote(k,fixo){
+  const l=OCELOT_LINHAS[k]; if(!l)return;
+  const inp=document.getElementById('pzlote_'+k), st=document.getElementById('pzlotest_'+k);
+  const d=fixo!=null?fixo:ocelotPrazoValor(inp?inp.value:'');
+  if(d==null||(fixo==null&&String(inp?inp.value:'').trim()==='')){alert('Informe o prazo em dias (1 a 90). Para tirar o prazo use o botão "Tirar prazo".');return;}
+  const ids=(l.anuncios||[]).map(function(a){return a.item_id;}).filter(function(id){const v=OCELOT_LIVE.itens[id];return v&&v.status!=='closed';});
+  if(!ids.length)return;
+  if(!confirm((d===0?'TIRAR o prazo de fabricação de':'Gravar prazo de fabricação de '+d+' dia(s) em')+' TODOS os '+ids.length+' anúncio(s) do SKU '+l.chave+' no Mercado Livre?'))return;
+  if(st){st.textContent='gravando…';st.style.color='var(--muted)';}
+  try{
+    const x=await ocelotAnunciosPost({acao:'prazo_lote',item_ids:ids,dias:d});
+    if(!x.r.ok&&!x.j.resultados){if(st){st.textContent=x.j.erro||('erro '+x.r.status);st.style.color='#f87171';}return;}
+    const R=x.j.resultados||[], falhas=R.filter(function(r){return !r.ok;});
+    R.forEach(function(r){if(r.depois)ocelotLiveAtualiza(r.item_id,r.depois);});
+    if(st){st.textContent=falhas.length?('gravado, mas '+falhas.length+' não: '+falhas.map(function(f){return f.item_id+' ('+f.erro+')';}).join('; ')):'gravado no ML';st.style.color=falhas.length?'#fbbf24':'#34d399';}
+  }catch(e){if(st){st.textContent='erro de rede';st.style.color='#f87171';}}
 }
 // PRECO x PROMOCAO (02/11/2026, pedido do Tiago): anuncio com desconto mostra o preco de TABELA no campo e,
 // embaixo, o que o comprador paga. Ao mudar o preco de anuncio em promocao a tela pergunta: alterar agora (sai da
@@ -2685,10 +2759,19 @@ function htmlExpansaoLinha(l){
         +'<button onclick="event.stopPropagation();ocelotEstoqueLote(\''+l.k+'\',0)" style="padding:3px 10px;border-radius:6px;border:1px solid #f87171;background:transparent;color:#f87171;cursor:pointer;font-size:12px">Zerar todas</button>'
         +'<span id="lotest_'+l.k+'" style="font-size:11px"></span></div>';
     }
+    if(an.length&&pode('alterar_ml')&&OCELOT_LIVE.lidoEm){
+      const nAb=an.filter(function(a){const v=OCELOT_LIVE.itens[a.item_id];return v&&v.status!=='closed';}).length;
+      if(nAb)h+='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;margin:4px 0 8px;padding:6px 10px;border:1px dashed var(--line);border-radius:8px">'
+        +'<span>Prazo de fabrica&ccedil;&atilde;o de <b>todos os '+nAb+' an&uacute;ncio(s)</b> deste SKU:</span>'
+        +'<input id="pzlote_'+l.k+'" type="number" min="1" max="90" step="1" placeholder="dias" onclick="event.stopPropagation()" style="width:70px;text-align:right;padding:2px 5px;font-size:12px">'
+        +'<button onclick="event.stopPropagation();ocelotPrazoLote(\''+l.k+'\',null)" style="padding:3px 10px;border-radius:6px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:12px">Aplicar</button>'
+        +'<button onclick="event.stopPropagation();ocelotPrazoLote(\''+l.k+'\',0)" style="padding:3px 10px;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;font-size:12px">Tirar prazo (pronta entrega)</button>'
+        +'<span id="pzlotest_'+l.k+'" style="font-size:11px"></span></div>';
+    }
     if(!an.length)h+='<div style="font-size:12px;color:var(--muted)">Nenhum an&uacute;ncio na &uacute;ltima coleta.</div>';
     else{
       h+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
-      h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">MLB</th><th style="text-align:left;padding:3px 6px">An&uacute;ncio</th><th style="text-align:center;padding:3px 6px">Situa&ccedil;&atilde;o</th><th style="text-align:right;padding:3px 6px">Estoque</th><th style="text-align:right;padding:3px 6px" title="Unidades vendidas deste anúncio nos últimos 30 dias (sem canceladas)">Vendas 30d</th><th style="text-align:right;padding:3px 6px" title="Menor preço que, mesmo com 5% de promoção, mantém o repasse mínimo do produto e os 5,5% da Ocelot">Pre&ccedil;o sugerido</th><th style="text-align:right;padding:3px 6px">Pre&ccedil;o</th><th style="text-align:right;padding:3px 6px">SKU no ML</th><th style="text-align:left;padding:3px 6px">Resp. CMV</th></tr>';
+      h+='<tr style="color:var(--muted)"><th style="text-align:left;padding:3px 6px">MLB</th><th style="text-align:left;padding:3px 6px">An&uacute;ncio</th><th style="text-align:center;padding:3px 6px">Situa&ccedil;&atilde;o</th><th style="text-align:right;padding:3px 6px">Estoque</th><th style="text-align:right;padding:3px 6px" title="Prazo de fabricação no ML, em dias (vazio = pronta entrega)">Prazo fab.</th><th style="text-align:right;padding:3px 6px" title="Unidades vendidas deste anúncio nos últimos 30 dias (sem canceladas)">Vendas 30d</th><th style="text-align:right;padding:3px 6px" title="Menor preço que, mesmo com 5% de promoção, mantém o repasse mínimo do produto e os 5,5% da Ocelot">Pre&ccedil;o sugerido</th><th style="text-align:right;padding:3px 6px">Pre&ccedil;o</th><th style="text-align:right;padding:3px 6px">SKU no ML</th><th style="text-align:left;padding:3px 6px">Resp. CMV</th></tr>';
       for(let i=0;i<an.length;i++){
         const a=an[i]; a.sku_atual=l.chave;
         const tit=a.permalink?('<a href="'+a.permalink+'" target="_blank" rel="noopener" style="color:inherit">'+escH(String(a.titulo||'').slice(0,60))+'</a>'):escH(String(a.titulo||'').slice(0,60));
@@ -2696,6 +2779,7 @@ function htmlExpansaoLinha(l){
         h+='<tr'+(ocelotBuscaAnuncio(a.item_id)?' style="background:#1e3a5f;outline:1px solid #3b82f6"':'')+'><td style="padding:3px 6px;font-size:11.5px;white-space:nowrap">'+mlb+' '+ocelotTipoSelo(a.item_id)+'</td><td style="padding:3px 6px">'+tit+'</td>'
           +'<td style="padding:3px 6px;text-align:center">'+ocelotStatusCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotEstoqueCell(a.item_id)+'</td>'
+          +'<td style="padding:3px 6px;text-align:right">'+ocelotPrazoCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotV30Cell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotSugCell(a.item_id)+'</td>'
           +'<td style="padding:3px 6px;text-align:right">'+ocelotPrecoCell(a)+'</td>'
@@ -2709,7 +2793,7 @@ function htmlExpansaoLinha(l){
     h+='<div style="font-size:12.5px;font-weight:600;margin-bottom:4px">An&uacute;ncio sem SKU no Mercado Livre '+ocelotTipoSelo(l.chave)+'</div>';
     h+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px">Preencher o SKU aqui grava no an&uacute;ncio do ML; na pr&oacute;xima coleta ele passa a usar o custo do produto e some desta lista.</div>';
     h+='<div style="display:flex;gap:18px;align-items:flex-start;font-size:12px;flex-wrap:wrap"><div>SKU: '+skuInputCell(a)+'</div>'
-      +'<div>Situa&ccedil;&atilde;o: '+ocelotStatusCell(l.chave)+'</div><div>Estoque: '+ocelotEstoqueCell(l.chave)+'</div><div>Vendas 30d: '+ocelotV30Cell(l.chave)+'</div><div>Pre&ccedil;o sugerido: '+ocelotSugCell(l.chave)+'</div><div>Pre&ccedil;o: '+ocelotPrecoCell({item_id:l.chave,preco:l.pmin})+'</div>'
+      +'<div>Situa&ccedil;&atilde;o: '+ocelotStatusCell(l.chave)+'</div><div>Estoque: '+ocelotEstoqueCell(l.chave)+'</div><div>Prazo fab.: '+ocelotPrazoCell(l.chave)+'</div><div>Vendas 30d: '+ocelotV30Cell(l.chave)+'</div><div>Pre&ccedil;o sugerido: '+ocelotSugCell(l.chave)+'</div><div>Pre&ccedil;o: '+ocelotPrecoCell({item_id:l.chave,preco:l.pmin})+'</div>'
       +'<div>Resp. CMV: '+ocelotRespSelect(ocelotRespAnuncios(l)[0]||{item_id:l.chave,resp:null},l.k)+'</div></div>';
   }
   h+='<div style="font-size:12.5px;font-weight:600;margin:12px 0 4px">Custos cadastrados por m&ecirc;s</div>';
@@ -2772,7 +2856,7 @@ function htmlOcelotProdutos(){
   h+='<label style="font-size:12px;display:flex;align-items:center;gap:6px;height:34px"><input type="checkbox"'+(ocelotSoSemCusto?' checked':'')+' onchange="ocelotToggleSemCusto(this)"> s&oacute; os sem custo em '+mesBr(mes)+'</label>';
   h+='</div>';
   h+='<div class="foot" id="ocContadores" style="text-align:left;margin:-4px 0 8px">'+comCusto+' com custo em '+mesBr(mes)+' &middot; '+repetir+' com custo em m&ecirc;s anterior &middot; '+semNada+' sem custo nenhum &middot; '+linhas.length+' linhas.</div>';
-  h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. É o piso do pagamento: nas vendas feitas depois do cadastro ou da alteração, o repasse nunca fica abaixo dele (a Ocelot completa). Vazio = sem mínimo (R$ 40 em cuba do Miguel e balanço do Alan); os avisos de preço usam R$ 40.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
+  h+='<div class="cadwrap"><table class="cad cadprod"><thead><tr>'+ocelotTh('sku','SKU / an&uacute;ncio','m')+ocelotTh('produto','Produto','','text-align:left')+ocelotTh('anuncios','An&uacute;ncios','n')+ocelotTh('unid','Un. vendidas','n')+ocelotTh('preco','Pre&ccedil;o no ML','n')+ocelotTh('estoque','Estoque ML','n')+'<th class="n" title="Prazo de fabricação no ML (dias) dos anúncios deste produto. — = pronta entrega. Para alterar, clique no produto.">Prazo fab.</th>'+ocelotTh('custo','Custo '+mesBr(mes),'n')+ocelotTh('ultimo','&Uacute;ltimo custo antes','n')+'<th class="n" title="Repasse mínimo por unidade ao fornecedor deste produto. É o piso do pagamento: nas vendas feitas depois do cadastro ou da alteração, o repasse nunca fica abaixo dele (a Ocelot completa). Vazio = sem mínimo (R$ 40 em cuba do Miguel e balanço do Alan); os avisos de preço usam R$ 40.">Repasse mín.</th><th style="white-space:nowrap" title="De quem é o CMV (vai para o repasse desse fornecedor). Muda por anúncio: clique no produto.">Resp. CMV</th></tr></thead><tbody>';
   let mostradas=0;
   const q=ocelotBuscaNorm(), bates={};
   if(q){
@@ -2800,13 +2884,14 @@ function htmlOcelotProdutos(){
       +'<td class="n">'+l.unid+'</td>'
       +'<td class="n quebra" id="cpr_'+k+'">'+faixa+'</td>'
       +'<td class="n">'+estq+'</td>'
+      +'<td class="n">'+ocelotPrazoResumoHtml(l)+'</td>'
       +'<td class="n">'+inp+'</td>'
       +'<td class="n quebra" id="cult_'+k+'">'+htmlUltimoCusto(l)+'</td>'
       +'<td class="n">'+ocelotMinimoInput(l)+'</td>'
       +'<td id="resp_'+k+'" style="white-space:nowrap">'+ocelotRespResumo(l)+'</td></tr>';
-    h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="10" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
+    h+='<tr class="skl_'+k+'"'+(ocelotSkuAberto[k]?'':' style="display:none"')+'><td colspan="11" style="background:#16233d;padding:10px 12px">'+htmlExpansaoLinha(l)+'</td></tr>';
   }
-  if(!mostradas)h+='<tr><td class="m" colspan="10" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
+  if(!mostradas)h+='<tr><td class="m" colspan="11" style="text-align:left;color:var(--muted)">Nada para mostrar com este filtro'+(q?(' (busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;'+(q.mlb?'; se o an&uacute;ncio for novo, ele entra na pr&oacute;xima coleta':'')+')'):'')+'.</td></tr>';
   h+='</tbody></table></div>';
   setTimeout(ocelotSugPedirAbertos,0);
   if(q&&mostradas)h+='<div class="foot" style="text-align:left;margin-top:6px">Busca &ldquo;'+escH(ocelotCadBusca)+'&rdquo;: '+mostradas+' de '+linhas.length+' linhas.</div>';

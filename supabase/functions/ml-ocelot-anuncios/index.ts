@@ -25,6 +25,11 @@
 //   de um SKU (uma gravacao por produto).
 // v4 (13/10/2026): edicao de estoque DESLIGADA a pedido do Tiago -- o painel nao grava estoque no ML
 //   (acoes estoque e estoque_lote recusadas). Ler estoque e ativar/pausar continuam. Religar: ESTOQUE_LIGADO.
+// v8 (28/11/2026, pedido do Tiago): PRAZO DE FABRICACAO (sale_terms MANUFACTURING_TIME). O sincronizar devolve
+//   prazo_dias de cada anuncio (null = pronta entrega) e grava em ocelot_itens_sku.prazo_fabricacao_dias (so o que
+//   mudou), para cruzar com vendas. POST { acao:"prazo", item_id, dias } e { acao:"prazo_lote", item_ids, dias }
+//   (permissao alterar_ml): dias 1..90 grava o prazo, 0 tira (pronta entrega). O PUT leva os outros sale_terms
+//   (garantia etc.) do jeito que estavam -- a escrita confere relendo que o prazo mudou e que nenhum outro termo sumiu.
 // v7 (02/11/2026): devolve tipo (listing_type_id: Classico/Premium) para a tela marcar cada anuncio.
 // v6 (02/11/2026): devolve preco_original (original_price do ML) para a tela marcar anuncio em promocao.
 // v5 (14/10/2026): edicao de estoque RELIGADA a pedido do Tiago. O ML continua sendo a fonte da verdade: se o
@@ -35,7 +40,8 @@
 import { adminClient, CORS, erroML, exigirUsuario, itensML, json, ml, segredoConfere } from "../_shared/ocelot.ts";
 
 const OCELOT_CONTA = "30fa53d4-60c0-40f6-9832-63b4cb313797";
-const CAMPOS = "id,title,price,original_price,listing_type_id,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id";
+const CAMPOS = "id,title,price,original_price,listing_type_id,status,sub_status,available_quantity,variations,shipping,permalink,user_product_id,family_id,sale_terms";
+const PRAZO_MAX = 90;
 const ESTOQUE_LIGADO = true; // v5: religado (v4 tinha desligado)
 const LIMITE_EXCLUSOES = 10; // por leitura; acima disso (ou de 5% dos anuncios) precisa confirmar na tela
 
@@ -46,6 +52,16 @@ async function contaOk(admin: any, uid: string) {
 
 function nomeVariacao(v: any): string {
   return (v.attribute_combinations || []).map((a: any) => a.value_name).filter(Boolean).join(" / ") || String(v.id);
+}
+
+// v8: prazo de fabricacao em dias (null = sem prazo). O ML manda value_struct {number, unit} e/ou value_name "15 dias".
+function prazoDias(b: any): number | null {
+  const t = (Array.isArray(b?.sale_terms) ? b.sale_terms : []).find((x: any) => x?.id === "MANUFACTURING_TIME");
+  if (!t) return null;
+  const n = Number(t.value_struct?.number ?? NaN);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  const m = String(t.value_name || "").match(/(\d+)/);
+  return m && Number(m[1]) > 0 ? Number(m[1]) : null;
 }
 
 function resumo(b: any) {
@@ -61,6 +77,9 @@ function resumo(b: any) {
     estoque: vars.length ? vars.reduce((s: number, v: any) => s + v.estoque, 0) : Number(b.available_quantity ?? 0),
     variacoes: vars, full: b.shipping?.logistic_type === "fulfillment", permalink: b.permalink || null,
     user_product_id: b.user_product_id || null, family_id: b.family_id ?? null,
+    prazo_dias: prazoDias(b),
+    // v8: os outros termos de venda, so os ids (a tela nao usa; a escrita confere que nenhum sumiu)
+    termos: (Array.isArray(b.sale_terms) ? b.sale_terms : []).map((x: any) => x?.id).filter(Boolean),
   };
 }
 
@@ -107,6 +126,36 @@ async function gravarEstoque(admin: any, itemId: string, antes: any, quantidade:
   return { http: 200, corpo: { ok, antes, depois, aviso: ok ? null : "o ML aceitou, mas o estoque relido ainda não é o novo (pode levar alguns minutos)" } };
 }
 
+// v8: grava o prazo de fabricacao de UM anuncio. Le os sale_terms crus na hora, manda todos de volta trocando so o
+// MANUFACTURING_TIME (dias 0 = value_name null, que tira o prazo), confere relendo e registra no log.
+async function gravarPrazo(admin: any, itemId: string, dias: any, uid: string) {
+  const d = Number(dias);
+  if (!Number.isInteger(d) || d < 0 || d > PRAZO_MAX) return { http: 400, corpo: { ok: false, erro: `prazo invalido (inteiro de 0 a ${PRAZO_MAX} dias; 0 = pronta entrega)` } };
+  const cru = await ml(admin, OCELOT_CONTA, `/items/${itemId}?attributes=${CAMPOS}`);
+  if (!cru.ok) return { http: 502, corpo: { ok: false, erro: erroML(cru) } };
+  const antes: any = resumo(cru.json);
+  if (antes.status === "closed") return { http: 409, corpo: { ok: false, erro: "anúncio encerrado no ML", antes } };
+  const alvo = d === 0 ? null : d;
+  if (antes.prazo_dias === alvo) return { http: 200, corpo: { ok: true, antes, depois: antes } };
+  const outros = (Array.isArray(cru.json?.sale_terms) ? cru.json.sale_terms : [])
+    .filter((t: any) => t?.id && t.id !== "MANUFACTURING_TIME")
+    .map((t: any) => (t.value_id ? { id: t.id, value_id: t.value_id } : { id: t.id, value_name: t.value_name ?? null }));
+  const termos = [...outros, { id: "MANUFACTURING_TIME", value_name: alvo == null ? null : `${alvo} dias` }];
+  const r = await ml(admin, OCELOT_CONTA, `/items/${itemId}`, { method: "PUT", body: JSON.stringify({ sale_terms: termos }) });
+  const depois: any = r.ok ? await lerItem(admin, itemId) : null;
+  const sumiu = depois && !depois.erro ? antes.termos.filter((x: string) => x !== "MANUFACTURING_TIME" && !depois.termos.includes(x)) : [];
+  const ok = r.ok && depois && !depois.erro && depois.prazo_dias === alvo && !sumiu.length;
+  await log(admin, { item_id: itemId, tipo: "prazo", antes: antes.prazo_dias == null ? "sem prazo" : String(antes.prazo_dias), depois: alvo == null ? "sem prazo" : String(alvo),
+    usuario_id: uid, ok, resposta: r.ok ? (sumiu.length ? `termos sumiram: ${sumiu.join(",")}` : null) : erroML(r) });
+  if (!r.ok) return { http: 502, corpo: { ok: false, erro: erroML(r), antes } };
+  if (depois && !depois.erro) {
+    await admin.from("ocelot_itens_sku").update({ prazo_fabricacao_dias: depois.prazo_dias, prazo_lido_em: new Date().toISOString() })
+      .eq("conta_id", OCELOT_CONTA).eq("item_id", itemId);
+  }
+  const aviso = ok ? null : (sumiu.length ? `ATENÇÃO: o ML aceitou, mas sumiram termos do anúncio (${sumiu.join(", ")}) — confira a garantia no ML` : "o ML aceitou, mas o prazo relido ainda não é o novo (pode levar alguns minutos)");
+  return { http: 200, corpo: { ok, antes, depois, aviso } };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ ok: false, erro: "use POST" }, 405);
@@ -123,7 +172,7 @@ Deno.serve(async (req) => {
       uid = u.id;
     }
     // le tambem os ja marcados como excluidos: se voltarem a existir no ML, saem da marcacao (restaura)
-    const { data: linhas } = await admin.from("ocelot_itens_sku").select("item_id,excluido_em")
+    const { data: linhas } = await admin.from("ocelot_itens_sku").select("item_id,excluido_em,prazo_fabricacao_dias")
       .eq("conta_id", OCELOT_CONTA).range(0, 4999);
     const jaExcluido = new Set((linhas || []).filter((r: any) => r.excluido_em).map((r: any) => String(r.item_id)));
     const ids = Array.from(new Set((linhas || []).map((r: any) => String(r.item_id)).filter((x: string) => /^MLB\d+$/.test(x))));
@@ -175,6 +224,14 @@ Deno.serve(async (req) => {
       const { error } = await admin.from("ocelot_itens_sku").update({ excluido_em: null, excluido_motivo: null })
         .eq("conta_id", OCELOT_CONTA).eq("item_id", id);
       if (!error) await log(admin, { item_id: id, tipo: "restaurado", depois: "existe de novo no ML", usuario_id: uid, ok: true });
+    }
+    // v8: guarda o prazo de fabricacao lido (so os que mudaram; null = sem prazo) para cruzar com vendas
+    const prazoAnt: Record<string, number | null> = {};
+    (linhas || []).forEach((r: any) => { prazoAnt[String(r.item_id)] = r.prazo_fabricacao_dias ?? null; });
+    const mudouPrazo = Object.values(itens).filter((v: any) => (prazoAnt[v.item_id] ?? null) !== (v.prazo_dias ?? null));
+    for (let i = 0; i < mudouPrazo.length; i += 10) {
+      await Promise.all(mudouPrazo.slice(i, i + 10).map((v: any) => admin.from("ocelot_itens_sku")
+        .update({ prazo_fabricacao_dias: v.prazo_dias ?? null, prazo_lido_em: agora }).eq("conta_id", OCELOT_CONTA).eq("item_id", v.item_id)));
     }
     // todos os excluidos (inclusive de leituras anteriores): a tela tira esses anuncios do cadastro
     const { data: exRows } = await admin.from("ocelot_itens_sku").select("item_id")
@@ -245,5 +302,29 @@ Deno.serve(async (req) => {
     return json({ ok: resultados.every((r) => r.ok), resultados });
   }
 
-  return json({ ok: false, erro: "acao invalida (use sincronizar|status|estoque|estoque_lote)" }, 400);
+  if (body.acao === "prazo" || body.acao === "prazo_lote") {
+    const u = await exigirUsuario(admin, req, "alterar_ml");
+    if (u instanceof Response) return u;
+    if (!(await contaOk(admin, u.id))) return json({ ok: false, erro: "conta Ocelot fora do seu acesso" }, 403);
+    if (body.acao === "prazo") {
+      const itemId = String(body.item_id || "").trim().toUpperCase();
+      if (!/^MLB\d+$/.test(itemId)) return json({ ok: false, erro: "item_id invalido" }, 400);
+      const x = await gravarPrazo(admin, itemId, body.dias, u.id);
+      return json(x.corpo, x.http);
+    }
+    const ids = Array.from(new Set<string>((Array.isArray(body.item_ids) ? body.item_ids : []).map((x: any) => String(x).trim().toUpperCase())))
+      .filter((x) => /^MLB\d+$/.test(x)).slice(0, 60);
+    if (!ids.length) return json({ ok: false, erro: "informe item_ids" }, 400);
+    const resultados: any[] = [];
+    for (let i = 0; i < ids.length; i += 3) {
+      const parte = await Promise.all(ids.slice(i, i + 3).map(async (id) => {
+        const x = await gravarPrazo(admin, id, body.dias, u.id);
+        return { item_id: id, ok: !!x.corpo.ok, erro: (x.corpo as any).erro || (x.corpo as any).aviso || null, depois: (x.corpo as any).depois || null };
+      }));
+      resultados.push(...parte);
+    }
+    return json({ ok: resultados.every((r) => r.ok), resultados });
+  }
+
+  return json({ ok: false, erro: "acao invalida (use sincronizar|status|estoque|estoque_lote|prazo|prazo_lote)" }, 400);
 });
